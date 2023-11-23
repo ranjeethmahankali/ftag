@@ -1,7 +1,7 @@
 use crate::{
     core::{
-        get_filenames, get_relative_path, get_store_path, glob_filter, read_store_file,
-        FstoreError, WalkDirectories,
+        get_filenames, get_relative_path, get_store_path, glob_filter, implicit_tags,
+        read_store_file, FstoreError, WalkDirectories,
     },
     filter::{Filter, TagIndex, TagMaker},
 };
@@ -104,7 +104,7 @@ impl TagTable {
                     None => continue,
                 }
             };
-            // Push store tags.
+            // Push directory tags.
             if let Some(tags) = tags {
                 for tag in tags {
                     inherited.tag_indices.push(Self::get_tag_index(
@@ -114,6 +114,15 @@ impl TagTable {
                     ));
                 }
             }
+            // Implicit directory tags.
+            for tag in implicit_tags(curpath.file_name()) {
+                inherited.tag_indices.push(Self::get_tag_index(
+                    &tag,
+                    &mut table.index_map,
+                    &mut num_tags,
+                ));
+            }
+            // Process all files in the directory.
             if let Some(files) = files {
                 for FileData {
                     path: pattern,
@@ -147,14 +156,26 @@ impl TagTable {
         num_tags: &mut usize,
         inherited: &Vec<usize>,
     ) {
+        let impltags = implicit_tags(path.file_name());
         let flags = self.table.entry(path).or_insert(Vec::new());
+        // Set the file's explicit tags.
         if let Some(tags) = tags {
             flags.reserve(flags.len() + tags.len());
             for tag in tags {
-                let i = Self::get_tag_index(tag, &mut self.index_map, num_tags);
-                safe_set_flag(flags, i);
+                safe_set_flag(
+                    flags,
+                    Self::get_tag_index(tag, &mut self.index_map, num_tags),
+                );
             }
         }
+        // Implicit tags.
+        for tag in impltags {
+            safe_set_flag(
+                flags,
+                Self::get_tag_index(&tag, &mut self.index_map, num_tags),
+            );
+        }
+        // Set inherited tags.
         for i in inherited {
             safe_set_flag(flags, *i);
         }

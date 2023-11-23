@@ -2,11 +2,15 @@ use crate::filter::FilterParseError;
 use glob_match::glob_match;
 use serde::{de::DeserializeOwned, Deserialize};
 use std::{
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs::File,
     io::BufReader,
+    ops::Range,
+    os::unix::prelude::OsStrExt,
     path::{Path, PathBuf},
 };
+
+pub(crate) const FSTORE: &str = ".fstore";
 
 #[derive(Debug)]
 pub enum FstoreError {
@@ -25,6 +29,55 @@ pub enum FstoreError {
 pub struct Info {
     pub tags: Vec<String>,
     pub desc: String,
+}
+
+pub(crate) fn implicit_tags(name: Option<&OsStr>) -> impl Iterator<Item = String> {
+    fn infer_year_range(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
+        use nom::{
+            bytes::complete::{tag, take_while_m_n},
+            character::is_digit,
+            error::Error,
+            IResult, ParseTo,
+        };
+        let name: &OsStr = match nameopt {
+            Some(val) => val,
+            None => return None,
+        };
+        let mut input = name.as_bytes();
+        type Result<'a> = IResult<&'a [u8], &'a [u8], Error<&'a [u8]>>;
+        let result: Result = take_while_m_n(4, 4, is_digit)(input);
+        let first: u16 = match result {
+            Ok((i, o)) if o.len() > 3 => {
+                input = i;
+                o.parse_to()?
+            }
+            _ => return None,
+        };
+        let result: Result = tag("_")(input);
+        match result {
+            Ok((i, _o)) => input = i,
+            Err(_) => return Some(first..(first + 1)),
+        }
+        let result: Result = take_while_m_n(4, 4, is_digit)(input);
+        if let Ok((_i, o)) = result {
+            let second: u16 = o.parse_to().unwrap_or(first);
+            return Some(first..(second + 1));
+        }
+        let result: Result = tag("to_")(input);
+        match result {
+            Ok((i, _o)) => input = i,
+            Err(_) => return Some(first..(first + 1)),
+        }
+        let result: Result = take_while_m_n(4, 4, is_digit)(input);
+        if let Ok((_i, o)) = result {
+            let second: u16 = o.parse_to().unwrap_or(first);
+            return Some(first..(second + 1));
+        }
+        return None;
+    }
+    return infer_year_range(name)
+        .unwrap_or(0..0)
+        .map(|y| y.to_string());
 }
 
 pub(crate) fn glob_filter<'a>(pattern: &'a str) -> impl FnMut(&&'a OsString) -> bool {
@@ -137,8 +190,6 @@ impl WalkDirectories {
         return None;
     }
 }
-
-pub(crate) const FSTORE: &str = ".fstore";
 
 pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     let mut out = if path.exists() {
@@ -374,4 +425,28 @@ pub fn get_all_tags(_path: PathBuf) -> Result<Vec<String>, FstoreError> {
     alltags.sort();
     alltags.dedup();
     return Ok(alltags);
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn t_infer_year_range() {
+        let inputs = vec![OsString::from("2021_to_2023"), OsString::from("2021_2023")];
+        let expected = vec!["2021", "2022", "2023"];
+        for input in inputs {
+            let actual: Vec<_> = implicit_tags(Some(&input)).collect();
+            assert_eq!(actual, expected);
+        }
+        let inputs = vec![
+            OsString::from("1998_MyDirectory"),
+            OsString::from("1998_MyFile.pdf"),
+        ];
+        let expected = vec!["1998"];
+        for input in inputs {
+            let actual: Vec<_> = implicit_tags(Some(&input)).collect();
+            assert_eq!(actual, expected);
+        }
+    }
 }
