@@ -43,7 +43,7 @@ pub(crate) enum DirEntryType {
 }
 
 pub struct DirEntry {
-    offset: usize,
+    depth: usize,
     entry_type: DirEntryType,
     name: OsString,
 }
@@ -58,7 +58,7 @@ pub(crate) fn get_filenames<'a>(entries: &'a [DirEntry]) -> impl Iterator<Item =
 pub struct WalkDirectories {
     cur_path: PathBuf,
     stack: Vec<DirEntry>,
-    offset: usize,
+    cur_depth: usize,
     num_children: usize,
 }
 
@@ -70,18 +70,18 @@ impl WalkDirectories {
         Ok(WalkDirectories {
             cur_path: dirpath,
             stack: vec![DirEntry {
-                offset: 1,
+                depth: 1,
                 entry_type: DirEntryType::Dir,
                 name: OsString::from(""),
             }],
-            offset: 0,
+            cur_depth: 0,
             num_children: 0,
         })
     }
 
-    pub(crate) fn next<'a>(&'a mut self) -> Option<(&'a Path, &'a [DirEntry])> {
+    pub(crate) fn next<'a>(&'a mut self) -> Option<(usize, &'a Path, &'a [DirEntry])> {
         while let Some(DirEntry {
-            offset,
+            depth,
             entry_type,
             name,
         }) = self.stack.pop()
@@ -89,12 +89,12 @@ impl WalkDirectories {
             match entry_type {
                 DirEntryType::File => continue,
                 DirEntryType::Dir => {
-                    while self.offset > offset - 1 {
+                    while self.cur_depth > depth - 1 {
                         self.cur_path.pop();
-                        self.offset -= 1;
+                        self.cur_depth -= 1;
                     }
                     self.cur_path.push(name);
-                    self.offset += 1;
+                    self.cur_depth += 1;
                     // Push all children.
                     let before = self.stack.len();
                     if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
@@ -108,13 +108,13 @@ impl WalkDirectories {
                                     Ok(ctype) => {
                                         if ctype.is_dir() {
                                             self.stack.push(DirEntry {
-                                                offset: offset + 1,
+                                                depth: depth + 1,
                                                 entry_type: DirEntryType::Dir,
                                                 name: cname,
                                             });
                                         } else if ctype.is_file() {
                                             self.stack.push(DirEntry {
-                                                offset: offset + 1,
+                                                depth: depth + 1,
                                                 entry_type: DirEntryType::File,
                                                 name: cname,
                                             });
@@ -127,6 +127,7 @@ impl WalkDirectories {
                     }
                     self.num_children = self.stack.len() - before;
                     return Some((
+                        depth,
                         &self.cur_path,
                         &self.stack[(self.stack.len() - self.num_children)..],
                     ));
@@ -178,7 +179,7 @@ pub fn check(path: PathBuf) -> Result<(), FstoreError> {
     }
     let mut success = true;
     let mut walker = WalkDirectories::from(path)?;
-    while let Some((dirpath, children)) = walker.next() {
+    while let Some((_depth, dirpath, children)) = walker.next() {
         let DirData { files } = {
             match get_store_path::<true>(&dirpath) {
                 Some(path) => read_store_file(path)?,
@@ -308,7 +309,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
     }
     let mut walker = WalkDirectories::from(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
-    while let Some((dirpath, children)) = walker.next() {
+    while let Some((_depth, dirpath, children)) = walker.next() {
         let DirData { files } = {
             match get_store_path::<true>(&dirpath) {
                 Some(path) => read_store_file(path)?,
@@ -352,7 +353,7 @@ pub fn get_all_tags(_path: PathBuf) -> Result<Vec<String>, FstoreError> {
     }
     let mut alltags: Vec<String> = Vec::new();
     let mut walker = WalkDirectories::from(_path)?;
-    while let Some((dirpath, _filenames)) = walker.next() {
+    while let Some((_depth, dirpath, _filenames)) = walker.next() {
         let DirData { tags, files } = {
             match get_store_path::<true>(&dirpath) {
                 Some(path) => read_store_file(path)?,

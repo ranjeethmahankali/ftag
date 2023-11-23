@@ -126,7 +126,7 @@ impl TagTable {
         };
         let rootdir = table.root.clone(); // We'll need this copy later.
         let mut walker = WalkDirectories::from(table.root.clone())?;
-        while let Some((curpath, children)) = walker.next() {
+        while let Some((_depth, curpath, children)) = walker.next() {
             inherited.update(&curpath)?;
             // Deserialize yaml without copy.
             let DirData { tags, files } = {
