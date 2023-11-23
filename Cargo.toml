@@ -17,3 +17,9 @@ nom = "7.1"
 # For the TUI mode.
 crossterm = "0.27.0"
 ratatui = "0.24.0"
+
+[profile.release]
+# For smaller binary size.
+strip = true  # Automatically strip symbols
+lto = true # Link time optimization.
+panic = "abort" # Don't unwind stack. Should never panic.
