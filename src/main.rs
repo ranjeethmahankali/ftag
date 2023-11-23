@@ -21,7 +21,8 @@ fn main() -> Result<(), FstoreError> {
                 .ok_or(FstoreError::InvalidArgs)?,
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
-        return interactive::start();
+        return interactive::start()
+            .map_err(|e| FstoreError::InteractiveModeError(format!("{:?}", e)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);
     } else if let Some(matches) = matches.subcommand_matches(cmd::WHATIS) {

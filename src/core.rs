@@ -14,6 +14,7 @@ pub(crate) const FSTORE: &str = ".fstore";
 
 #[derive(Debug)]
 pub enum FstoreError {
+    InteractiveModeError(String),
     EditCommandFailed(String),
     MissingFiles,
     InvalidArgs,
