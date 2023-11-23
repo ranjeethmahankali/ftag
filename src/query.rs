@@ -33,9 +33,7 @@ struct InheritedTags {
 
 pub(crate) struct GlobExpander {
     path: PathBuf,
-    next: PathBuf,
     to_pop: bool,
-    need_init: bool,
 }
 
 pub(crate) enum GlobExpansion<'a> {
@@ -47,15 +45,13 @@ impl GlobExpander {
     pub(crate) fn new() -> Self {
         GlobExpander {
             path: PathBuf::new(),
-            next: PathBuf::new(),
             to_pop: false,
-            need_init: true,
         }
     }
 
     pub(crate) fn init(&mut self, path: PathBuf) {
-        self.next = path;
-        self.need_init = true;
+        self.path = path;
+        self.to_pop = false;
     }
 
     pub(crate) fn expand<'a>(
@@ -63,11 +59,6 @@ impl GlobExpander {
         pattern: String,
         files: &'a Vec<OsString>,
     ) -> Result<GlobExpansion, FstoreError> {
-        if self.need_init {
-            std::mem::swap(&mut self.path, &mut self.next);
-            self.to_pop = false;
-            self.need_init = false;
-        }
         if self.to_pop {
             self.path.pop();
         }
