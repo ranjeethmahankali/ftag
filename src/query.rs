@@ -7,7 +7,7 @@ use crate::{
 };
 use hashbrown::HashMap;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     if index >= flags.len() {
@@ -33,7 +33,7 @@ struct InheritedTags {
 }
 
 impl InheritedTags {
-    fn count_components(oldpath: &PathBuf, newpath: &PathBuf) -> (usize, usize, usize) {
+    fn count_components(oldpath: &Path, newpath: &Path) -> (usize, usize, usize) {
         let mut before = 0;
         let mut after = 0;
         let mut common = 0;
@@ -56,7 +56,7 @@ impl InheritedTags {
         return (before, after, common);
     }
 
-    fn update(&mut self, newpath: &PathBuf) -> Result<(), FstoreError> {
+    fn update(&mut self, newpath: &Path) -> Result<(), FstoreError> {
         match &self.path {
             Some(path) => {
                 let (before, after, common) = Self::count_components(path, newpath);
@@ -80,7 +80,7 @@ impl InheritedTags {
                 self.offsets.push(self.tag_indices.len());
             }
         };
-        self.path = Some(newpath.clone());
+        self.path = Some(PathBuf::from(newpath));
         return Ok(());
     }
 }

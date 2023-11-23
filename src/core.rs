@@ -79,7 +79,7 @@ impl WalkDirectories {
         })
     }
 
-    pub(crate) fn next<'a>(&'a mut self) -> Option<(&'a PathBuf, &'a [DirEntry])> {
+    pub(crate) fn next<'a>(&'a mut self) -> Option<(&'a Path, &'a [DirEntry])> {
         while let Some(DirEntry {
             offset,
             entry_type,
@@ -139,12 +139,12 @@ impl WalkDirectories {
 
 pub(crate) const FSTORE: &str = ".fstore";
 
-pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &PathBuf) -> Option<PathBuf> {
+pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     let mut out = if path.exists() {
         if path.is_dir() {
-            path.clone()
+            PathBuf::from(path)
         } else {
-            let mut out = path.clone();
+            let mut out = PathBuf::from(path);
             out.pop();
             out
         }
