@@ -50,12 +50,10 @@ fn main() -> Result<(), FstoreError> {
         let path = matches
             .get_one::<PathBuf>(arg::PATH)
             .unwrap_or(&current_dir);
-        std::process::Command::new(
-            std::env::var("EDITOR").unwrap_or(default_editor()?.to_string()),
+        edit::edit_file(
+            get_store_path::<false>(path).ok_or(FstoreError::InvalidPath(path.clone()))?,
         )
-        .args([get_store_path::<false>(&path).ok_or(FstoreError::InvalidPath(path.clone()))?])
-        .status()
-        .map_err(|_| FstoreError::InternalError)?;
+        .map_err(|e| FstoreError::EditCommandFailed(format!("{:?}", e)))?;
         return Ok(());
     } else if let Some(_matches) = matches.subcommand_matches(cmd::UNTRACKED) {
         for path in untracked_files(current_dir)? {
@@ -67,14 +65,6 @@ fn main() -> Result<(), FstoreError> {
         return Ok(());
     } else {
         return Err(FstoreError::InvalidArgs);
-    }
-}
-
-fn default_editor() -> Result<&'static str, FstoreError> {
-    match std::env::consts::OS {
-        "linux" => Ok("nano"),
-        "windows" => Ok("notepad"),
-        _ => return Err(FstoreError::NoDefaultEditor),
     }
 }
 
