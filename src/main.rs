@@ -27,7 +27,10 @@ fn main() -> Result<(), FstoreError> {
     } else if let Some(matches) = matches.subcommand_matches(cmd::WHATIS) {
         match matches.get_one::<PathBuf>(arg::PATH) {
             Some(path) => {
-                let Info { tags, desc } = core::what_is(path)?;
+                let path = path
+                    .canonicalize()
+                    .map_err(|_| FstoreError::InvalidPath(path.clone()))?;
+                let Info { tags, desc } = core::what_is(&path)?;
                 let tagstr = {
                     let mut tags = tags.into_iter();
                     let first = tags.next().unwrap_or(String::new());

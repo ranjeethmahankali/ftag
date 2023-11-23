@@ -286,6 +286,10 @@ fn what_is_file(path: &PathBuf) -> Result<Info, FstoreError> {
     };
     let mut outdesc = desc.unwrap_or(String::new());
     let mut outtags = tags.unwrap_or(Vec::new());
+    if let Some(parent) = path.parent() {
+        outtags.extend(implicit_tags(parent.file_name())); // Implicit tags of the parent directory.
+    }
+    outtags.extend(implicit_tags(path.file_name())); // Implicit tags of the file.
     let filenamestr = path
         .file_name()
         .ok_or(FstoreError::InvalidPath(path.clone()))?
@@ -330,7 +334,8 @@ fn what_is_dir(path: &PathBuf) -> Result<Info, FstoreError> {
         }
     };
     let desc = desc.unwrap_or(String::new());
-    let tags = tags.unwrap_or(Vec::new());
+    let mut tags = tags.unwrap_or(Vec::new());
+    tags.extend(implicit_tags(path.file_name())); // Implicit tags of the directory.
     Ok(Info { desc, tags })
 }
 
@@ -392,9 +397,10 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
     return Ok(untracked);
 }
 
-pub fn get_all_tags(_path: PathBuf) -> Result<Vec<String>, FstoreError> {
+pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
     #[derive(Deserialize)]
     struct FileData {
+        path: PathBuf,
         tags: Option<Vec<String>>,
     }
     #[derive(Deserialize)]
@@ -403,7 +409,7 @@ pub fn get_all_tags(_path: PathBuf) -> Result<Vec<String>, FstoreError> {
         files: Option<Vec<FileData>>,
     }
     let mut alltags: Vec<String> = Vec::new();
-    let mut walker = WalkDirectories::from(_path)?;
+    let mut walker = WalkDirectories::from(path)?;
     while let Some((_depth, dirpath, _filenames)) = walker.next() {
         let DirData { tags, files } = {
             match get_store_path::<true>(&dirpath) {
@@ -414,9 +420,11 @@ pub fn get_all_tags(_path: PathBuf) -> Result<Vec<String>, FstoreError> {
         if let Some(mut tags) = tags {
             alltags.extend(tags.drain(..));
         }
+        alltags.extend(implicit_tags(dirpath.file_name())); // Implicit tags of the directory.
         if let Some(mut files) = files {
-            for ftags in files.drain(..) {
-                if let Some(mut ftags) = ftags.tags {
+            for fdata in files.drain(..) {
+                alltags.extend(implicit_tags(fdata.path.file_name()));
+                if let Some(mut ftags) = fdata.tags {
                     alltags.extend(ftags.drain(..));
                 }
             }
