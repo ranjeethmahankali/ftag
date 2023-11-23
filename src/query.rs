@@ -1,12 +1,13 @@
-use glob_match::glob_match;
-use hashbrown::HashMap;
-use serde::Deserialize;
-use std::{ffi::OsString, path::PathBuf};
-
 use crate::{
-    core::{get_store_path, read_store_file, FstoreError, WalkDirectories},
+    core::{
+        get_filenames, get_relative_path, get_store_path, glob_filter, implicit_tags,
+        read_store_file, FstoreError, WalkDirectories,
+    },
     filter::{Filter, TagIndex, TagMaker},
 };
+use hashbrown::HashMap;
+use serde::Deserialize;
+use std::path::PathBuf;
 
 fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     if index >= flags.len() {
@@ -28,137 +29,27 @@ pub(crate) struct TagTable {
 struct InheritedTags {
     tag_indices: Vec<usize>,
     offsets: Vec<usize>,
-    path: Option<PathBuf>,
-}
-
-pub(crate) struct GlobExpander {
-    path: PathBuf,
-    next: PathBuf,
-    to_pop: bool,
-    need_init: bool,
-}
-
-pub(crate) enum GlobExpansion<'a> {
-    One(PathBuf),
-    Many(GlobPathIterator<'a>),
-}
-
-impl GlobExpander {
-    pub(crate) fn new() -> Self {
-        GlobExpander {
-            path: PathBuf::new(),
-            next: PathBuf::new(),
-            to_pop: false,
-            need_init: true,
-        }
-    }
-
-    pub(crate) fn init(&mut self, path: PathBuf) {
-        self.next = path;
-        self.need_init = true;
-    }
-
-    pub(crate) fn expand<'a>(
-        &'a mut self,
-        pattern: String,
-        files: &'a Vec<OsString>,
-    ) -> Result<GlobExpansion, FstoreError> {
-        if self.need_init {
-            std::mem::swap(&mut self.path, &mut self.next);
-            self.to_pop = false;
-            self.need_init = false;
-        }
-        if self.to_pop {
-            self.path.pop();
-        }
-        self.path.push(&pattern);
-        self.to_pop = true;
-        if self.path.exists() {
-            Ok(GlobExpansion::One(self.path.clone()))
-        } else {
-            self.path.pop();
-            self.to_pop = false;
-            Ok(GlobExpansion::Many(GlobPathIterator {
-                base: &self.path,
-                files: files.iter(),
-                pattern,
-            }))
-        }
-    }
-}
-
-pub(crate) struct GlobPathIterator<'a> {
-    base: &'a PathBuf,
-    files: std::slice::Iter<'a, OsString>,
-    pattern: String,
-}
-
-impl<'a> Iterator for GlobPathIterator<'a> {
-    type Item = PathBuf;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(fname) = self.files.next() {
-            if let Some(fnamestr) = fname.to_str() {
-                if glob_match(&self.pattern, fnamestr) {
-                    let mut path = self.base.clone();
-                    path.push(fname.clone());
-                    return Some(path);
-                }
-            }
-        }
-        return None;
-    }
+    depth: usize,
 }
 
 impl InheritedTags {
-    fn count_components(oldpath: &PathBuf, newpath: &PathBuf) -> (usize, usize, usize) {
-        let mut before = 0;
-        let mut after = 0;
-        let mut common = 0;
-        let mut olditer = oldpath.components();
-        let mut newiter = newpath.components();
-        loop {
-            match (olditer.next(), newiter.next()) {
-                (None, None) => break,
-                (None, Some(_)) => after += 1,
-                (Some(_), None) => before += 1,
-                (Some(l), Some(r)) => {
-                    before += 1;
-                    after += 1;
-                    if l == r {
-                        common += 1;
-                    }
-                }
+    fn update(&mut self, newdepth: usize) -> Result<(), FstoreError> {
+        if self.depth + 1 == newdepth {
+            self.offsets.push(self.tag_indices.len());
+        } else if self.depth >= newdepth {
+            let mut marker = self.tag_indices.len();
+            for _ in 0..(self.depth + 1 - newdepth) {
+                marker = self
+                    .offsets
+                    .pop()
+                    .ok_or(FstoreError::TagInheritanceFailed)?;
             }
+            self.tag_indices.truncate(marker);
+            self.offsets.push(marker);
+        } else {
+            return Err(FstoreError::DirectoryTraversalFailed);
         }
-        return (before, after, common);
-    }
-
-    fn update(&mut self, newpath: &PathBuf) -> Result<(), FstoreError> {
-        match &self.path {
-            Some(path) => {
-                let (before, after, common) = Self::count_components(path, newpath);
-                if before == common && after == before + 1 {
-                    self.offsets.push(self.tag_indices.len());
-                } else if before > common && after == common + 1 {
-                    let mut marker = self.tag_indices.len();
-                    for _ in 0..(before - common) {
-                        marker = self
-                            .offsets
-                            .pop()
-                            .ok_or(FstoreError::TagInheritanceFailed)?;
-                    }
-                    self.tag_indices.truncate(marker);
-                    self.offsets.push(marker);
-                } else {
-                    return Err(FstoreError::DirectoryTraversalFailed);
-                }
-            }
-            None => {
-                self.offsets.push(self.tag_indices.len());
-            }
-        };
-        self.path = Some(newpath.clone());
+        self.depth = newdepth;
         return Ok(());
     }
 }
@@ -170,10 +61,7 @@ impl TagTable {
     ) -> impl Iterator<Item = std::path::Display<'a>> {
         self.table.iter().filter_map(move |(path, flags)| {
             if filter.evaluate(flags) {
-                match path.strip_prefix(&self.root) {
-                    Ok(path) => Some(path.display()),
-                    Err(_) => None,
-                }
+                Some(path.display())
             } else {
                 None
             }
@@ -185,16 +73,15 @@ impl TagTable {
         // purpose is to use with serde_yaml to extract relevant
         // information from the YAML files.
         #[derive(Deserialize)]
-        struct FileTags {
+        struct FileData {
             path: String,
             tags: Option<Vec<String>>,
         }
         #[derive(Deserialize)]
-        struct StoreTags {
+        struct DirData {
             tags: Option<Vec<String>>,
-            files: Option<Vec<FileTags>>,
+            files: Option<Vec<FileData>>,
         }
-
         let mut table = TagTable {
             root: dirpath,
             index_map: HashMap::new(),
@@ -204,20 +91,20 @@ impl TagTable {
         let mut inherited = InheritedTags {
             tag_indices: Vec::new(),
             offsets: Vec::new(),
-            path: None,
+            depth: 0,
         };
-        let mut expander = GlobExpander::new();
-        let mut walker = WalkDirectories::<true>::from(table.root.clone())?;
-        while let Some(curpath) = walker.next() {
-            inherited.update(&curpath)?;
+        let rootdir = table.root.clone(); // We'll need this copy later.
+        let mut walker = WalkDirectories::from(table.root.clone())?;
+        while let Some((depth, curpath, children)) = walker.next() {
+            inherited.update(depth)?;
             // Deserialize yaml without copy.
-            let StoreTags { tags, files } = {
+            let DirData { tags, files } = {
                 match get_store_path::<true>(&curpath) {
                     Some(path) => read_store_file(path)?,
                     None => continue,
                 }
             };
-            // Push store tags.
+            // Push directory tags.
             if let Some(tags) = tags {
                 for tag in tags {
                     inherited.tag_indices.push(Self::get_tag_index(
@@ -227,22 +114,26 @@ impl TagTable {
                     ));
                 }
             }
-            expander.init(curpath);
+            // Implicit directory tags.
+            for tag in implicit_tags(curpath.file_name()) {
+                inherited.tag_indices.push(Self::get_tag_index(
+                    &tag,
+                    &mut table.index_map,
+                    &mut num_tags,
+                ));
+            }
+            // Process all files in the directory.
             if let Some(files) = files {
-                for FileTags {
+                for FileData {
                     path: pattern,
                     tags,
                 } in files
                 {
-                    match expander.expand(pattern, walker.files())? {
-                        GlobExpansion::One(fpath) => {
-                            table.add_file(fpath, &tags, &mut num_tags, &inherited.tag_indices)
-                        }
-                        GlobExpansion::Many(iter) => {
-                            for fpath in iter {
-                                table.add_file(fpath, &tags, &mut num_tags, &inherited.tag_indices);
-                            }
-                        }
+                    for fpath in get_filenames(children)
+                        .filter(glob_filter(&pattern))
+                        .filter_map(|fname| get_relative_path(&curpath, fname, &rootdir))
+                    {
+                        table.add_file(fpath, &tags, &mut num_tags, &inherited.tag_indices);
                     }
                 }
             }
@@ -265,14 +156,26 @@ impl TagTable {
         num_tags: &mut usize,
         inherited: &Vec<usize>,
     ) {
+        let impltags = implicit_tags(path.file_name());
         let flags = self.table.entry(path).or_insert(Vec::new());
+        // Set the file's explicit tags.
         if let Some(tags) = tags {
             flags.reserve(flags.len() + tags.len());
             for tag in tags {
-                let i = Self::get_tag_index(tag, &mut self.index_map, num_tags);
-                safe_set_flag(flags, i);
+                safe_set_flag(
+                    flags,
+                    Self::get_tag_index(tag, &mut self.index_map, num_tags),
+                );
             }
         }
+        // Implicit tags.
+        for tag in impltags {
+            safe_set_flag(
+                flags,
+                Self::get_tag_index(&tag, &mut self.index_map, num_tags),
+            );
+        }
+        // Set inherited tags.
         for i in inherited {
             safe_set_flag(flags, *i);
         }
