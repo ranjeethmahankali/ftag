@@ -7,7 +7,7 @@ use crate::{
 };
 use hashbrown::HashMap;
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     if index >= flags.len() {
@@ -29,58 +29,27 @@ pub(crate) struct TagTable {
 struct InheritedTags {
     tag_indices: Vec<usize>,
     offsets: Vec<usize>,
-    path: Option<PathBuf>,
+    depth: usize,
 }
 
 impl InheritedTags {
-    fn count_components(oldpath: &Path, newpath: &Path) -> (usize, usize, usize) {
-        let mut before = 0;
-        let mut after = 0;
-        let mut common = 0;
-        let mut olditer = oldpath.components();
-        let mut newiter = newpath.components();
-        loop {
-            match (olditer.next(), newiter.next()) {
-                (None, None) => break,
-                (None, Some(_)) => after += 1,
-                (Some(_), None) => before += 1,
-                (Some(l), Some(r)) => {
-                    before += 1;
-                    after += 1;
-                    if l == r {
-                        common += 1;
-                    }
-                }
+    fn update(&mut self, newdepth: usize) -> Result<(), FstoreError> {
+        if self.depth + 1 == newdepth {
+            self.offsets.push(self.tag_indices.len());
+        } else if self.depth >= newdepth {
+            let mut marker = self.tag_indices.len();
+            for _ in 0..(self.depth + 1 - newdepth) {
+                marker = self
+                    .offsets
+                    .pop()
+                    .ok_or(FstoreError::TagInheritanceFailed)?;
             }
+            self.tag_indices.truncate(marker);
+            self.offsets.push(marker);
+        } else {
+            return Err(FstoreError::DirectoryTraversalFailed);
         }
-        return (before, after, common);
-    }
-
-    fn update(&mut self, newpath: &Path) -> Result<(), FstoreError> {
-        match &self.path {
-            Some(path) => {
-                let (before, after, common) = Self::count_components(path, newpath);
-                if before == common && after == before + 1 {
-                    self.offsets.push(self.tag_indices.len());
-                } else if before > common && after == common + 1 {
-                    let mut marker = self.tag_indices.len();
-                    for _ in 0..(before - common) {
-                        marker = self
-                            .offsets
-                            .pop()
-                            .ok_or(FstoreError::TagInheritanceFailed)?;
-                    }
-                    self.tag_indices.truncate(marker);
-                    self.offsets.push(marker);
-                } else {
-                    return Err(FstoreError::DirectoryTraversalFailed);
-                }
-            }
-            None => {
-                self.offsets.push(self.tag_indices.len());
-            }
-        };
-        self.path = Some(PathBuf::from(newpath));
+        self.depth = newdepth;
         return Ok(());
     }
 }
@@ -122,12 +91,12 @@ impl TagTable {
         let mut inherited = InheritedTags {
             tag_indices: Vec::new(),
             offsets: Vec::new(),
-            path: None,
+            depth: 0,
         };
         let rootdir = table.root.clone(); // We'll need this copy later.
         let mut walker = WalkDirectories::from(table.root.clone())?;
-        while let Some((_depth, curpath, children)) = walker.next() {
-            inherited.update(&curpath)?;
+        while let Some((depth, curpath, children)) = walker.next() {
+            inherited.update(depth)?;
             // Deserialize yaml without copy.
             let DirData { tags, files } = {
                 match get_store_path::<true>(&curpath) {
