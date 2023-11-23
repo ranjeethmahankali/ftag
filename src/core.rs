@@ -1,7 +1,4 @@
-use crate::{
-    filter::FilterParseError,
-    query::{GlobExpander, GlobExpansion},
-};
+use crate::filter::FilterParseError;
 use glob_match::glob_match;
 use serde::{de::DeserializeOwned, Deserialize};
 use std::{
@@ -48,8 +45,20 @@ impl<const WITH_FILES: bool> WalkDirectories<WITH_FILES> {
 }
 
 impl WalkDirectories<true> {
-    pub fn files(&self) -> &Vec<OsString> {
-        &self.files
+    pub(crate) fn filenames<'a>(&'a self) -> std::slice::Iter<'a, OsString> {
+        self.files.iter()
+    }
+
+    pub(crate) fn glob_filenames<'a>(
+        &'a self,
+        pattern: &'a str,
+    ) -> impl Iterator<Item = &'a OsString> {
+        self.files.iter().filter(|&fname| {
+            if let Some(fname) = fname.to_str() {
+                return glob_match(pattern, fname);
+            }
+            return false;
+        })
     }
 }
 
@@ -127,7 +136,6 @@ pub fn check(path: PathBuf) -> Result<(), FstoreError> {
         files: Option<Vec<FileData>>,
     }
     let mut success = true;
-    let mut expander = GlobExpander::new();
     let mut walker = WalkDirectories::<true>::from(path)?;
     while let Some(dirpath) = walker.next() {
         let DirData { files } = {
@@ -136,20 +144,12 @@ pub fn check(path: PathBuf) -> Result<(), FstoreError> {
                 None => continue,
             }
         };
-        expander.init(dirpath.clone());
         if let Some(mut files) = files {
             for pattern in files.drain(..).map(|f| f.path) {
-                match expander.expand(pattern.clone(), walker.files())? {
-                    // One file is only returned when it exists.
-                    GlobExpansion::One(file) => assert!(file.exists()),
-                    // When a pattern doesn't exist, it is interpreted as a glob.
-                    GlobExpansion::Many(mut iter) => {
-                        if !iter.any(|file| file.exists()) {
-                            // Glob didn't match with any file.
-                            eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
-                            success = false;
-                        }
-                    }
+                if let None = walker.glob_filenames(&pattern).next() {
+                    // Glob didn't match with any file.
+                    eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
+                    success = false;
                 }
             }
         }
@@ -241,7 +241,11 @@ fn what_is_dir(path: &PathBuf) -> Result<Info, FstoreError> {
     Ok(Info { desc, tags })
 }
 
-fn get_relative_path(dirpath: &Path, filename: OsString, root: &Path) -> Option<PathBuf> {
+pub(crate) fn get_relative_path(
+    dirpath: &Path,
+    filename: &OsString,
+    root: &Path,
+) -> Option<PathBuf> {
     match dirpath.strip_prefix(root) {
         Ok(path) => {
             let mut path = PathBuf::from(path);
@@ -271,37 +275,27 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
                 None => {
                     untracked.extend(
                         walker
-                            .files()
-                            .iter()
-                            .filter_map(|f| get_relative_path(&dirpath, f.clone(), &root)),
+                            .filenames()
+                            .filter_map(|f| get_relative_path(&dirpath, f, &root)),
                     );
                     continue;
                 }
             }
         };
         if let Some(patterns) = files {
-            untracked.extend(
-                walker
-                    .files()
-                    .iter()
-                    .filter_map(|fname| match fname.to_str() {
-                        Some(fstr) => {
-                            if patterns.iter().any(|p| glob_match(&p.path, fstr)) {
-                                None
-                            } else {
-                                Some(fname.clone())
-                            }
-                        }
-                        None => Some(fname.clone()),
-                    })
-                    .filter_map(|fname| get_relative_path(&dirpath, fname, &root)),
-            );
+            untracked.extend(walker.filenames().filter_map(|fname| {
+                let fnamestr = fname.to_str()?;
+                if patterns.iter().any(|p| glob_match(&p.path, fnamestr)) {
+                    None
+                } else {
+                    get_relative_path(&dirpath, fname, &root)
+                }
+            }));
         } else {
             untracked.extend(
                 walker
-                    .files()
-                    .iter()
-                    .filter_map(|f| get_relative_path(&dirpath, f.clone(), &root)),
+                    .filenames()
+                    .filter_map(|f| get_relative_path(&dirpath, f, &root)),
             );
         }
     }

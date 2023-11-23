@@ -1,12 +1,10 @@
-use glob_match::glob_match;
-use hashbrown::HashMap;
-use serde::Deserialize;
-use std::{ffi::OsString, path::PathBuf};
-
 use crate::{
-    core::{get_store_path, read_store_file, FstoreError, WalkDirectories},
+    core::{get_relative_path, get_store_path, read_store_file, FstoreError, WalkDirectories},
     filter::{Filter, TagIndex, TagMaker},
 };
+use hashbrown::HashMap;
+use serde::Deserialize;
+use std::path::PathBuf;
 
 fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     if index >= flags.len() {
@@ -29,76 +27,6 @@ struct InheritedTags {
     tag_indices: Vec<usize>,
     offsets: Vec<usize>,
     path: Option<PathBuf>,
-}
-
-pub(crate) struct GlobExpander {
-    path: PathBuf,
-    to_pop: bool,
-}
-
-pub(crate) enum GlobExpansion<'a> {
-    One(PathBuf),
-    Many(GlobPathIterator<'a>),
-}
-
-impl GlobExpander {
-    pub(crate) fn new() -> Self {
-        GlobExpander {
-            path: PathBuf::new(),
-            to_pop: false,
-        }
-    }
-
-    pub(crate) fn init(&mut self, path: PathBuf) {
-        self.path = path;
-        self.to_pop = false;
-    }
-
-    pub(crate) fn expand<'a>(
-        &'a mut self,
-        pattern: String,
-        files: &'a Vec<OsString>,
-    ) -> Result<GlobExpansion, FstoreError> {
-        if self.to_pop {
-            self.path.pop();
-        }
-        self.path.push(&pattern);
-        self.to_pop = true;
-        if self.path.exists() {
-            Ok(GlobExpansion::One(self.path.clone()))
-        } else {
-            self.path.pop();
-            self.to_pop = false;
-            Ok(GlobExpansion::Many(GlobPathIterator {
-                base: &self.path,
-                files: files.iter(),
-                pattern,
-            }))
-        }
-    }
-}
-
-pub(crate) struct GlobPathIterator<'a> {
-    base: &'a PathBuf,
-    files: std::slice::Iter<'a, OsString>,
-    pattern: String,
-}
-
-impl<'a> Iterator for GlobPathIterator<'a> {
-    type Item = PathBuf;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(fname) = self.files.next() {
-            if let Some(fnamestr) = fname.to_str() {
-                if glob_match(&self.pattern, fnamestr) {
-                    let mut path = self.base.clone();
-                    path.push(fname.clone());
-                    return Some(path);
-                }
-            }
-        }
-        return None;
-    }
 }
 
 impl InheritedTags {
@@ -161,10 +89,7 @@ impl TagTable {
     ) -> impl Iterator<Item = std::path::Display<'a>> {
         self.table.iter().filter_map(move |(path, flags)| {
             if filter.evaluate(flags) {
-                match path.strip_prefix(&self.root) {
-                    Ok(path) => Some(path.display()),
-                    Err(_) => None,
-                }
+                Some(path.display())
             } else {
                 None
             }
@@ -196,7 +121,7 @@ impl TagTable {
             offsets: Vec::new(),
             path: None,
         };
-        let mut expander = GlobExpander::new();
+        let rootdir = table.root.clone(); // We'll need this copy later.
         let mut walker = WalkDirectories::<true>::from(table.root.clone())?;
         while let Some(curpath) = walker.next() {
             inherited.update(&curpath)?;
@@ -217,22 +142,17 @@ impl TagTable {
                     ));
                 }
             }
-            expander.init(curpath);
             if let Some(files) = files {
                 for FileData {
                     path: pattern,
                     tags,
                 } in files
                 {
-                    match expander.expand(pattern, walker.files())? {
-                        GlobExpansion::One(fpath) => {
-                            table.add_file(fpath, &tags, &mut num_tags, &inherited.tag_indices)
-                        }
-                        GlobExpansion::Many(iter) => {
-                            for fpath in iter {
-                                table.add_file(fpath, &tags, &mut num_tags, &inherited.tag_indices);
-                            }
-                        }
+                    for fpath in walker
+                        .glob_filenames(&pattern)
+                        .filter_map(|fname| get_relative_path(&curpath, fname, &rootdir))
+                    {
+                        table.add_file(fpath, &tags, &mut num_tags, &inherited.tag_indices);
                     }
                 }
             }
