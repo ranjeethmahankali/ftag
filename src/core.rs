@@ -14,10 +14,9 @@ use crate::{
 
 #[derive(Debug)]
 pub enum FstoreError {
+    EditCommandFailed(String),
     MissingFiles,
     InvalidArgs,
-    NoDefaultEditor,
-    InternalError,
     InvalidWorkingDirectory,
     InvalidPath(PathBuf),
     CannotReadStoreFile(PathBuf),
