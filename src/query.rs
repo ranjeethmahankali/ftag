@@ -1,5 +1,8 @@
 use crate::{
-    core::{get_relative_path, get_store_path, read_store_file, FstoreError, WalkDirectories},
+    core::{
+        get_filenames, get_relative_path, get_store_path, glob_filter, read_store_file,
+        FstoreError, WalkDirectories,
+    },
     filter::{Filter, TagIndex, TagMaker},
 };
 use hashbrown::HashMap;
@@ -122,8 +125,8 @@ impl TagTable {
             path: None,
         };
         let rootdir = table.root.clone(); // We'll need this copy later.
-        let mut walker = WalkDirectories::<true>::from(table.root.clone())?;
-        while let Some(curpath) = walker.next() {
+        let mut walker = WalkDirectories::from(table.root.clone())?;
+        while let Some((curpath, children)) = walker.next() {
             inherited.update(&curpath)?;
             // Deserialize yaml without copy.
             let DirData { tags, files } = {
@@ -148,8 +151,8 @@ impl TagTable {
                     tags,
                 } in files
                 {
-                    for fpath in walker
-                        .glob_filenames(&pattern)
+                    for fpath in get_filenames(children)
+                        .filter(glob_filter(&pattern))
                         .filter_map(|fname| get_relative_path(&curpath, fname, &rootdir))
                     {
                         table.add_file(fpath, &tags, &mut num_tags, &inherited.tag_indices);

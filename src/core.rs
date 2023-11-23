@@ -27,78 +27,119 @@ pub struct Info {
     pub desc: String,
 }
 
-pub struct WalkDirectories<const WITH_FILES: bool> {
-    stack: Vec<PathBuf>,
-    files: Vec<OsString>,
+pub(crate) fn glob_filter<'a>(pattern: &'a str) -> impl FnMut(&&'a OsString) -> bool {
+    let func = |fname: &&OsString| -> bool {
+        if let Some(fname) = fname.to_str() {
+            return glob_match(pattern, fname);
+        }
+        return false;
+    };
+    return func;
 }
 
-impl<const WITH_FILES: bool> WalkDirectories<WITH_FILES> {
+pub(crate) enum DirEntryType {
+    File,
+    Dir,
+}
+
+pub struct DirEntry {
+    offset: usize,
+    entry_type: DirEntryType,
+    name: OsString,
+}
+
+pub(crate) fn get_filenames<'a>(entries: &'a [DirEntry]) -> impl Iterator<Item = &'a OsString> {
+    entries.iter().filter_map(|entry| match entry.entry_type {
+        DirEntryType::File => Some(&entry.name),
+        DirEntryType::Dir => None,
+    })
+}
+
+pub struct WalkDirectories {
+    cur_path: PathBuf,
+    stack: Vec<DirEntry>,
+    offset: usize,
+    num_children: usize,
+}
+
+impl WalkDirectories {
     pub fn from(dirpath: PathBuf) -> Result<Self, FstoreError> {
         if !dirpath.is_dir() {
             return Err(FstoreError::InvalidPath(dirpath));
         }
         Ok(WalkDirectories {
-            stack: vec![dirpath],
-            files: Vec::new(),
+            cur_path: dirpath,
+            stack: vec![DirEntry {
+                offset: 1,
+                entry_type: DirEntryType::Dir,
+                name: OsString::from(""),
+            }],
+            offset: 0,
+            num_children: 0,
         })
     }
-}
 
-impl WalkDirectories<true> {
-    pub(crate) fn filenames<'a>(&'a self) -> std::slice::Iter<'a, OsString> {
-        self.files.iter()
-    }
-
-    pub(crate) fn glob_filenames<'a>(
-        &'a self,
-        pattern: &'a str,
-    ) -> impl Iterator<Item = &'a OsString> {
-        self.files.iter().filter(|&fname| {
-            if let Some(fname) = fname.to_str() {
-                return glob_match(pattern, fname);
-            }
-            return false;
-        })
-    }
-}
-
-impl<const WITH_FILES: bool> Iterator for WalkDirectories<WITH_FILES> {
-    type Item = PathBuf;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.stack.pop() {
-            Some(dir) => {
-                self.files.clear();
-                // Push all nested directories.
-                if let Ok(entries) = std::fs::read_dir(&dir) {
-                    for entry in entries {
-                        if let Ok(child) = entry {
-                            if child.file_name().to_str().unwrap_or("") == FSTORE {
-                                continue;
-                            }
-                            match child.file_type() {
-                                Ok(ctype) => {
-                                    if ctype.is_dir() {
-                                        self.stack.push(child.path());
-                                    } else if WITH_FILES && ctype.is_file() {
-                                        self.files.push(child.file_name());
-                                    }
+    pub(crate) fn next<'a>(&'a mut self) -> Option<(&'a PathBuf, &'a [DirEntry])> {
+        while let Some(DirEntry {
+            offset,
+            entry_type,
+            name,
+        }) = self.stack.pop()
+        {
+            match entry_type {
+                DirEntryType::File => continue,
+                DirEntryType::Dir => {
+                    while self.offset > offset - 1 {
+                        self.cur_path.pop();
+                        self.offset -= 1;
+                    }
+                    self.cur_path.push(name);
+                    self.offset += 1;
+                    // Push all children.
+                    let before = self.stack.len();
+                    if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
+                        for entry in entries {
+                            if let Ok(child) = entry {
+                                let cname = child.file_name();
+                                if cname.to_str().unwrap_or("") == FSTORE {
+                                    continue;
                                 }
-                                Err(_) => continue,
+                                match child.file_type() {
+                                    Ok(ctype) => {
+                                        if ctype.is_dir() {
+                                            self.stack.push(DirEntry {
+                                                offset: offset + 1,
+                                                entry_type: DirEntryType::Dir,
+                                                name: cname,
+                                            });
+                                        } else if ctype.is_file() {
+                                            self.stack.push(DirEntry {
+                                                offset: offset + 1,
+                                                entry_type: DirEntryType::File,
+                                                name: cname,
+                                            });
+                                        }
+                                    }
+                                    Err(_) => continue,
+                                }
                             }
                         }
                     }
+                    self.num_children = self.stack.len() - before;
+                    return Some((
+                        &self.cur_path,
+                        &self.stack[(self.stack.len() - self.num_children)..],
+                    ));
                 }
-                Some(dir)
             }
-            None => None,
         }
+        return None;
     }
 }
 
 pub(crate) const FSTORE: &str = ".fstore";
 
-pub fn get_store_path<const MUST_EXIST: bool>(path: &PathBuf) -> Option<PathBuf> {
+pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &PathBuf) -> Option<PathBuf> {
     let mut out = if path.exists() {
         if path.is_dir() {
             path.clone()
@@ -118,7 +159,7 @@ pub fn get_store_path<const MUST_EXIST: bool>(path: &PathBuf) -> Option<PathBuf>
     }
 }
 
-pub fn read_store_file<T: DeserializeOwned>(storefile: PathBuf) -> Result<T, FstoreError> {
+pub(crate) fn read_store_file<T: DeserializeOwned>(storefile: PathBuf) -> Result<T, FstoreError> {
     let data = serde_yaml::from_reader(BufReader::new(
         File::open(&storefile).map_err(|_| FstoreError::CannotReadStoreFile(storefile.clone()))?,
     ))
@@ -136,8 +177,8 @@ pub fn check(path: PathBuf) -> Result<(), FstoreError> {
         files: Option<Vec<FileData>>,
     }
     let mut success = true;
-    let mut walker = WalkDirectories::<true>::from(path)?;
-    while let Some(dirpath) = walker.next() {
+    let mut walker = WalkDirectories::from(path)?;
+    while let Some((dirpath, children)) = walker.next() {
         let DirData { files } = {
             match get_store_path::<true>(&dirpath) {
                 Some(path) => read_store_file(path)?,
@@ -146,7 +187,7 @@ pub fn check(path: PathBuf) -> Result<(), FstoreError> {
         };
         if let Some(mut files) = files {
             for pattern in files.drain(..).map(|f| f.path) {
-                if let None = walker.glob_filenames(&pattern).next() {
+                if let None = get_filenames(children).filter(glob_filter(&pattern)).next() {
                     // Glob didn't match with any file.
                     eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
                     success = false;
@@ -265,17 +306,16 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
     struct DirData {
         files: Option<Vec<FileData>>,
     }
-    let mut walker = WalkDirectories::<true>::from(root.clone())?;
+    let mut walker = WalkDirectories::from(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
-    while let Some(dirpath) = walker.next() {
+    while let Some((dirpath, children)) = walker.next() {
         let DirData { files } = {
             match get_store_path::<true>(&dirpath) {
                 Some(path) => read_store_file(path)?,
                 // Store file doesn't exist so everything is untracked.
                 None => {
                     untracked.extend(
-                        walker
-                            .filenames()
+                        get_filenames(children)
                             .filter_map(|f| get_relative_path(&dirpath, f, &root)),
                     );
                     continue;
@@ -283,7 +323,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
             }
         };
         if let Some(patterns) = files {
-            untracked.extend(walker.filenames().filter_map(|fname| {
+            untracked.extend(get_filenames(children).filter_map(|fname| {
                 let fnamestr = fname.to_str()?;
                 if patterns.iter().any(|p| glob_match(&p.path, fnamestr)) {
                     None
@@ -293,9 +333,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
             }));
         } else {
             untracked.extend(
-                walker
-                    .filenames()
-                    .filter_map(|f| get_relative_path(&dirpath, f, &root)),
+                get_filenames(children).filter_map(|f| get_relative_path(&dirpath, f, &root)),
             );
         }
     }
@@ -313,7 +351,8 @@ pub fn get_all_tags(_path: PathBuf) -> Result<Vec<String>, FstoreError> {
         files: Option<Vec<FileData>>,
     }
     let mut alltags: Vec<String> = Vec::new();
-    for dirpath in WalkDirectories::<false>::from(_path)? {
+    let mut walker = WalkDirectories::from(_path)?;
+    while let Some((dirpath, _filenames)) = walker.next() {
         let DirData { tags, files } = {
             match get_store_path::<true>(&dirpath) {
                 Some(path) => read_store_file(path)?,
