@@ -185,16 +185,15 @@ impl TagTable {
         // purpose is to use with serde_yaml to extract relevant
         // information from the YAML files.
         #[derive(Deserialize)]
-        struct FileTags {
+        struct FileData {
             path: String,
             tags: Option<Vec<String>>,
         }
         #[derive(Deserialize)]
-        struct StoreTags {
+        struct DirData {
             tags: Option<Vec<String>>,
-            files: Option<Vec<FileTags>>,
+            files: Option<Vec<FileData>>,
         }
-
         let mut table = TagTable {
             root: dirpath,
             index_map: HashMap::new(),
@@ -211,7 +210,7 @@ impl TagTable {
         while let Some(curpath) = walker.next() {
             inherited.update(&curpath)?;
             // Deserialize yaml without copy.
-            let StoreTags { tags, files } = {
+            let DirData { tags, files } = {
                 match get_store_path::<true>(&curpath) {
                     Some(path) => read_store_file(path)?,
                     None => continue,
@@ -229,7 +228,7 @@ impl TagTable {
             }
             expander.init(curpath);
             if let Some(files) = files {
-                for FileTags {
+                for FileData {
                     path: pattern,
                     tags,
                 } in files
