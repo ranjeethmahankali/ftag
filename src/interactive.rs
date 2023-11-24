@@ -6,8 +6,10 @@ use crossterm::{
 };
 use ratatui::{
     prelude::{Backend, Constraint, CrosstermBackend, Direction, Layout, Terminal},
-    text::Text,
-    widgets::{Block, Borders, List, ListItem, Padding, Paragraph},
+    text::{Line, Text},
+    widgets::{
+        Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    },
     Frame,
 };
 use std::io::stdout;
@@ -21,41 +23,32 @@ use State::*;
 
 struct App {
     table: DenseTagTable,
-    tagwidth: u16,
-    filewidth: u16,
     command: String,
     echo: String,
     state: State,
+    // Tags and files that are actually visible with filter.s
+    taglist: Vec<String>,
+    filelist: Vec<String>,
+    // UI management.
+    scroll: usize,
+    scrollstate: ScrollbarState,
 }
 
 impl App {
     fn from(table: DenseTagTable) -> App {
-        let mut state = App {
+        let taglist = table.tags().to_vec();
+        let filelist = table.files().to_vec();
+        let ntags = taglist.len();
+        App {
             table,
-            tagwidth: 0,
-            filewidth: 0,
             command: String::new(),
             echo: String::new(),
             state: Stale,
-        };
-        state.tagwidth = usize::max(
-            state
-                .table
-                .tags()
-                .iter()
-                .map(|t| t.len())
-                .max()
-                .unwrap_or(0),
-            32,
-        ) as u16;
-        state.filewidth = state
-            .table
-            .files()
-            .iter()
-            .map(|f| f.len())
-            .max()
-            .unwrap_or(0) as u16;
-        return state;
+            taglist,
+            filelist,
+            scroll: 0,
+            scrollstate: ScrollbarState::new(ntags),
+        }
     }
 
     fn fresh(&mut self) {
@@ -76,7 +69,7 @@ impl App {
         );
     }
 
-    fn keystroke(&mut self, evt: KeyEvent) {
+    fn keyevent(&mut self, evt: KeyEvent) {
         self.state = Stale;
         match evt.kind {
             KeyEventKind::Press | KeyEventKind::Repeat => match evt.code {
@@ -91,6 +84,14 @@ impl App {
                 }
                 KeyCode::Esc => {
                     self.command.clear();
+                }
+                KeyCode::Up => {
+                    self.scroll = self.scroll.saturating_sub(1);
+                    self.scrollstate = self.scrollstate.position(self.scroll);
+                }
+                KeyCode::Down => {
+                    self.scroll = self.scroll.saturating_add(1);
+                    self.scrollstate = self.scrollstate.position(self.scroll);
                 }
                 _ => {}
             },
@@ -121,7 +122,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> std::io::Re
             // If a key event occurs, handle it
             match crossterm::event::read()? {
                 event::Event::Key(key) => {
-                    app.keystroke(key);
+                    app.keyevent(key);
                 }
                 event::Event::Resize(_, _) => {
                     terminal.draw(|f| render(f, app))?;
@@ -141,19 +142,20 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> std::io::Re
 }
 
 fn render(f: &mut Frame, app: &mut App) {
+    const TAGWIDTH_PERCENT: u16 = 20;
     let hlayout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![
-            Constraint::Max(app.tagwidth),
-            Constraint::Max(app.filewidth),
+            Constraint::Percentage(TAGWIDTH_PERCENT),
+            Constraint::Percentage(100 - TAGWIDTH_PERCENT),
         ])
         .split(f.size());
     let vlayout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
-            Constraint::Max(100),
-            Constraint::Min(3),
-            Constraint::Length(3),
+            Constraint::Max(1001),
+            Constraint::Min(4),
+            Constraint::Length(2),
         ])
         .split(hlayout[1]);
     let tagblock = hlayout[0];
@@ -161,43 +163,53 @@ fn render(f: &mut Frame, app: &mut App) {
     let echoblock = vlayout[1];
     let cmdblock = vlayout[2];
     f.render_widget(
-        List::new(
-            app.table
-                .tags()
+        Paragraph::new(
+            app.taglist
                 .iter()
-                .map(|t| ListItem::new(t.clone()))
+                .map(|t| Line::from(t.clone()))
                 .collect::<Vec<_>>(),
         )
         .block(
             Block::new()
-                .borders(Borders::ALL)
-                .padding(Padding::horizontal(2)),
-        ),
+                .borders(Borders::TOP | Borders::RIGHT)
+                .padding(Padding::horizontal(3)),
+        )
+        .scroll((app.scroll as u16, 0)),
         tagblock,
     );
+    f.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalLeft)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        tagblock,
+        &mut app.scrollstate,
+    );
     f.render_widget(
-        List::new(
-            app.table
-                .files()
+        Paragraph::new(
+            app.filelist
                 .iter()
-                .map(|f| ListItem::new(f.clone()))
+                .map(|f| Line::from(f.clone()))
                 .collect::<Vec<_>>(),
         )
         .block(
             Block::new()
-                .borders(Borders::ALL)
+                .borders(Borders::TOP)
                 .padding(Padding::horizontal(2)),
         ),
         fileblock,
     );
     f.render_widget(
-        Paragraph::new(Text::from(app.echo.clone()))
-            .block(Block::new().padding(Padding::horizontal(2))),
+        Paragraph::new(Text::from(app.echo.clone())).block(
+            Block::new()
+                .padding(Padding::horizontal(2))
+                .borders(Borders::TOP),
+        ),
         echoblock,
     );
     f.render_widget(
         Paragraph::new(Text::from(format!(">>> {}█", app.command)))
-            .block(Block::new().borders(Borders::ALL)),
+            .block(Block::new().borders(Borders::TOP)),
         cmdblock,
     );
     app.fresh();
