@@ -142,11 +142,10 @@ impl TagTable {
     }
 
     fn get_tag_index(tag: &String, map: &mut HashMap<String, usize>, counter: &mut usize) -> usize {
-        *(map.entry(tag.clone()).or_insert({
-            let index = *counter;
-            *counter += 1;
-            index
-        }))
+        let size = map.len();
+        let entry = *(map.entry(tag.clone()).or_insert(size));
+        *counter = map.len();
+        return entry;
     }
 
     fn add_file(
@@ -229,8 +228,8 @@ impl BoolTable {
 
 pub(crate) struct DenseTagTable {
     flags: BoolTable,
-    files: Vec<PathBuf>,
-    tags: Vec<String>,
+    files: Box<[String]>,
+    tags: Box<[String]>,
     tag_indices: HashMap<String, usize>,
 }
 
@@ -241,13 +240,16 @@ impl DenseTagTable {
             index_map: tag_indices,
             table: sparse,
         } = TagTable::from_dir(dirpath)?;
-        let tags: Vec<_> = {
+        let tags: Box<[String]> = {
             let mut pairs: Vec<_> = tag_indices.iter().collect();
             pairs.sort_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
             pairs.into_iter().map(|(t, _i)| t.clone()).collect()
         };
         let (files, flags) = {
-            let mut pairs: Vec<_> = sparse.into_iter().collect();
+            let mut pairs: Vec<_> = sparse
+                .into_iter()
+                .map(|(p1, f1)| (format!("{}", p1.display()), f1))
+                .collect();
             pairs.sort_by(|(path1, _flags1), (path2, _flags2)| path1.cmp(path2));
             let (files, flags): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
             let mut dense = BoolTable::new(files.len(), tags.len());
@@ -257,7 +259,7 @@ impl DenseTagTable {
                 let dst = &mut dst[..src.len()];
                 dst.copy_from_slice(src); // Requires the src and dst to be of same length.
             }
-            (files, dense)
+            (files.into_boxed_slice(), dense)
         };
         Ok(DenseTagTable {
             flags,
@@ -265,5 +267,17 @@ impl DenseTagTable {
             tags,
             tag_indices,
         })
+    }
+
+    pub fn flags(&self, row: usize) -> &[bool] {
+        return self.flags.row(row);
+    }
+
+    pub fn tags(&self) -> &[String] {
+        &self.tags
+    }
+
+    pub fn files(&self) -> &[String] {
+        &self.files
     }
 }
