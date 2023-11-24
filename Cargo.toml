@@ -18,6 +18,14 @@ nom = "7.1"
 crossterm = "0.27.0"
 ratatui = "0.24.0"
 
+
+# For profiling
+[profile.release]
+debug = 1
+
+[rust]
+debuginfo-level = 1
+
 # [profile.release]
 # For smaller binary size.
 # strip = true  # Automatically strip symbols

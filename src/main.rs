@@ -12,8 +12,14 @@ use query::DenseTagTable;
 use std::path::PathBuf;
 
 fn main() -> Result<(), FstoreError> {
-    let current_dir = std::env::current_dir().map_err(|_| FstoreError::InvalidWorkingDirectory)?;
     let matches = parse_args();
+    let current_dir = if let Some(rootdir) = matches.get_one::<PathBuf>("path") {
+        rootdir
+            .canonicalize()
+            .map_err(|_| FstoreError::InvalidPath(rootdir.clone()))?
+    } else {
+        std::env::current_dir().map_err(|_| FstoreError::InvalidWorkingDirectory)?
+    };
     if let Some(matches) = matches.subcommand_matches(cmd::QUERY) {
         return run_query(
             current_dir,
@@ -75,6 +81,13 @@ fn main() -> Result<(), FstoreError> {
 
 fn parse_args() -> clap::ArgMatches {
     command!()
+        .arg(
+            Arg::new(arg::PATH)
+                .long("path")
+                .short('p')
+                .required(false)
+                .value_parser(value_parser!(PathBuf)),
+        )
         .subcommand(
             clap::Command::new(cmd::QUERY)
                 .alias("-q")
