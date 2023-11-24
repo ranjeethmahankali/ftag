@@ -26,17 +26,19 @@ use State::*;
 
 struct App {
     table: DenseTagTable,
+    // State management.
     command: String,
     echo: String,
     state: State,
-    // Tags and files that are actually visible with filter.
     tag_active: Vec<bool>,
+    filtered_indices: Vec<usize>,
     taglist: Vec<String>,
     filelist: Vec<String>,
     // UI management.
     scroll: usize,
     scrollstate: ScrollbarState,
     frameheight: usize,
+    file_index_width: u8,
 }
 
 fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
@@ -54,23 +56,44 @@ fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
     return (start, &curr[start..]);
 }
 
+fn count_digits(mut num: usize) -> u8 {
+    if num == 0 {
+        return 1;
+    }
+    let mut digits = 0u8;
+    while num > 0 {
+        digits += 1;
+        num /= 10;
+    }
+    return digits;
+}
+
 impl App {
     fn from(table: DenseTagTable) -> App {
         let taglist = table.tags().to_vec();
-        let filelist = table.files().to_vec();
         let ntags = table.tags().len();
-        App {
+        let nfiles = table.files().len();
+        let mut app = App {
             table,
             command: String::new(),
             echo: String::new(),
             state: Stale,
             tag_active: vec![true; ntags],
             taglist,
-            filelist,
+            filelist: Vec::with_capacity(nfiles),
             scroll: 0,
             scrollstate: ScrollbarState::new(ntags),
             frameheight: 0,
-        }
+            filtered_indices: (0..nfiles).collect(),
+            file_index_width: count_digits(nfiles - 1),
+        };
+        App::update_file_list(
+            &app.filtered_indices,
+            &app.table.files(),
+            app.file_index_width,
+            &mut app.filelist,
+        );
+        return app;
     }
 
     fn fresh(&mut self) {
@@ -81,6 +104,61 @@ impl App {
         };
     }
 
+    fn num_files(&self) -> usize {
+        self.table.files().len()
+    }
+
+    fn update_file_list(
+        indices: &[usize],
+        files: &[String],
+        index_width: u8,
+        dst: &mut Vec<String>,
+    ) {
+        dst.clear();
+        dst.reserve(indices.len());
+        let mut filecounter = 0;
+        let mut prevfile: &str = "";
+        for file in indices.iter().map(|i| &files[*i]) {
+            dst.push(format!(
+                "[{}] {}",
+                {
+                    let nspaces = index_width - count_digits(filecounter);
+                    format!("{}{filecounter}", " ".repeat(nspaces as usize))
+                },
+                {
+                    let (space, trimmed) = remove_common_prefix(prevfile, file);
+                    format!("{}{}", ".".repeat(space), trimmed)
+                }
+            ));
+            prevfile = file;
+            filecounter += 1;
+        }
+    }
+
+    fn update_tag_list(
+        indices: &[usize],
+        tags: &[String],
+        table: &DenseTagTable,
+        active: &mut [bool],
+        dst: &mut Vec<String>,
+    ) {
+        active.fill(false);
+        for flags in indices.iter().map(|i| table.flags(*i)) {
+            active
+                .iter_mut()
+                .zip(flags.iter())
+                .for_each(|(dst, src)| *dst = *dst || *src);
+        }
+        dst.clear();
+        dst.extend(tags.iter().zip(0..table.tags().len()).filter_map(|(t, i)| {
+            if active[i] {
+                Some(t.clone())
+            } else {
+                None
+            }
+        }));
+    }
+
     fn process_input(&mut self) {
         let cmd = self.command.trim();
         if cmd == "exit" || cmd == "quit" {
@@ -89,47 +167,22 @@ impl App {
         if let Some(filterstr) = cmd.strip_prefix("filter ") {
             match Filter::<TagIndex>::parse(filterstr, &self.table) {
                 Ok(filter) => {
-                    self.tag_active.fill(false);
-                    self.filelist.clear();
-                    let mut filecounter = 0;
-                    let mut prevfile: &str = "";
-                    for (file, flags) in
-                        self.table
-                            .files()
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(i, file)| {
-                                if filter.eval_slice(self.table.flags(i)) {
-                                    Some((file, self.table.flags(i)))
-                                } else {
-                                    None
-                                }
-                            })
-                    {
-                        self.filelist.push(format!("[{filecounter}] {}", {
-                            let (space, trimmed) = remove_common_prefix(prevfile, file);
-                            format!("{}{}", ".".repeat(space), trimmed)
-                        }));
-                        prevfile = file;
-                        filecounter += 1;
-                        self.tag_active
-                            .iter_mut()
-                            .zip(flags.iter())
-                            .for_each(|(dst, src)| *dst = *dst || *src);
-                    }
-                    self.taglist.clear();
-                    self.taglist.extend(
-                        self.table
-                            .tags()
-                            .iter()
-                            .zip(0..self.table.tags().len())
-                            .filter_map(|(t, i)| {
-                                if self.tag_active[i] {
-                                    Some(t.clone())
-                                } else {
-                                    None
-                                }
-                            }),
+                    self.filtered_indices.clear();
+                    self.filtered_indices.extend(
+                        (0..self.num_files()).filter(|i| filter.eval_slice(self.table.flags(*i))),
+                    );
+                    Self::update_file_list(
+                        &self.filtered_indices,
+                        self.table.files(),
+                        self.file_index_width,
+                        &mut self.filelist,
+                    );
+                    Self::update_tag_list(
+                        &self.filtered_indices,
+                        self.table.tags(),
+                        &self.table,
+                        &mut self.tag_active,
+                        &mut self.taglist,
                     );
                     self.echo = format!("Filter: '{}'", filterstr);
                     self.scroll = 0;
