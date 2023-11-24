@@ -1,6 +1,6 @@
 use crate::query::DenseTagTable;
 use crossterm::{
-    event::{self, KeyCode, KeyEventKind},
+    event::{self, KeyCode, KeyEvent, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
@@ -76,19 +76,25 @@ impl App {
         );
     }
 
-    fn keystroke(&mut self, code: KeyCode) {
+    fn keystroke(&mut self, evt: KeyEvent) {
         self.state = Stale;
-        match code {
-            KeyCode::Char(c) => {
-                self.command.push(c);
-            }
-            KeyCode::Backspace => {
-                self.command.pop();
-            }
-            KeyCode::Enter => {
-                self.process_input();
-            }
-            _ => {}
+        match evt.kind {
+            KeyEventKind::Press | KeyEventKind::Repeat => match evt.code {
+                KeyCode::Char(c) => {
+                    self.command.push(c);
+                }
+                KeyCode::Backspace => {
+                    self.command.pop();
+                }
+                KeyCode::Enter => {
+                    self.process_input();
+                }
+                KeyCode::Esc => {
+                    self.command.clear();
+                }
+                _ => {}
+            },
+            KeyEventKind::Release => {} // Do nothing.
         }
     }
 }
@@ -113,10 +119,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> std::io::Re
         // Poll events to see if redraw needed.
         if event::poll(std::time::Duration::from_millis(DELAY))? {
             // If a key event occurs, handle it
-            if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    app.keystroke(key.code);
+            match crossterm::event::read()? {
+                event::Event::Key(key) => {
+                    app.keystroke(key);
                 }
+                event::Event::Resize(_, _) => {
+                    terminal.draw(|f| render(f, app))?;
+                }
+                _ => {} //  Do nothing.
             }
         }
         match app.state {
@@ -134,16 +144,16 @@ fn render(f: &mut Frame, app: &mut App) {
     let hlayout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![
-            Constraint::Length(app.tagwidth),
-            Constraint::Min(app.filewidth),
+            Constraint::Max(app.tagwidth),
+            Constraint::Max(app.filewidth),
         ])
         .split(f.size());
     let vlayout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
-            Constraint::Percentage(90),
-            Constraint::Percentage(5),
-            Constraint::Length(1),
+            Constraint::Max(100),
+            Constraint::Min(3),
+            Constraint::Length(3),
         ])
         .split(hlayout[1]);
     let tagblock = hlayout[0];
