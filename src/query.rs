@@ -20,12 +20,6 @@ pub(crate) fn safe_get_flag(flags: &Vec<bool>, index: usize) -> bool {
     *flags.get(index).unwrap_or(&false)
 }
 
-pub(crate) struct TagTable {
-    root: PathBuf,
-    index_map: HashMap<String, usize>,
-    table: HashMap<PathBuf, Vec<bool>>,
-}
-
 struct InheritedTags {
     tag_indices: Vec<usize>,
     offsets: Vec<usize>,
@@ -52,6 +46,12 @@ impl InheritedTags {
         self.depth = newdepth;
         return Ok(());
     }
+}
+
+pub(crate) struct TagTable {
+    root: PathBuf,
+    index_map: HashMap<String, usize>,
+    table: HashMap<PathBuf, Vec<bool>>,
 }
 
 impl TagTable {
@@ -201,4 +201,69 @@ pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), FstoreE
         println!("{}", path);
     }
     return Ok(());
+}
+
+pub(crate) struct BoolTable {
+    data: Box<[bool]>, // Cannot be resized by accident.
+    ncols: usize,
+}
+
+impl BoolTable {
+    pub fn new(nrows: usize, ncols: usize) -> Self {
+        BoolTable {
+            data: vec![false; nrows * ncols].into_boxed_slice(),
+            ncols,
+        }
+    }
+
+    pub fn row(&self, r: usize) -> &[bool] {
+        let start = r * self.ncols;
+        &self.data[start..(start + self.ncols)]
+    }
+
+    pub fn row_mut(&mut self, r: usize) -> &mut [bool] {
+        let start = r * self.ncols;
+        &mut self.data[start..(start + self.ncols)]
+    }
+}
+
+pub(crate) struct DenseTagTable {
+    flags: BoolTable,
+    files: Vec<PathBuf>,
+    tags: Vec<String>,
+    tag_indices: HashMap<String, usize>,
+}
+
+impl DenseTagTable {
+    pub fn from_dir(dirpath: PathBuf) -> Result<DenseTagTable, FstoreError> {
+        let TagTable {
+            root: _root,
+            index_map: tag_indices,
+            table: sparse,
+        } = TagTable::from_dir(dirpath)?;
+        let tags: Vec<_> = {
+            let mut pairs: Vec<_> = tag_indices.iter().collect();
+            pairs.sort_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
+            pairs.into_iter().map(|(t, _i)| t.clone()).collect()
+        };
+        let (files, flags) = {
+            let mut pairs: Vec<_> = sparse.into_iter().collect();
+            pairs.sort_by(|(path1, _flags1), (path2, _flags2)| path1.cmp(path2));
+            let (files, flags): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
+            let mut dense = BoolTable::new(files.len(), tags.len());
+            for (src, i) in flags.iter().zip(0..flags.len()) {
+                debug_assert!(tags.len() >= src.len());
+                let dst = dense.row_mut(i);
+                let dst = &mut dst[..src.len()];
+                dst.copy_from_slice(src); // Requires the src and dst to be of same length.
+            }
+            (files, dense)
+        };
+        Ok(DenseTagTable {
+            flags,
+            files,
+            tags,
+            tag_indices,
+        })
+    }
 }

@@ -13,7 +13,7 @@ use std::{
 pub(crate) const FSTORE: &str = ".fstore";
 
 #[derive(Debug)]
-pub enum FstoreError {
+pub(crate) enum FstoreError {
     InteractiveModeError(String),
     EditCommandFailed(String),
     MissingFiles,
@@ -27,7 +27,7 @@ pub enum FstoreError {
     TagInheritanceFailed,
 }
 
-pub struct Info {
+pub(crate) struct Info {
     pub tags: Vec<String>,
     pub desc: String,
 }
@@ -96,7 +96,7 @@ pub(crate) enum DirEntryType {
     Dir,
 }
 
-pub struct DirEntry {
+pub(crate) struct DirEntry {
     depth: usize,
     entry_type: DirEntryType,
     name: OsString,
@@ -109,7 +109,7 @@ pub(crate) fn get_filenames<'a>(entries: &'a [DirEntry]) -> impl Iterator<Item =
     })
 }
 
-pub struct WalkDirectories {
+pub(crate) struct WalkDirectories {
     cur_path: PathBuf,
     stack: Vec<DirEntry>,
     cur_depth: usize,
@@ -220,7 +220,7 @@ pub(crate) fn read_store_file<T: DeserializeOwned>(storefile: PathBuf) -> Result
     return Ok(data);
 }
 
-pub fn check(path: PathBuf) -> Result<(), FstoreError> {
+pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
     #[derive(Deserialize)]
     struct FileData {
         path: String,
@@ -256,7 +256,7 @@ pub fn check(path: PathBuf) -> Result<(), FstoreError> {
     }
 }
 
-pub fn what_is(path: &PathBuf) -> Result<Info, FstoreError> {
+pub(crate) fn what_is(path: &PathBuf) -> Result<Info, FstoreError> {
     if path.is_file() {
         what_is_file(path)
     } else if path.is_dir() {
@@ -355,7 +355,7 @@ pub(crate) fn get_relative_path(
     }
 }
 
-pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
+pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
     #[derive(Deserialize)]
     struct FileData {
         path: String,
@@ -398,7 +398,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
     return Ok(untracked);
 }
 
-pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
+pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
     #[derive(Deserialize)]
     struct FileData {
         path: PathBuf,

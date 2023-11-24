@@ -1,5 +1,5 @@
 #[derive(Debug)]
-pub enum FilterParseError {
+pub(crate) enum FilterParseError {
     EmptyQuery,
     MalformedParens,
     ExpectedBinaryOperator,
@@ -40,7 +40,7 @@ impl TagMaker<String> for StringMaker {
 }
 
 #[derive(Debug)]
-pub enum Filter<T: TagData> {
+pub(crate) enum Filter<T: TagData> {
     Tag(T),
     And(Box<Filter<T>>, Box<Filter<T>>),
     Or(Box<Filter<T>>, Box<Filter<T>>),

@@ -8,6 +8,7 @@ use crate::{
     query::run_query,
 };
 use clap::{command, value_parser, Arg};
+use query::DenseTagTable;
 use std::path::PathBuf;
 
 fn main() -> Result<(), FstoreError> {
@@ -21,8 +22,8 @@ fn main() -> Result<(), FstoreError> {
                 .ok_or(FstoreError::InvalidArgs)?,
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
-        return interactive::start()
-            .map_err(|e| FstoreError::InteractiveModeError(format!("{:?}", e)));
+        return interactive::start(DenseTagTable::from_dir(current_dir)?)
+            .map_err(|err| FstoreError::InteractiveModeError(format!("{:?}", err)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);
     } else if let Some(matches) = matches.subcommand_matches(cmd::WHATIS) {
