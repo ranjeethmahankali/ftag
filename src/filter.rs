@@ -58,15 +58,27 @@ impl<T: TagData> Filter<T> {
 }
 
 impl Filter<TagIndex> {
-    pub fn evaluate(&self, flags: &Vec<bool>) -> bool {
+    pub fn eval_vec(&self, flags: &Vec<bool>) -> bool {
         match self {
             Tag(ti) => match ti.value {
                 Some(i) => safe_get_flag(flags, i),
                 None => false,
             },
-            And(lhs, rhs) => lhs.evaluate(flags) && rhs.evaluate(flags),
-            Or(lhs, rhs) => lhs.evaluate(flags) || rhs.evaluate(flags),
-            Not(input) => !input.evaluate(flags),
+            And(lhs, rhs) => lhs.eval_vec(flags) && rhs.eval_vec(flags),
+            Or(lhs, rhs) => lhs.eval_vec(flags) || rhs.eval_vec(flags),
+            Not(input) => !input.eval_vec(flags),
+        }
+    }
+
+    pub fn eval_slice(&self, flags: &[bool]) -> bool {
+        match self {
+            Tag(ti) => match ti.value {
+                Some(i) => flags[i],
+                None => false,
+            },
+            And(lhs, rhs) => lhs.eval_slice(flags) && rhs.eval_slice(flags),
+            Or(lhs, rhs) => lhs.eval_slice(flags) || rhs.eval_slice(flags),
+            Not(input) => !input.eval_slice(flags),
         }
     }
 }

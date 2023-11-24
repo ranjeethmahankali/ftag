@@ -60,7 +60,7 @@ impl TagTable {
         filter: Filter<TagIndex>,
     ) -> impl Iterator<Item = std::path::Display<'a>> {
         self.table.iter().filter_map(move |(path, flags)| {
-            if filter.evaluate(flags) {
+            if filter.eval_vec(flags) {
                 Some(path.display())
             } else {
                 None
@@ -279,5 +279,16 @@ impl DenseTagTable {
 
     pub fn files(&self) -> &[String] {
         &self.files
+    }
+}
+
+impl TagMaker<TagIndex> for DenseTagTable {
+    fn create_tag(&self, input: &str) -> TagIndex {
+        TagIndex {
+            value: match self.tag_indices.get(&input.to_string()) {
+                Some(i) => Some(*i),
+                None => None,
+            },
+        }
     }
 }
