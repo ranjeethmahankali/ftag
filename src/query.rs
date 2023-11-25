@@ -3,7 +3,7 @@ use crate::{
         get_filenames, get_relative_path, get_store_path, glob_filter, implicit_tags,
         read_store_file, FstoreError, WalkDirectories,
     },
-    filter::{Filter, TagIndex, TagMaker},
+    filter::{Filter, TagMaker},
 };
 use hashbrown::HashMap;
 use serde::Deserialize;
@@ -55,10 +55,7 @@ pub(crate) struct TagTable {
 }
 
 impl TagTable {
-    fn query<'a>(
-        &'a self,
-        filter: Filter<TagIndex>,
-    ) -> impl Iterator<Item = std::path::Display<'a>> {
+    fn query<'a>(&'a self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'a>> {
         self.table.iter().filter_map(move |(path, flags)| {
             if filter.eval_vec(flags) {
                 Some(path.display())
@@ -181,20 +178,18 @@ impl TagTable {
     }
 }
 
-impl TagMaker<TagIndex> for TagTable {
-    fn create_tag(&self, input: &str) -> TagIndex {
-        TagIndex {
-            value: match self.index_map.get(&input.to_string()) {
-                Some(i) => Some(*i),
-                None => None,
-            },
+impl TagMaker<usize> for TagTable {
+    fn create_tag(&self, input: &str) -> Filter<usize> {
+        match self.index_map.get(&input.to_string()) {
+            Some(i) => Filter::Tag(*i),
+            None => Filter::FalseTag,
         }
     }
 }
 
 pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), FstoreError> {
     let table = TagTable::from_dir(dirpath)?;
-    let filter = Filter::<TagIndex>::parse(filter.as_str(), &table)
+    let filter = Filter::<usize>::parse(filter.as_str(), &table)
         .map_err(|e| FstoreError::InvalidFilter(e))?;
     for path in table.query(filter) {
         println!("{}", path);
@@ -288,13 +283,11 @@ impl DenseTagTable {
     }
 }
 
-impl TagMaker<TagIndex> for DenseTagTable {
-    fn create_tag(&self, input: &str) -> TagIndex {
-        TagIndex {
-            value: match self.tag_indices.get(&input.to_string()) {
-                Some(i) => Some(*i),
-                None => None,
-            },
+impl TagMaker<usize> for DenseTagTable {
+    fn create_tag(&self, input: &str) -> Filter<usize> {
+        match self.tag_indices.get(&input.to_string()) {
+            Some(i) => Filter::Tag(*i),
+            None => Filter::FalseTag,
         }
     }
 }

@@ -11,31 +11,17 @@ pub(crate) trait TagData: std::fmt::Display + Clone {}
 
 impl TagData for String {}
 
-#[derive(Clone)]
-pub(crate) struct TagIndex {
-    pub value: Option<usize>,
-}
-
-impl std::fmt::Display for TagIndex {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.value {
-            Some(i) => write!(f, "{}", i),
-            None => write!(f, "None"),
-        }
-    }
-}
-
-impl TagData for TagIndex {}
+impl TagData for usize {}
 
 pub(crate) trait TagMaker<T: TagData> {
-    fn create_tag(&self, input: &str) -> T;
+    fn create_tag(&self, input: &str) -> Filter<T>;
 }
 
 struct StringMaker;
 
 impl TagMaker<String> for StringMaker {
-    fn create_tag(&self, input: &str) -> String {
-        return input.to_string();
+    fn create_tag(&self, input: &str) -> Filter<String> {
+        return Tag(input.to_string());
     }
 }
 
@@ -45,8 +31,9 @@ pub(crate) enum Filter<T: TagData> {
     And(Box<Filter<T>>, Box<Filter<T>>),
     Or(Box<Filter<T>>, Box<Filter<T>>),
     Not(Box<Filter<T>>),
+    FalseTag, // always false.
+    TrueTag,  // Always true.
 }
-
 use Filter::*;
 
 use crate::query::safe_get_flag;
@@ -57,28 +44,26 @@ impl<T: TagData> Filter<T> {
     }
 }
 
-impl Filter<TagIndex> {
+impl Filter<usize> {
     pub fn eval_vec(&self, flags: &Vec<bool>) -> bool {
         match self {
-            Tag(ti) => match ti.value {
-                Some(i) => safe_get_flag(flags, i),
-                None => false,
-            },
+            Tag(ti) => safe_get_flag(flags, *ti),
             And(lhs, rhs) => lhs.eval_vec(flags) && rhs.eval_vec(flags),
             Or(lhs, rhs) => lhs.eval_vec(flags) || rhs.eval_vec(flags),
             Not(input) => !input.eval_vec(flags),
+            FalseTag => false,
+            TrueTag => true,
         }
     }
 
     pub fn eval_slice(&self, flags: &[bool]) -> bool {
         match self {
-            Tag(ti) => match ti.value {
-                Some(i) => flags[i],
-                None => false,
-            },
+            Tag(ti) => flags[*ti],
             And(lhs, rhs) => lhs.eval_slice(flags) && rhs.eval_slice(flags),
             Or(lhs, rhs) => lhs.eval_slice(flags) || rhs.eval_slice(flags),
             Not(input) => !input.eval_slice(flags),
+            FalseTag => false,
+            TrueTag => true,
         }
     }
 }
@@ -91,6 +76,8 @@ impl Filter<String> {
             And(lhs, rhs) => format!("{} & {}", self.maybe_parens(lhs), self.maybe_parens(rhs)),
             Or(lhs, rhs) => format!("{} | {}", self.maybe_parens(lhs), self.maybe_parens(rhs)),
             Not(filter) => format!("!{}", self.maybe_parens(filter)),
+            FalseTag => String::from("FALSE_TAG"),
+            TrueTag => String::from("TRUE_TAG"),
         }
     }
 
@@ -201,6 +188,8 @@ fn not_filter<T: TagData>(filter: Filter<T>) -> Filter<T> {
     match filter {
         Tag(_) | And(_, _) | Or(_, _) => Filter::Not(Box::new(filter)),
         Not(inner) => *inner,
+        FalseTag => TrueTag,
+        TrueTag => FalseTag,
     }
 }
 
@@ -212,9 +201,7 @@ fn push_tag<T: TagData>(
     tagmaker: &impl TagMaker<T>,
 ) {
     if to > from {
-        tokens.push(Token::Parsed(Filter::Tag(
-            tagmaker.create_tag(&input[from..to]),
-        )));
+        tokens.push(Token::Parsed(tagmaker.create_tag(&input[from..to])));
     }
 }
 

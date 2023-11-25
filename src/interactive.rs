@@ -1,8 +1,4 @@
-use crate::{
-    core::what_is,
-    filter::{Filter, TagIndex},
-    query::DenseTagTable,
-};
+use crate::{core::what_is, filter::Filter, query::DenseTagTable};
 use crossterm::{
     event::{self, KeyCode, KeyEvent, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -19,10 +15,16 @@ use ratatui::{
 use std::io::stdout;
 
 enum State {
-    Command,
+    Default,
     Exit,
 }
 use State::*;
+
+// enum Command {
+//     Exit,
+//     WhatIs(usize),
+//     Filter(Filter<usize>),
+// }
 
 struct App {
     table: DenseTagTable,
@@ -77,7 +79,7 @@ impl App {
             table,
             command: String::new(),
             echo: String::new(),
-            state: Command,
+            state: Default,
             tag_active: vec![true; ntags],
             taglist,
             filelist: Vec::with_capacity(nfiles),
@@ -157,7 +159,7 @@ impl App {
             self.state = Exit;
         }
         if let Some(filterstr) = cmd.strip_prefix("filter ") {
-            match Filter::<TagIndex>::parse(filterstr, &self.table) {
+            match Filter::<usize>::parse(filterstr, &self.table) {
                 Ok(filter) => {
                     self.filtered_indices.clear();
                     self.filtered_indices.extend(
