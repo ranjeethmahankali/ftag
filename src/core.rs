@@ -13,7 +13,9 @@ use std::{
 pub(crate) const FSTORE: &str = ".fstore";
 
 #[derive(Debug)]
-pub enum FstoreError {
+pub(crate) enum FstoreError {
+    InvalidCommand(String),
+    InteractiveModeError(String),
     EditCommandFailed(String),
     MissingFiles,
     InvalidArgs,
@@ -24,11 +26,6 @@ pub enum FstoreError {
     InvalidFilter(FilterParseError),
     DirectoryTraversalFailed,
     TagInheritanceFailed,
-}
-
-pub struct Info {
-    pub tags: Vec<String>,
-    pub desc: String,
 }
 
 pub(crate) fn implicit_tags(name: Option<&OsStr>) -> impl Iterator<Item = String> {
@@ -95,7 +92,7 @@ pub(crate) enum DirEntryType {
     Dir,
 }
 
-pub struct DirEntry {
+pub(crate) struct DirEntry {
     depth: usize,
     entry_type: DirEntryType,
     name: OsString,
@@ -108,7 +105,7 @@ pub(crate) fn get_filenames<'a>(entries: &'a [DirEntry]) -> impl Iterator<Item =
     })
 }
 
-pub struct WalkDirectories {
+pub(crate) struct WalkDirectories {
     cur_path: PathBuf,
     stack: Vec<DirEntry>,
     cur_depth: usize,
@@ -219,7 +216,7 @@ pub(crate) fn read_store_file<T: DeserializeOwned>(storefile: PathBuf) -> Result
     return Ok(data);
 }
 
-pub fn check(path: PathBuf) -> Result<(), FstoreError> {
+pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
     #[derive(Deserialize)]
     struct FileData {
         path: String,
@@ -255,7 +252,24 @@ pub fn check(path: PathBuf) -> Result<(), FstoreError> {
     }
 }
 
-pub fn what_is(path: &PathBuf) -> Result<Info, FstoreError> {
+fn full_description(tags: Vec<String>, desc: String) -> String {
+    let tagstr = {
+        let mut tags = tags.into_iter();
+        let first = tags.next().unwrap_or(String::new());
+        tags.fold(first, |acc, t| format!("{}, {}", acc, t))
+    };
+    format!(
+        "tags: [{}]{}",
+        tagstr,
+        if desc.is_empty() {
+            desc
+        } else {
+            format!("\n\n{}", desc)
+        }
+    )
+}
+
+pub(crate) fn what_is(path: &PathBuf) -> Result<String, FstoreError> {
     if path.is_file() {
         what_is_file(path)
     } else if path.is_dir() {
@@ -265,7 +279,7 @@ pub fn what_is(path: &PathBuf) -> Result<Info, FstoreError> {
     }
 }
 
-fn what_is_file(path: &PathBuf) -> Result<Info, FstoreError> {
+fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
     #[derive(Deserialize)]
     struct FileData {
         path: String,
@@ -315,13 +329,10 @@ fn what_is_file(path: &PathBuf) -> Result<Info, FstoreError> {
     // Remove duplicate tags.
     outtags.sort();
     outtags.dedup();
-    return Ok(Info {
-        tags: outtags,
-        desc: outdesc,
-    });
+    return Ok(full_description(outtags, outdesc));
 }
 
-fn what_is_dir(path: &PathBuf) -> Result<Info, FstoreError> {
+fn what_is_dir(path: &PathBuf) -> Result<String, FstoreError> {
     #[derive(Deserialize)]
     struct DirData {
         desc: Option<String>,
@@ -336,7 +347,7 @@ fn what_is_dir(path: &PathBuf) -> Result<Info, FstoreError> {
     let desc = desc.unwrap_or(String::new());
     let mut tags = tags.unwrap_or(Vec::new());
     tags.extend(implicit_tags(path.file_name())); // Implicit tags of the directory.
-    Ok(Info { desc, tags })
+    return Ok(full_description(tags, desc));
 }
 
 pub(crate) fn get_relative_path(
@@ -354,7 +365,7 @@ pub(crate) fn get_relative_path(
     }
 }
 
-pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
+pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
     #[derive(Deserialize)]
     struct FileData {
         path: String,
@@ -397,7 +408,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
     return Ok(untracked);
 }
 
-pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
+pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
     #[derive(Deserialize)]
     struct FileData {
         path: PathBuf,

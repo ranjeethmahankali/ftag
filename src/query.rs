@@ -3,11 +3,11 @@ use crate::{
         get_filenames, get_relative_path, get_store_path, glob_filter, implicit_tags,
         read_store_file, FstoreError, WalkDirectories,
     },
-    filter::{Filter, TagIndex, TagMaker},
+    filter::{Filter, TagMaker},
 };
 use hashbrown::HashMap;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     if index >= flags.len() {
@@ -18,12 +18,6 @@ fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
 
 pub(crate) fn safe_get_flag(flags: &Vec<bool>, index: usize) -> bool {
     *flags.get(index).unwrap_or(&false)
-}
-
-pub(crate) struct TagTable {
-    root: PathBuf,
-    index_map: HashMap<String, usize>,
-    table: HashMap<PathBuf, Vec<bool>>,
 }
 
 struct InheritedTags {
@@ -54,13 +48,16 @@ impl InheritedTags {
     }
 }
 
+pub(crate) struct TagTable {
+    root: PathBuf,
+    index_map: HashMap<String, usize>,
+    table: HashMap<PathBuf, Vec<bool>>,
+}
+
 impl TagTable {
-    fn query<'a>(
-        &'a self,
-        filter: Filter<TagIndex>,
-    ) -> impl Iterator<Item = std::path::Display<'a>> {
+    fn query<'a>(&'a self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'a>> {
         self.table.iter().filter_map(move |(path, flags)| {
-            if filter.evaluate(flags) {
+            if filter.eval_vec(flags) {
                 Some(path.display())
             } else {
                 None
@@ -142,11 +139,10 @@ impl TagTable {
     }
 
     fn get_tag_index(tag: &String, map: &mut HashMap<String, usize>, counter: &mut usize) -> usize {
-        *(map.entry(tag.clone()).or_insert({
-            let index = *counter;
-            *counter += 1;
-            index
-        }))
+        let size = map.len();
+        let entry = *(map.entry(tag.clone()).or_insert(size));
+        *counter = map.len();
+        return entry;
     }
 
     fn add_file(
@@ -182,23 +178,116 @@ impl TagTable {
     }
 }
 
-impl TagMaker<TagIndex> for TagTable {
-    fn create_tag(&self, input: &str) -> TagIndex {
-        TagIndex {
-            value: match self.index_map.get(&input.to_string()) {
-                Some(i) => Some(*i),
-                None => None,
-            },
+impl TagMaker<usize> for TagTable {
+    fn create_tag(&self, input: &str) -> Filter<usize> {
+        match self.index_map.get(&input.to_string()) {
+            Some(i) => Filter::Tag(*i),
+            None => Filter::FalseTag,
         }
     }
 }
 
 pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), FstoreError> {
     let table = TagTable::from_dir(dirpath)?;
-    let filter = Filter::<TagIndex>::parse(filter.as_str(), &table)
+    let filter = Filter::<usize>::parse(filter.as_str(), &table)
         .map_err(|e| FstoreError::InvalidFilter(e))?;
     for path in table.query(filter) {
         println!("{}", path);
     }
     return Ok(());
+}
+
+pub(crate) struct BoolTable {
+    data: Box<[bool]>, // Cannot be resized by accident.
+    ncols: usize,
+}
+
+impl BoolTable {
+    pub fn new(nrows: usize, ncols: usize) -> Self {
+        BoolTable {
+            data: vec![false; nrows * ncols].into_boxed_slice(),
+            ncols,
+        }
+    }
+
+    pub fn row(&self, r: usize) -> &[bool] {
+        let start = r * self.ncols;
+        &self.data[start..(start + self.ncols)]
+    }
+
+    pub fn row_mut(&mut self, r: usize) -> &mut [bool] {
+        let start = r * self.ncols;
+        &mut self.data[start..(start + self.ncols)]
+    }
+}
+
+pub(crate) struct DenseTagTable {
+    root: PathBuf,
+    flags: BoolTable,
+    files: Box<[String]>,
+    tags: Box<[String]>,
+    tag_indices: HashMap<String, usize>,
+}
+
+impl DenseTagTable {
+    pub fn from_dir(dirpath: PathBuf) -> Result<DenseTagTable, FstoreError> {
+        let TagTable {
+            root,
+            index_map: tag_indices,
+            table: sparse,
+        } = TagTable::from_dir(dirpath)?;
+        let tags: Box<[String]> = {
+            let mut pairs: Vec<_> = tag_indices.iter().collect();
+            pairs.sort_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
+            pairs.into_iter().map(|(t, _i)| t.clone()).collect()
+        };
+        let (files, flags) = {
+            let mut pairs: Vec<_> = sparse
+                .into_iter()
+                .map(|(p1, f1)| (format!("{}", p1.display()), f1))
+                .collect();
+            pairs.sort_by(|(path1, _flags1), (path2, _flags2)| path1.cmp(path2));
+            let (files, flags): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
+            let mut dense = BoolTable::new(files.len(), tags.len());
+            for (src, i) in flags.iter().zip(0..flags.len()) {
+                debug_assert!(tags.len() >= src.len());
+                let dst = dense.row_mut(i);
+                let dst = &mut dst[..src.len()];
+                dst.copy_from_slice(src); // Requires the src and dst to be of same length.
+            }
+            (files.into_boxed_slice(), dense)
+        };
+        Ok(DenseTagTable {
+            root,
+            flags,
+            files,
+            tags,
+            tag_indices,
+        })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn flags(&self, row: usize) -> &[bool] {
+        return self.flags.row(row);
+    }
+
+    pub fn tags(&self) -> &[String] {
+        &self.tags
+    }
+
+    pub fn files(&self) -> &[String] {
+        &self.files
+    }
+}
+
+impl TagMaker<usize> for DenseTagTable {
+    fn create_tag(&self, input: &str) -> Filter<usize> {
+        match self.tag_indices.get(&input.to_string()) {
+            Some(i) => Filter::Tag(*i),
+            None => Filter::FalseTag,
+        }
+    }
 }

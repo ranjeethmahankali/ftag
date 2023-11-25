@@ -4,15 +4,22 @@ mod interactive;
 mod query;
 
 use crate::{
-    core::{get_all_tags, get_store_path, untracked_files, FstoreError, Info},
+    core::{get_all_tags, get_store_path, untracked_files, FstoreError},
     query::run_query,
 };
 use clap::{command, value_parser, Arg};
+use query::DenseTagTable;
 use std::path::PathBuf;
 
 fn main() -> Result<(), FstoreError> {
-    let current_dir = std::env::current_dir().map_err(|_| FstoreError::InvalidWorkingDirectory)?;
     let matches = parse_args();
+    let current_dir = if let Some(rootdir) = matches.get_one::<PathBuf>("path") {
+        rootdir
+            .canonicalize()
+            .map_err(|_| FstoreError::InvalidPath(rootdir.clone()))?
+    } else {
+        std::env::current_dir().map_err(|_| FstoreError::InvalidWorkingDirectory)?
+    };
     if let Some(matches) = matches.subcommand_matches(cmd::QUERY) {
         return run_query(
             current_dir,
@@ -21,7 +28,8 @@ fn main() -> Result<(), FstoreError> {
                 .ok_or(FstoreError::InvalidArgs)?,
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
-        return interactive::start();
+        return interactive::start(DenseTagTable::from_dir(current_dir)?)
+            .map_err(|err| FstoreError::InteractiveModeError(format!("{:?}", err)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);
     } else if let Some(matches) = matches.subcommand_matches(cmd::WHATIS) {
@@ -30,21 +38,7 @@ fn main() -> Result<(), FstoreError> {
                 let path = path
                     .canonicalize()
                     .map_err(|_| FstoreError::InvalidPath(path.clone()))?;
-                let Info { tags, desc } = core::what_is(&path)?;
-                let tagstr = {
-                    let mut tags = tags.into_iter();
-                    let first = tags.next().unwrap_or(String::new());
-                    tags.fold(first, |acc, t| format!("{}, {}", acc, t))
-                };
-                println!(
-                    "tags: [{}]{}",
-                    tagstr,
-                    if desc.is_empty() {
-                        desc
-                    } else {
-                        format!("\n\n{}", desc)
-                    }
-                );
+                println!("{}", core::what_is(&path)?);
                 return Ok(());
             }
             None => return Err(FstoreError::InvalidArgs),
@@ -73,6 +67,13 @@ fn main() -> Result<(), FstoreError> {
 
 fn parse_args() -> clap::ArgMatches {
     command!()
+        .arg(
+            Arg::new(arg::PATH)
+                .long("path")
+                .short('p')
+                .required(false)
+                .value_parser(value_parser!(PathBuf)),
+        )
         .subcommand(
             clap::Command::new(cmd::QUERY)
                 .alias("-q")

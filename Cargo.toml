@@ -14,3 +14,16 @@ serde_yaml = "0.9"
 glob-match = "0.2"
 edit = "0.1"
 nom = "7.1"
+# For the TUI mode.
+crossterm = "0.27.0"
+ratatui = "0.24.0"
+opener = "0.6"
+strum = "0.25.0"
+strum_macros = "0.25"
+
+[profile.release]
+# For smaller binary size.
+strip = true  # Automatically strip symbols
+lto = true # Link time optimization.
+panic = "abort" # Don't unwind stack. Should never panic.
+codegen-units = 1

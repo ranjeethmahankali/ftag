@@ -1,5 +1,7 @@
+use crate::query::safe_get_flag;
+
 #[derive(Debug)]
-pub enum FilterParseError {
+pub(crate) enum FilterParseError {
     EmptyQuery,
     MalformedParens,
     ExpectedBinaryOperator,
@@ -7,66 +9,96 @@ pub enum FilterParseError {
     EndOfTokens,
 }
 
-pub(crate) trait TagData: std::fmt::Display + Clone {}
+pub(crate) trait TagData: std::fmt::Display + Clone + Default {}
 
 impl TagData for String {}
 
-#[derive(Clone)]
-pub(crate) struct TagIndex {
-    pub value: Option<usize>,
-}
-
-impl std::fmt::Display for TagIndex {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.value {
-            Some(i) => write!(f, "{}", i),
-            None => write!(f, "None"),
-        }
-    }
-}
-
-impl TagData for TagIndex {}
+impl TagData for usize {}
 
 pub(crate) trait TagMaker<T: TagData> {
-    fn create_tag(&self, input: &str) -> T;
+    fn create_tag(&self, input: &str) -> Filter<T>;
 }
 
 struct StringMaker;
 
 impl TagMaker<String> for StringMaker {
-    fn create_tag(&self, input: &str) -> String {
-        return input.to_string();
+    fn create_tag(&self, input: &str) -> Filter<String> {
+        return Tag(input.to_string());
     }
 }
 
 #[derive(Debug)]
-pub enum Filter<T: TagData> {
+pub(crate) enum Filter<T: TagData> {
     Tag(T),
     And(Box<Filter<T>>, Box<Filter<T>>),
     Or(Box<Filter<T>>, Box<Filter<T>>),
     Not(Box<Filter<T>>),
+    FalseTag, // always false.
+    TrueTag,  // Always true.
 }
-
 use Filter::*;
 
-use crate::query::safe_get_flag;
+impl<T: TagData> Default for Filter<T> {
+    fn default() -> Self {
+        Tag(T::default())
+    }
+}
 
 impl<T: TagData> Filter<T> {
     pub fn parse(input: &str, tagmaker: &impl TagMaker<T>) -> Result<Self, FilterParseError> {
         parse_filter(input, tagmaker)
     }
+
+    fn maybe_parens(parent: &Filter<T>, child: &Filter<T>, childstr: String) -> String {
+        match (child, parent) {
+            (Tag(_), _) | (Not(_), _) | (And(_, _), And(_, _)) | (Or(_, _), Or(_, _)) => childstr,
+            _ => format!("({})", childstr),
+        }
+    }
 }
 
-impl Filter<TagIndex> {
-    pub fn evaluate(&self, flags: &Vec<bool>) -> bool {
+impl Filter<usize> {
+    pub fn eval_vec(&self, flags: &Vec<bool>) -> bool {
         match self {
-            Tag(ti) => match ti.value {
-                Some(i) => safe_get_flag(flags, i),
-                None => false,
-            },
-            And(lhs, rhs) => lhs.evaluate(flags) && rhs.evaluate(flags),
-            Or(lhs, rhs) => lhs.evaluate(flags) || rhs.evaluate(flags),
-            Not(input) => !input.evaluate(flags),
+            Tag(ti) => safe_get_flag(flags, *ti),
+            And(lhs, rhs) => lhs.eval_vec(flags) && rhs.eval_vec(flags),
+            Or(lhs, rhs) => lhs.eval_vec(flags) || rhs.eval_vec(flags),
+            Not(input) => !input.eval_vec(flags),
+            FalseTag => false,
+            TrueTag => true,
+        }
+    }
+
+    pub fn eval_slice(&self, flags: &[bool]) -> bool {
+        match self {
+            Tag(ti) => flags[*ti],
+            And(lhs, rhs) => lhs.eval_slice(flags) && rhs.eval_slice(flags),
+            Or(lhs, rhs) => lhs.eval_slice(flags) || rhs.eval_slice(flags),
+            Not(input) => !input.eval_slice(flags),
+            FalseTag => false,
+            TrueTag => true,
+        }
+    }
+
+    pub fn to_string(&self, tagnames: &[String]) -> String {
+        match self {
+            Tag(i) => tagnames[*i].clone(),
+            And(lhs, rhs) => format!(
+                "{} & {}",
+                Self::maybe_parens(self, lhs, lhs.to_string(tagnames)),
+                Self::maybe_parens(self, rhs, rhs.to_string(tagnames))
+            ),
+            Or(lhs, rhs) => format!(
+                "{} | {}",
+                Self::maybe_parens(self, lhs, lhs.to_string(tagnames)),
+                Self::maybe_parens(self, rhs, rhs.to_string(tagnames))
+            ),
+            Not(filter) => format!(
+                "!{}",
+                Self::maybe_parens(self, filter, filter.to_string(tagnames))
+            ),
+            FalseTag => String::from("FALSE_TAG"),
+            TrueTag => String::from("TRUE_TAG"),
         }
     }
 }
@@ -76,19 +108,19 @@ impl Filter<String> {
     pub fn to_string(&self) -> String {
         match self {
             Tag(tag) => tag.clone(),
-            And(lhs, rhs) => format!("{} & {}", self.maybe_parens(lhs), self.maybe_parens(rhs)),
-            Or(lhs, rhs) => format!("{} | {}", self.maybe_parens(lhs), self.maybe_parens(rhs)),
-            Not(filter) => format!("!{}", self.maybe_parens(filter)),
-        }
-    }
-
-    #[cfg(test)]
-    fn maybe_parens(&self, filter: &Filter<String>) -> String {
-        match (filter, self) {
-            (Tag(_), _) | (Not(_), _) | (And(_, _), And(_, _)) | (Or(_, _), Or(_, _)) => {
-                filter.to_string()
-            }
-            _ => format!("({})", filter.to_string()),
+            And(lhs, rhs) => format!(
+                "{} & {}",
+                Self::maybe_parens(self, lhs, lhs.to_string()),
+                Self::maybe_parens(self, rhs, rhs.to_string())
+            ),
+            Or(lhs, rhs) => format!(
+                "{} | {}",
+                Self::maybe_parens(self, lhs, lhs.to_string()),
+                Self::maybe_parens(self, rhs, rhs.to_string()),
+            ),
+            Not(filter) => format!("!{}", Self::maybe_parens(self, filter, filter.to_string())),
+            FalseTag => String::from("FALSE_TAG"),
+            TrueTag => String::from("TRUE_TAG"),
         }
     }
 }
@@ -189,6 +221,8 @@ fn not_filter<T: TagData>(filter: Filter<T>) -> Filter<T> {
     match filter {
         Tag(_) | And(_, _) | Or(_, _) => Filter::Not(Box::new(filter)),
         Not(inner) => *inner,
+        FalseTag => TrueTag,
+        TrueTag => FalseTag,
     }
 }
 
@@ -200,9 +234,7 @@ fn push_tag<T: TagData>(
     tagmaker: &impl TagMaker<T>,
 ) {
     if to > from {
-        tokens.push(Token::Parsed(Filter::Tag(
-            tagmaker.create_tag(&input[from..to]),
-        )));
+        tokens.push(Token::Parsed(tagmaker.create_tag(&input[from..to])));
     }
 }
 
