@@ -42,6 +42,13 @@ impl<T: TagData> Filter<T> {
     pub fn parse(input: &str, tagmaker: &impl TagMaker<T>) -> Result<Self, FilterParseError> {
         parse_filter(input, tagmaker)
     }
+
+    fn maybe_parens(parent: &Filter<T>, child: &Filter<T>, childstr: String) -> String {
+        match (child, parent) {
+            (Tag(_), _) | (Not(_), _) | (And(_, _), And(_, _)) | (Or(_, _), Or(_, _)) => childstr,
+            _ => format!("({})", childstr),
+        }
+    }
 }
 
 impl Filter<usize> {
@@ -66,6 +73,28 @@ impl Filter<usize> {
             TrueTag => true,
         }
     }
+
+    pub fn to_string(&self, tagnames: &[String]) -> String {
+        match self {
+            Tag(i) => tagnames[*i].clone(),
+            And(lhs, rhs) => format!(
+                "{} & {}",
+                Self::maybe_parens(self, lhs, lhs.to_string(tagnames)),
+                Self::maybe_parens(self, rhs, rhs.to_string(tagnames))
+            ),
+            Or(lhs, rhs) => format!(
+                "{} | {}",
+                Self::maybe_parens(self, lhs, lhs.to_string(tagnames)),
+                Self::maybe_parens(self, rhs, rhs.to_string(tagnames))
+            ),
+            Not(filter) => format!(
+                "!{}",
+                Self::maybe_parens(self, filter, filter.to_string(tagnames))
+            ),
+            FalseTag => String::from("FALSE_TAG"),
+            TrueTag => String::from("TRUE_TAG"),
+        }
+    }
 }
 
 impl Filter<String> {
@@ -73,21 +102,19 @@ impl Filter<String> {
     pub fn to_string(&self) -> String {
         match self {
             Tag(tag) => tag.clone(),
-            And(lhs, rhs) => format!("{} & {}", self.maybe_parens(lhs), self.maybe_parens(rhs)),
-            Or(lhs, rhs) => format!("{} | {}", self.maybe_parens(lhs), self.maybe_parens(rhs)),
-            Not(filter) => format!("!{}", self.maybe_parens(filter)),
+            And(lhs, rhs) => format!(
+                "{} & {}",
+                Self::maybe_parens(self, lhs, lhs.to_string()),
+                Self::maybe_parens(self, rhs, rhs.to_string())
+            ),
+            Or(lhs, rhs) => format!(
+                "{} | {}",
+                Self::maybe_parens(self, lhs, lhs.to_string()),
+                Self::maybe_parens(self, rhs, rhs.to_string()),
+            ),
+            Not(filter) => format!("!{}", Self::maybe_parens(self, filter, filter.to_string())),
             FalseTag => String::from("FALSE_TAG"),
             TrueTag => String::from("TRUE_TAG"),
-        }
-    }
-
-    #[cfg(test)]
-    fn maybe_parens(&self, filter: &Filter<String>) -> String {
-        match (filter, self) {
-            (Tag(_), _) | (Not(_), _) | (And(_, _), And(_, _)) | (Or(_, _), Or(_, _)) => {
-                filter.to_string()
-            }
-            _ => format!("({})", filter.to_string()),
         }
     }
 }

@@ -1,4 +1,8 @@
-use crate::{core::what_is, filter::Filter, query::DenseTagTable};
+use crate::{
+    core::{what_is, FstoreError},
+    filter::Filter,
+    query::DenseTagTable,
+};
 use crossterm::{
     event::{self, KeyCode, KeyEvent, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -12,7 +16,7 @@ use ratatui::{
     },
     Frame,
 };
-use std::io::stdout;
+use std::{io::stdout, path::PathBuf};
 
 enum State {
     Default,
@@ -20,11 +24,14 @@ enum State {
 }
 use State::*;
 
-// enum Command {
-//     Exit,
-//     WhatIs(usize),
-//     Filter(Filter<usize>),
-// }
+enum Command {
+    Exit,
+    Quit,
+    Reset,
+    Filter(Filter<usize>),
+    WhatIs(PathBuf),
+    Open(PathBuf),
+}
 
 struct App {
     table: DenseTagTable,
@@ -98,6 +105,54 @@ impl App {
         return app;
     }
 
+    fn reset(&mut self) {
+        self.filtered_indices.clear();
+        self.filtered_indices.extend(0..self.num_files());
+        self.update_lists();
+        self.echo.clear();
+        self.state = Default;
+        self.tag_active.fill(true);
+        self.scroll = 0;
+        self.scrollstate = ScrollbarState::new(self.table.tags().len());
+    }
+
+    fn parse_index_to_filepath(&self, numstr: &str) -> Result<PathBuf, FstoreError> {
+        let index = match numstr.parse::<usize>() {
+            Ok(num) if num < self.num_files() => Ok(num),
+            Ok(_) => Err(FstoreError::InvalidCommand(String::from(
+                "Index out of bounds.",
+            ))),
+            Err(_) => Err(FstoreError::InvalidCommand(String::from(
+                "Unable to parse the number.",
+            ))),
+        }?;
+        let mut path = self.table.path().to_path_buf();
+        path.push(&self.table.files()[index]);
+        return Ok(path);
+    }
+
+    fn parse_command(&self) -> Result<Command, FstoreError> {
+        let cmd = self.command.trim();
+        if cmd == "exit" {
+            Ok(Command::Exit)
+        } else if cmd == "quit" {
+            Ok(Command::Quit)
+        } else if cmd == "reset" {
+            Ok(Command::Reset)
+        } else if let Some(filterstr) = cmd.strip_prefix("filter ") {
+            Ok(Command::Filter(
+                Filter::<usize>::parse(filterstr, &self.table)
+                    .map_err(|e| FstoreError::InvalidFilter(e))?,
+            ))
+        } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
+            Ok(Command::WhatIs(self.parse_index_to_filepath(numstr)?))
+        } else if let Some(numstr) = cmd.strip_prefix("open ") {
+            Ok(Command::Open(self.parse_index_to_filepath(numstr)?))
+        } else {
+            Err(FstoreError::InvalidCommand(cmd.to_string()))
+        }
+    }
+
     fn num_files(&self) -> usize {
         self.table.files().len()
     }
@@ -153,42 +208,27 @@ impl App {
         }));
     }
 
+    fn update_lists(&mut self) {
+        Self::update_file_list(
+            &self.filtered_indices,
+            self.table.files(),
+            self.file_index_width,
+            &mut self.filelist,
+        );
+        Self::update_tag_list(
+            &self.filtered_indices,
+            self.table.tags(),
+            &self.table,
+            &mut self.tag_active,
+            &mut self.taglist,
+        );
+    }
+
     fn process_input(&mut self) {
-        let cmd = self.command.trim();
-        if cmd == "exit" || cmd == "quit" {
-            self.state = Exit;
-        }
-        if let Some(filterstr) = cmd.strip_prefix("filter ") {
-            match Filter::<usize>::parse(filterstr, &self.table) {
-                Ok(filter) => {
-                    self.filtered_indices.clear();
-                    self.filtered_indices.extend(
-                        (0..self.num_files()).filter(|i| filter.eval_slice(self.table.flags(*i))),
-                    );
-                    Self::update_file_list(
-                        &self.filtered_indices,
-                        self.table.files(),
-                        self.file_index_width,
-                        &mut self.filelist,
-                    );
-                    Self::update_tag_list(
-                        &self.filtered_indices,
-                        self.table.tags(),
-                        &self.table,
-                        &mut self.tag_active,
-                        &mut self.taglist,
-                    );
-                    self.echo = format!("Filter: '{}'", filterstr);
-                    self.scroll = 0;
-                    self.scrollstate = self.scrollstate.content_length(self.taglist.len());
-                }
-                Err(e) => self.echo = format!("{:?}", e),
-            }
-        } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
-            match numstr.parse::<usize>() {
-                Ok(num) if num < self.num_files() => {
-                    let mut path = self.table.path().to_path_buf();
-                    path.push(&self.table.files()[num]);
+        match self.parse_command() {
+            Ok(cmd) => match cmd {
+                Command::Exit | Command::Quit => self.state = Exit,
+                Command::WhatIs(path) => {
                     self.echo = format!(
                         "{}",
                         what_is(&path).unwrap_or(String::from(
@@ -196,8 +236,23 @@ impl App {
                         ))
                     );
                 }
-                _ => self.echo = format!("{} is not a valid index.", numstr),
-            }
+                Command::Filter(filter) => {
+                    self.filtered_indices.clear();
+                    self.filtered_indices.extend(
+                        (0..self.num_files()).filter(|i| filter.eval_slice(self.table.flags(*i))),
+                    );
+                    self.update_lists();
+                    self.echo = format!("Filter: '{}'", filter.to_string(self.table.tags()));
+                    self.scroll = 0;
+                    self.scrollstate = self.scrollstate.content_length(self.taglist.len());
+                }
+                Command::Reset => self.reset(),
+                Command::Open(path) => match opener::open(path) {
+                    Ok(_) => {} // Do nothing.
+                    Err(_) => self.echo = String::from("Unable to open the file."),
+                },
+            },
+            Err(e) => self.echo = format!("{:?}", e),
         }
         self.command.clear();
     }

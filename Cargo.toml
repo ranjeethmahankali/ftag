@@ -17,6 +17,7 @@ nom = "7.1"
 # For the TUI mode.
 crossterm = "0.27.0"
 ratatui = "0.24.0"
+opener = "0.6"
 
 [profile.release]
 # For smaller binary size.
