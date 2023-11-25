@@ -1,4 +1,5 @@
 use crate::{
+    core::what_is,
     filter::{Filter, TagIndex},
     query::DenseTagTable,
 };
@@ -18,8 +19,7 @@ use ratatui::{
 use std::io::stdout;
 
 enum State {
-    Stale,
-    Fresh,
+    Command,
     Exit,
 }
 use State::*;
@@ -77,7 +77,7 @@ impl App {
             table,
             command: String::new(),
             echo: String::new(),
-            state: Stale,
+            state: Command,
             tag_active: vec![true; ntags],
             taglist,
             filelist: Vec::with_capacity(nfiles),
@@ -94,14 +94,6 @@ impl App {
             &mut app.filelist,
         );
         return app;
-    }
-
-    fn fresh(&mut self) {
-        self.state = match self.state {
-            Stale => Fresh,
-            Fresh => Fresh,
-            Exit => Exit,
-        };
     }
 
     fn num_files(&self) -> usize {
@@ -190,6 +182,20 @@ impl App {
                 }
                 Err(e) => self.echo = format!("{:?}", e),
             }
+        } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
+            match numstr.parse::<usize>() {
+                Ok(num) if num < self.num_files() => {
+                    let mut path = self.table.path().to_path_buf();
+                    path.push(&self.table.files()[num]);
+                    self.echo = format!(
+                        "{}",
+                        what_is(&path).unwrap_or(String::from(
+                            "Unable to fetch the description of this file."
+                        ))
+                    );
+                }
+                _ => self.echo = format!("{} is not a valid index.", numstr),
+            }
         }
         self.command.clear();
     }
@@ -199,7 +205,6 @@ impl App {
     }
 
     fn keyevent(&mut self, evt: KeyEvent) {
-        self.state = Stale;
         match evt.kind {
             KeyEventKind::Press | KeyEventKind::Repeat => match evt.code {
                 KeyCode::Char(c) => {
@@ -246,7 +251,10 @@ pub(crate) fn start(table: DenseTagTable) -> std::io::Result<()> {
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> std::io::Result<()> {
     const DELAY: u64 = 20;
-    // Main application loop
+    // Main application loop. The terminal is only redrawn when an
+    // event is registered, so it is necessary to draw it once at
+    // first.
+    terminal.draw(|f| render(f, app))?;
     loop {
         // Poll events to see if redraw needed.
         if event::poll(std::time::Duration::from_millis(DELAY))? {
@@ -255,18 +263,13 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> std::io::Re
                 event::Event::Key(key) => {
                     app.keyevent(key);
                 }
-                event::Event::Resize(_, _) => {
-                    terminal.draw(|f| render(f, app))?;
-                }
                 _ => {} //  Do nothing.
             }
+            terminal.draw(|f| render(f, app))?;
         }
         match app.state {
-            Stale => {
-                terminal.draw(|f| render(f, app))?;
-            }
-            Fresh => {} // Do nothing.
             Exit => break,
+            _ => {} // Do nothing.
         };
     }
     return Ok(());
@@ -346,5 +349,4 @@ fn render(f: &mut Frame, app: &mut App) {
             .block(Block::new().borders(Borders::TOP)),
         cmdblock,
     );
-    app.fresh();
 }

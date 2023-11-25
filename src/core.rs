@@ -27,11 +27,6 @@ pub(crate) enum FstoreError {
     TagInheritanceFailed,
 }
 
-pub(crate) struct Info {
-    pub tags: Vec<String>,
-    pub desc: String,
-}
-
 pub(crate) fn implicit_tags(name: Option<&OsStr>) -> impl Iterator<Item = String> {
     fn infer_year_range(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
         use nom::{
@@ -256,7 +251,24 @@ pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
     }
 }
 
-pub(crate) fn what_is(path: &PathBuf) -> Result<Info, FstoreError> {
+fn full_description(tags: Vec<String>, desc: String) -> String {
+    let tagstr = {
+        let mut tags = tags.into_iter();
+        let first = tags.next().unwrap_or(String::new());
+        tags.fold(first, |acc, t| format!("{}, {}", acc, t))
+    };
+    format!(
+        "tags: [{}]{}",
+        tagstr,
+        if desc.is_empty() {
+            desc
+        } else {
+            format!("\n\n{}", desc)
+        }
+    )
+}
+
+pub(crate) fn what_is(path: &PathBuf) -> Result<String, FstoreError> {
     if path.is_file() {
         what_is_file(path)
     } else if path.is_dir() {
@@ -266,7 +278,7 @@ pub(crate) fn what_is(path: &PathBuf) -> Result<Info, FstoreError> {
     }
 }
 
-fn what_is_file(path: &PathBuf) -> Result<Info, FstoreError> {
+fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
     #[derive(Deserialize)]
     struct FileData {
         path: String,
@@ -316,13 +328,10 @@ fn what_is_file(path: &PathBuf) -> Result<Info, FstoreError> {
     // Remove duplicate tags.
     outtags.sort();
     outtags.dedup();
-    return Ok(Info {
-        tags: outtags,
-        desc: outdesc,
-    });
+    return Ok(full_description(outtags, outdesc));
 }
 
-fn what_is_dir(path: &PathBuf) -> Result<Info, FstoreError> {
+fn what_is_dir(path: &PathBuf) -> Result<String, FstoreError> {
     #[derive(Deserialize)]
     struct DirData {
         desc: Option<String>,
@@ -337,7 +346,7 @@ fn what_is_dir(path: &PathBuf) -> Result<Info, FstoreError> {
     let desc = desc.unwrap_or(String::new());
     let mut tags = tags.unwrap_or(Vec::new());
     tags.extend(implicit_tags(path.file_name())); // Implicit tags of the directory.
-    Ok(Info { desc, tags })
+    return Ok(full_description(tags, desc));
 }
 
 pub(crate) fn get_relative_path(

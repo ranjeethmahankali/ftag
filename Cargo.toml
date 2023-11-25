@@ -23,3 +23,4 @@ ratatui = "0.24.0"
 strip = true  # Automatically strip symbols
 lto = true # Link time optimization.
 panic = "abort" # Don't unwind stack. Should never panic.
+codegen-units = 1

@@ -4,7 +4,7 @@ mod interactive;
 mod query;
 
 use crate::{
-    core::{get_all_tags, get_store_path, untracked_files, FstoreError, Info},
+    core::{get_all_tags, get_store_path, untracked_files, FstoreError},
     query::run_query,
 };
 use clap::{command, value_parser, Arg};
@@ -38,21 +38,7 @@ fn main() -> Result<(), FstoreError> {
                 let path = path
                     .canonicalize()
                     .map_err(|_| FstoreError::InvalidPath(path.clone()))?;
-                let Info { tags, desc } = core::what_is(&path)?;
-                let tagstr = {
-                    let mut tags = tags.into_iter();
-                    let first = tags.next().unwrap_or(String::new());
-                    tags.fold(first, |acc, t| format!("{}, {}", acc, t))
-                };
-                println!(
-                    "tags: [{}]{}",
-                    tagstr,
-                    if desc.is_empty() {
-                        desc
-                    } else {
-                        format!("\n\n{}", desc)
-                    }
-                );
+                println!("{}", core::what_is(&path)?);
                 return Ok(());
             }
             None => return Err(FstoreError::InvalidArgs),

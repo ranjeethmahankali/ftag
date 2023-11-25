@@ -7,7 +7,7 @@ use crate::{
 };
 use hashbrown::HashMap;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     if index >= flags.len() {
@@ -227,6 +227,7 @@ impl BoolTable {
 }
 
 pub(crate) struct DenseTagTable {
+    root: PathBuf,
     flags: BoolTable,
     files: Box<[String]>,
     tags: Box<[String]>,
@@ -236,7 +237,7 @@ pub(crate) struct DenseTagTable {
 impl DenseTagTable {
     pub fn from_dir(dirpath: PathBuf) -> Result<DenseTagTable, FstoreError> {
         let TagTable {
-            root: _root,
+            root,
             index_map: tag_indices,
             table: sparse,
         } = TagTable::from_dir(dirpath)?;
@@ -262,11 +263,16 @@ impl DenseTagTable {
             (files.into_boxed_slice(), dense)
         };
         Ok(DenseTagTable {
+            root,
             flags,
             files,
             tags,
             tag_indices,
         })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.root
     }
 
     pub fn flags(&self, row: usize) -> &[bool] {
