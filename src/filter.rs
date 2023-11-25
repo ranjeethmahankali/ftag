@@ -1,3 +1,5 @@
+use crate::query::safe_get_flag;
+
 #[derive(Debug)]
 pub(crate) enum FilterParseError {
     EmptyQuery,
@@ -7,7 +9,7 @@ pub(crate) enum FilterParseError {
     EndOfTokens,
 }
 
-pub(crate) trait TagData: std::fmt::Display + Clone {}
+pub(crate) trait TagData: std::fmt::Display + Clone + Default {}
 
 impl TagData for String {}
 
@@ -36,7 +38,11 @@ pub(crate) enum Filter<T: TagData> {
 }
 use Filter::*;
 
-use crate::query::safe_get_flag;
+impl<T: TagData> Default for Filter<T> {
+    fn default() -> Self {
+        Tag(T::default())
+    }
+}
 
 impl<T: TagData> Filter<T> {
     pub fn parse(input: &str, tagmaker: &impl TagMaker<T>) -> Result<Self, FilterParseError> {

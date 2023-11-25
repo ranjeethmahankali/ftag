@@ -16,14 +16,18 @@ use ratatui::{
     },
     Frame,
 };
-use std::{io::stdout, path::PathBuf};
+use std::{fmt::Display, io::stdout, path::PathBuf};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 enum State {
     Default,
+    Autocomplete,
     Exit,
 }
 use State::*;
 
+#[derive(EnumIter)]
 enum Command {
     Exit,
     Quit,
@@ -31,6 +35,19 @@ enum Command {
     Filter(Filter<usize>),
     WhatIs(PathBuf),
     Open(PathBuf),
+}
+
+impl Display for Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Command::Exit => write!(f, "exit"),
+            Command::Quit => write!(f, "quit"),
+            Command::Reset => write!(f, "reset"),
+            Command::Filter(_) => write!(f, "filter"),
+            Command::WhatIs(_) => write!(f, "whatis"),
+            Command::Open(_) => write!(f, "open"),
+        }
+    }
 }
 
 struct App {
@@ -48,6 +65,10 @@ struct App {
     scrollstate: ScrollbarState,
     frameheight: usize,
     file_index_width: u8,
+    // Autocomplete
+    command_completions: Box<[String]>,
+    suggestions: Vec<String>,
+    suggestion_index: usize,
 }
 
 fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
@@ -95,6 +116,9 @@ impl App {
             frameheight: 0,
             filtered_indices: (0..nfiles).collect(),
             file_index_width: count_digits(nfiles - 1),
+            command_completions: Command::iter().map(|c| format!("{}", c)).collect(),
+            suggestions: Vec::new(),
+            suggestion_index: 0,
         };
         App::update_file_list(
             &app.filtered_indices,
@@ -224,41 +248,133 @@ impl App {
         );
     }
 
+    fn last_word_start(&self) -> usize {
+        const DELIMS: &str = " ()&|!";
+        DELIMS
+            .chars()
+            .map(|ch| match self.command.rfind(ch) {
+                Some(val) => val + 1,
+                None => 0,
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
     fn process_input(&mut self) {
-        match self.parse_command() {
-            Ok(cmd) => match cmd {
-                Command::Exit | Command::Quit => self.state = Exit,
-                Command::WhatIs(path) => {
-                    self.echo = format!(
-                        "{}",
-                        what_is(&path).unwrap_or(String::from(
-                            "Unable to fetch the description of this file."
-                        ))
-                    );
+        match self.state {
+            Default => {
+                match self.parse_command() {
+                    Ok(cmd) => match cmd {
+                        Command::Exit | Command::Quit => self.state = Exit,
+                        Command::WhatIs(path) => {
+                            self.echo = format!(
+                                "{}",
+                                what_is(&path).unwrap_or(String::from(
+                                    "Unable to fetch the description of this file."
+                                ))
+                            );
+                        }
+                        Command::Filter(filter) => {
+                            self.filtered_indices.clear();
+                            self.filtered_indices.extend(
+                                (0..self.num_files())
+                                    .filter(|i| filter.eval_slice(self.table.flags(*i))),
+                            );
+                            self.update_lists();
+                            self.echo =
+                                format!("Filter: '{}'", filter.to_string(self.table.tags()));
+                            self.scroll = 0;
+                            self.scrollstate = self.scrollstate.content_length(self.taglist.len());
+                        }
+                        Command::Reset => self.reset(),
+                        Command::Open(path) => match opener::open(path) {
+                            Ok(_) => {} // Do nothing.
+                            Err(_) => self.echo = String::from("Unable to open the file."),
+                        },
+                    },
+                    Err(e) => self.echo = format!("{:?}", e),
                 }
-                Command::Filter(filter) => {
-                    self.filtered_indices.clear();
-                    self.filtered_indices.extend(
-                        (0..self.num_files()).filter(|i| filter.eval_slice(self.table.flags(*i))),
-                    );
-                    self.update_lists();
-                    self.echo = format!("Filter: '{}'", filter.to_string(self.table.tags()));
-                    self.scroll = 0;
-                    self.scrollstate = self.scrollstate.content_length(self.taglist.len());
-                }
-                Command::Reset => self.reset(),
-                Command::Open(path) => match opener::open(path) {
-                    Ok(_) => {} // Do nothing.
-                    Err(_) => self.echo = String::from("Unable to open the file."),
-                },
-            },
-            Err(e) => self.echo = format!("{:?}", e),
+                self.command.clear();
+            }
+            Autocomplete => {
+                self.command.truncate(self.last_word_start());
+                self.command
+                    .push_str(&self.suggestions[self.suggestion_index]);
+                self.state = Default;
+                self.echo.clear();
+            }
+            Exit => {} // Do nothing.
         }
-        self.command.clear();
     }
 
     fn can_scroll(&self) -> bool {
         self.taglist.len() + 1 > self.frameheight
+    }
+
+    fn show_suggestions(&mut self) {
+        self.echo.clear();
+        for (i, suggestion) in self.suggestions.iter().enumerate() {
+            if i == self.suggestion_index {
+                self.echo.push_str(&format!("[{}]", suggestion));
+            } else {
+                self.echo.push_str(&format!(" {} ", suggestion));
+            }
+        }
+    }
+
+    fn autocomplete(&mut self) {
+        let next_state = match self.state {
+            Default => {
+                self.suggestions.clear();
+                let start = self.last_word_start();
+                let word = &self.command[start..];
+                if start == 0 {
+                    // Complete commands.
+                    self.suggestions
+                        .extend(self.command_completions.iter().filter_map(|c| {
+                            if c.starts_with(word) {
+                                Some(c.to_string())
+                            } else {
+                                None
+                            }
+                        }));
+                } else if self.command.starts_with("filter ") {
+                    self.suggestions
+                        .extend(self.table.tags().iter().filter_map(|t| {
+                            if t.starts_with(word) {
+                                Some(t.to_string())
+                            } else {
+                                None
+                            }
+                        }));
+                }
+                self.suggestion_index = 0;
+                self.show_suggestions();
+                Autocomplete
+            }
+            Autocomplete if !self.suggestions.is_empty() => {
+                self.suggestion_index = (self.suggestion_index + 1) % self.suggestions.len();
+                self.show_suggestions();
+                Autocomplete
+            }
+            Autocomplete => Autocomplete,
+            Exit => Exit, // Do nothing.
+        };
+        self.state = next_state;
+    }
+
+    fn stop_autocomplete(&mut self) {
+        match &self.state {
+            Default => {}
+            // Do nothing.
+            Autocomplete => {
+                self.suggestions.clear();
+                self.suggestion_index = 0;
+                self.echo.clear();
+                self.state = Default;
+            }
+            Exit => {} // Do nothing.
+        }
     }
 
     fn keyevent(&mut self, evt: KeyEvent) {
@@ -266,26 +382,26 @@ impl App {
             KeyEventKind::Press | KeyEventKind::Repeat => match evt.code {
                 KeyCode::Char(c) => {
                     self.command.push(c);
+                    self.stop_autocomplete();
                 }
                 KeyCode::Backspace => {
                     self.command.pop();
+                    self.stop_autocomplete();
                 }
-                KeyCode::Enter => {
-                    self.process_input();
-                }
+                KeyCode::Enter => self.process_input(),
                 KeyCode::Esc => {
                     self.command.clear();
+                    self.stop_autocomplete();
                 }
                 KeyCode::Up if self.can_scroll() => {
                     self.scroll = self.scroll.saturating_sub(1);
                     self.scrollstate = self.scrollstate.position(self.scroll);
                 }
-                KeyCode::Down => {
-                    if self.can_scroll() {
-                        self.scroll = self.scroll.saturating_add(1);
-                        self.scrollstate = self.scrollstate.position(self.scroll);
-                    }
+                KeyCode::Down if self.can_scroll() => {
+                    self.scroll = self.scroll.saturating_add(1);
+                    self.scrollstate = self.scrollstate.position(self.scroll);
                 }
+                KeyCode::Tab => self.autocomplete(),
                 _ => {}
             },
             KeyEventKind::Release => {} // Do nothing.
