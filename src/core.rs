@@ -90,8 +90,8 @@ pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> {
         .map(|y| y.to_string())
 }
 
-pub(crate) fn glob_filter<'a>(pattern: &'a str) -> impl FnMut(&&'a OsString) -> bool {
-    let func = |fname: &&OsString| -> bool {
+pub(crate) fn glob_filter<'a>(pattern: &'a str) -> impl FnMut(&&'a OsStr) -> bool {
+    let func = |fname: &&OsStr| -> bool {
         if let Some(fname) = fname.to_str() {
             return glob_match(pattern, fname);
         }
@@ -100,9 +100,34 @@ pub(crate) fn glob_filter<'a>(pattern: &'a str) -> impl FnMut(&&'a OsString) -> 
     return func;
 }
 
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub(crate) enum DirEntryType {
     File,
     Dir,
+}
+
+impl PartialOrd for DirEntryType {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use std::cmp::Ordering::*;
+        match (self, other) {
+            (DirEntryType::File, DirEntryType::File) => Some(Equal),
+            (DirEntryType::File, DirEntryType::Dir) => Some(Greater),
+            (DirEntryType::Dir, DirEntryType::File) => Some(Less),
+            (DirEntryType::Dir, DirEntryType::Dir) => Some(Equal),
+        }
+    }
+}
+
+impl Ord for DirEntryType {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering::*;
+        match (self, other) {
+            (DirEntryType::File, DirEntryType::File) => Equal,
+            (DirEntryType::File, DirEntryType::Dir) => Greater,
+            (DirEntryType::Dir, DirEntryType::File) => Less,
+            (DirEntryType::Dir, DirEntryType::Dir) => Equal,
+        }
+    }
 }
 
 pub(crate) struct DirEntry {
@@ -111,11 +136,10 @@ pub(crate) struct DirEntry {
     name: OsString,
 }
 
-pub(crate) fn get_filenames<'a>(entries: &'a [DirEntry]) -> impl Iterator<Item = &'a OsString> {
-    entries.iter().filter_map(|entry| match entry.entry_type {
-        DirEntryType::File => Some(&entry.name),
-        DirEntryType::Dir => None,
-    })
+impl DirEntry {
+    pub fn name(&self) -> &OsStr {
+        &self.name
+    }
 }
 
 pub(crate) struct WalkDirectories {
@@ -159,6 +183,7 @@ impl WalkDirectories {
                     self.cur_path.push(name);
                     self.cur_depth += 1;
                     // Push all children.
+                    let mut numfiles = 0;
                     let before = self.stack.len();
                     if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
                         for entry in entries {
@@ -181,6 +206,7 @@ impl WalkDirectories {
                                                 entry_type: DirEntryType::File,
                                                 name: cname,
                                             });
+                                            numfiles += 1;
                                         }
                                     }
                                     Err(_) => continue,
@@ -189,11 +215,10 @@ impl WalkDirectories {
                         }
                     }
                     self.num_children = self.stack.len() - before;
-                    return Some((
-                        depth,
-                        &self.cur_path,
-                        &self.stack[(self.stack.len() - self.num_children)..],
-                    ));
+                    let children = &mut self.stack[before..];
+                    children.sort_by_key(|d| d.entry_type);
+                    let children = &self.stack[(self.stack.len() - numfiles)..];
+                    return Some((depth, &self.cur_path, children));
                 }
             }
         }
@@ -287,7 +312,12 @@ pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
         };
         if let Some(mut files) = files {
             for pattern in files.drain(..).map(|f| f.path) {
-                if let None = get_filenames(children).filter(glob_filter(&pattern)).next() {
+                if let None = children
+                    .iter()
+                    .map(|c| c.name())
+                    .filter(glob_filter(&pattern))
+                    .next()
+                {
                     // Glob didn't match with any file.
                     eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
                     success = false;
@@ -383,11 +413,7 @@ fn what_is_dir(path: &PathBuf) -> Result<String, FstoreError> {
     return Ok(full_description(tags, desc));
 }
 
-pub(crate) fn get_relative_path(
-    dirpath: &Path,
-    filename: &OsString,
-    root: &Path,
-) -> Option<PathBuf> {
+pub(crate) fn get_relative_path(dirpath: &Path, filename: &OsStr, root: &Path) -> Option<PathBuf> {
     match dirpath.strip_prefix(root) {
         Ok(path) => {
             let mut path = PathBuf::from(path);
@@ -412,25 +438,28 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError
                 // Store file doesn't exist so everything is untracked.
                 None => {
                     untracked.extend(
-                        get_filenames(children)
-                            .filter_map(|f| get_relative_path(&dirpath, f, &root)),
+                        children
+                            .iter()
+                            .filter_map(|f| get_relative_path(&dirpath, &f.name, &root)),
                     );
                     continue;
                 }
             }
         };
         if let Some(patterns) = files {
-            untracked.extend(get_filenames(children).filter_map(|fname| {
-                let fnamestr = fname.to_str()?;
+            untracked.extend(children.iter().filter_map(|child| {
+                let fnamestr = child.name.to_str()?;
                 if patterns.iter().any(|p| glob_match(&p.path, fnamestr)) {
                     None
                 } else {
-                    get_relative_path(&dirpath, fname, &root)
+                    get_relative_path(&dirpath, &child.name, &root)
                 }
             }));
         } else {
             untracked.extend(
-                get_filenames(children).filter_map(|f| get_relative_path(&dirpath, f, &root)),
+                children
+                    .iter()
+                    .filter_map(|child| get_relative_path(&dirpath, &child.name, &root)),
             );
         }
     }

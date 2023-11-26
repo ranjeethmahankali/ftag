@@ -1,7 +1,7 @@
 use crate::{
     core::{
-        get_filenames, get_relative_path, get_store_path, glob_filter, read_store_file, DirData,
-        FileData, FstoreError, WalkDirectories,
+        get_relative_path, get_store_path, glob_filter, read_store_file, DirData, FileData,
+        FstoreError, WalkDirectories,
     },
     filter::{Filter, TagMaker},
 };
@@ -112,7 +112,9 @@ impl TagTable {
                     tags,
                 } in files
                 {
-                    for fpath in get_filenames(children)
+                    for fpath in children
+                        .iter()
+                        .map(|c| c.name())
                         .filter(glob_filter(&pattern))
                         .filter_map(|fname| get_relative_path(&curpath, fname, &rootdir))
                     {
