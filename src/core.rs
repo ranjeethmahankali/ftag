@@ -1,12 +1,13 @@
-use crate::filter::FilterParseError;
-use glob_match::glob_match;
-use serde::{de::DeserializeOwned, Deserialize};
+use crate::{
+    filter::FilterParseError,
+    load::{
+        get_store_path, implicit_tags_os_str, implicit_tags_str, DirData, FileData,
+        FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
+    },
+    walk::WalkDirectories,
+};
 use std::{
-    ffi::{OsStr, OsString},
-    fs::File,
-    io::BufReader,
-    ops::Range,
-    os::unix::prelude::OsStrExt,
+    ffi::OsStr,
     path::{Path, PathBuf},
 };
 
@@ -28,220 +29,39 @@ pub(crate) enum FstoreError {
     TagInheritanceFailed,
 }
 
-pub(crate) fn implicit_tags(name: Option<&OsStr>) -> impl Iterator<Item = String> {
-    fn infer_year_range(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
-        use nom::{
-            bytes::complete::{tag, take_while_m_n},
-            character::is_digit,
-            error::Error,
-            IResult, ParseTo,
-        };
-        let name: &OsStr = match nameopt {
-            Some(val) => val,
-            None => return None,
-        };
-        let mut input = name.as_bytes();
-        type Result<'a> = IResult<&'a [u8], &'a [u8], Error<&'a [u8]>>;
-        let result: Result = take_while_m_n(4, 4, is_digit)(input);
-        let first: u16 = match result {
-            Ok((i, o)) if o.len() > 3 => {
-                input = i;
-                o.parse_to()?
-            }
-            _ => return None,
-        };
-        let result: Result = tag("_")(input);
-        match result {
-            Ok((i, _o)) => input = i,
-            Err(_) => return Some(first..(first + 1)),
-        }
-        let result: Result = take_while_m_n(4, 4, is_digit)(input);
-        if let Ok((_i, o)) = result {
-            let second: u16 = o.parse_to().unwrap_or(first);
-            return Some(first..(second + 1));
-        }
-        let result: Result = tag("to_")(input);
-        match result {
-            Ok((i, _o)) => input = i,
-            Err(_) => return Some(first..(first + 1)),
-        }
-        let result: Result = take_while_m_n(4, 4, is_digit)(input);
-        if let Ok((_i, o)) = result {
-            let second: u16 = o.parse_to().unwrap_or(first);
-            return Some(first..(second + 1));
-        }
-        return None;
-    }
-    return infer_year_range(name)
-        .unwrap_or(0..0)
-        .map(|y| y.to_string());
-}
-
-pub(crate) fn glob_filter<'a>(pattern: &'a str) -> impl FnMut(&&'a OsString) -> bool {
-    let func = |fname: &&OsString| -> bool {
-        if let Some(fname) = fname.to_str() {
-            return glob_match(pattern, fname);
-        }
-        return false;
-    };
-    return func;
-}
-
-pub(crate) enum DirEntryType {
-    File,
-    Dir,
-}
-
-pub(crate) struct DirEntry {
-    depth: usize,
-    entry_type: DirEntryType,
-    name: OsString,
-}
-
-pub(crate) fn get_filenames<'a>(entries: &'a [DirEntry]) -> impl Iterator<Item = &'a OsString> {
-    entries.iter().filter_map(|entry| match entry.entry_type {
-        DirEntryType::File => Some(&entry.name),
-        DirEntryType::Dir => None,
-    })
-}
-
-pub(crate) struct WalkDirectories {
-    cur_path: PathBuf,
-    stack: Vec<DirEntry>,
-    cur_depth: usize,
-    num_children: usize,
-}
-
-impl WalkDirectories {
-    pub fn from(dirpath: PathBuf) -> Result<Self, FstoreError> {
-        if !dirpath.is_dir() {
-            return Err(FstoreError::InvalidPath(dirpath));
-        }
-        Ok(WalkDirectories {
-            cur_path: dirpath,
-            stack: vec![DirEntry {
-                depth: 1,
-                entry_type: DirEntryType::Dir,
-                name: OsString::from(""),
-            }],
-            cur_depth: 0,
-            num_children: 0,
-        })
-    }
-
-    pub(crate) fn next<'a>(&'a mut self) -> Option<(usize, &'a Path, &'a [DirEntry])> {
-        while let Some(DirEntry {
-            depth,
-            entry_type,
-            name,
-        }) = self.stack.pop()
-        {
-            match entry_type {
-                DirEntryType::File => continue,
-                DirEntryType::Dir => {
-                    while self.cur_depth > depth - 1 {
-                        self.cur_path.pop();
-                        self.cur_depth -= 1;
-                    }
-                    self.cur_path.push(name);
-                    self.cur_depth += 1;
-                    // Push all children.
-                    let before = self.stack.len();
-                    if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
-                        for entry in entries {
-                            if let Ok(child) = entry {
-                                let cname = child.file_name();
-                                if cname.to_str().unwrap_or("") == FSTORE {
-                                    continue;
-                                }
-                                match child.file_type() {
-                                    Ok(ctype) => {
-                                        if ctype.is_dir() {
-                                            self.stack.push(DirEntry {
-                                                depth: depth + 1,
-                                                entry_type: DirEntryType::Dir,
-                                                name: cname,
-                                            });
-                                        } else if ctype.is_file() {
-                                            self.stack.push(DirEntry {
-                                                depth: depth + 1,
-                                                entry_type: DirEntryType::File,
-                                                name: cname,
-                                            });
-                                        }
-                                    }
-                                    Err(_) => continue,
-                                }
-                            }
-                        }
-                    }
-                    self.num_children = self.stack.len() - before;
-                    return Some((
-                        depth,
-                        &self.cur_path,
-                        &self.stack[(self.stack.len() - self.num_children)..],
-                    ));
-                }
-            }
-        }
-        return None;
-    }
-}
-
-pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
-    let mut out = if path.exists() {
-        if path.is_dir() {
-            PathBuf::from(path)
-        } else {
-            let mut out = PathBuf::from(path);
-            out.pop();
-            out
-        }
-    } else {
-        return None;
-    };
-    out.push(FSTORE);
-    if MUST_EXIST && !out.exists() {
-        None
-    } else {
-        Some(out)
-    }
-}
-
-pub(crate) fn read_store_file<T: DeserializeOwned>(storefile: PathBuf) -> Result<T, FstoreError> {
-    let data = serde_yaml::from_reader(BufReader::new(
-        File::open(&storefile).map_err(|_| FstoreError::CannotReadStoreFile(storefile.clone()))?,
-    ))
-    .map_err(|e| FstoreError::CannotParseYaml(format!("{:?}\n{:?}", storefile, e)))?;
-    return Ok(data);
-}
-
 pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
-    #[derive(Deserialize)]
-    struct FileData {
-        path: String,
-    }
-    #[derive(Deserialize)]
-    struct DirData {
-        files: Option<Vec<FileData>>,
-    }
     let mut success = true;
     let mut walker = WalkDirectories::from(path)?;
+    let mut matcher = GlobMatches::new();
+    let mut loader = Loader::new(LoaderOptions::new(
+        false,
+        false,
+        FileLoadingOptions::Load {
+            file_tags: false,
+            file_desc: false,
+        },
+    ));
     while let Some((_depth, dirpath, children)) = walker.next() {
-        let DirData { files } = {
+        let DirData {
+            files,
+            desc: _,
+            tags: _,
+        } = {
             match get_store_path::<true>(&dirpath) {
-                Some(path) => read_store_file(path)?,
+                Some(path) => loader.load(&path)?,
                 None => continue,
             }
         };
-        if let Some(mut files) = files {
-            for pattern in files.drain(..).map(|f| f.path) {
-                if let None = get_filenames(children).filter(glob_filter(&pattern)).next() {
-                    // Glob didn't match with any file.
-                    eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
-                    success = false;
-                }
+        matcher.find_matches(children, &files, true);
+        for pattern in files.iter().enumerate().filter_map(|(i, f)| {
+            if !matcher.is_glob_matched(i) {
+                Some(&f.path)
+            } else {
+                None
             }
+        }) {
+            eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
+            success = false;
         }
     }
     if success {
@@ -280,49 +100,46 @@ pub(crate) fn what_is(path: &PathBuf) -> Result<String, FstoreError> {
 }
 
 fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
-    #[derive(Deserialize)]
-    struct FileData {
-        path: String,
-        desc: Option<String>,
-        tags: Option<Vec<String>>,
-    }
-    #[derive(Deserialize)]
-    struct DirData {
-        desc: Option<String>,
-        tags: Option<Vec<String>>,
-        files: Option<Vec<FileData>>,
-    }
+    use glob_match::glob_match;
+    let mut loader = Loader::new(LoaderOptions::new(
+        true,
+        true,
+        FileLoadingOptions::Load {
+            file_tags: true,
+            file_desc: true,
+        },
+    ));
     let DirData { desc, tags, files } = {
         match get_store_path::<true>(path) {
-            Some(storepath) => read_store_file(storepath)?,
+            Some(storepath) => loader.load(&storepath)?,
             None => return Err(FstoreError::InvalidPath(path.clone())),
         }
     };
-    let mut outdesc = desc.unwrap_or(String::new());
-    let mut outtags = tags.unwrap_or(Vec::new());
+    let mut outdesc = desc.unwrap_or("").to_string();
+    let mut outtags = tags.iter().map(|t| t.to_string()).collect::<Vec<_>>();
     if let Some(parent) = path.parent() {
-        outtags.extend(implicit_tags(parent.file_name())); // Implicit tags of the parent directory.
+        outtags.extend(implicit_tags_os_str(parent.file_name()));
     }
-    outtags.extend(implicit_tags(path.file_name())); // Implicit tags of the file.
     let filenamestr = path
         .file_name()
         .ok_or(FstoreError::InvalidPath(path.clone()))?
         .to_str()
         .ok_or(FstoreError::InvalidPath(path.clone()))?;
-    if let Some(files) = files {
-        for FileData {
-            path: pattern,
-            desc: fdesc,
-            tags: ftags,
-        } in files
-        {
-            if glob_match(&pattern, filenamestr) {
-                if let Some(ftags) = ftags {
-                    outtags.extend(ftags.into_iter());
-                }
-                if let Some(fdesc) = fdesc {
-                    outdesc = format!("{}\n{}", fdesc, outdesc);
-                }
+    for FileData {
+        path: pattern,
+        desc: fdesc,
+        tags: ftags,
+    } in files
+    {
+        if glob_match(&pattern, filenamestr) {
+            outtags.extend(
+                ftags
+                    .iter()
+                    .map(|t| t.to_string())
+                    .chain(implicit_tags_str(filenamestr)),
+            );
+            if let Some(fdesc) = fdesc {
+                outdesc = format!("{}\n{}", fdesc, outdesc);
             }
         }
     }
@@ -333,28 +150,27 @@ fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
 }
 
 fn what_is_dir(path: &PathBuf) -> Result<String, FstoreError> {
-    #[derive(Deserialize)]
-    struct DirData {
-        desc: Option<String>,
-        tags: Option<Vec<String>>,
-    }
-    let DirData { desc, tags } = {
+    let mut loader = Loader::new(LoaderOptions::new(true, true, FileLoadingOptions::Skip));
+    let DirData {
+        desc,
+        tags,
+        files: _,
+    } = {
         match get_store_path::<true>(path) {
-            Some(storepath) => read_store_file(storepath)?,
+            Some(storepath) => loader.load(&storepath)?,
             None => return Err(FstoreError::InvalidPath(path.clone())),
         }
     };
-    let desc = desc.unwrap_or(String::new());
-    let mut tags = tags.unwrap_or(Vec::new());
-    tags.extend(implicit_tags(path.file_name())); // Implicit tags of the directory.
+    let desc = desc.unwrap_or("").to_string();
+    let tags = tags
+        .iter()
+        .map(|t| t.to_string())
+        .chain(implicit_tags_os_str(path.file_name()))
+        .collect::<Vec<_>>();
     return Ok(full_description(tags, desc));
 }
 
-pub(crate) fn get_relative_path(
-    dirpath: &Path,
-    filename: &OsString,
-    root: &Path,
-) -> Option<PathBuf> {
+pub(crate) fn get_relative_path(dirpath: &Path, filename: &OsStr, root: &Path) -> Option<PathBuf> {
     match dirpath.strip_prefix(root) {
         Ok(path) => {
             let mut path = PathBuf::from(path);
@@ -366,106 +182,86 @@ pub(crate) fn get_relative_path(
 }
 
 pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
-    #[derive(Deserialize)]
-    struct FileData {
-        path: String,
-    }
-    #[derive(Deserialize)]
-    struct DirData {
-        files: Option<Vec<FileData>>,
-    }
+    use glob_match::glob_match;
     let mut walker = WalkDirectories::from(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
+    let mut loader = Loader::new(LoaderOptions::new(
+        false,
+        false,
+        FileLoadingOptions::Load {
+            file_tags: false,
+            file_desc: false,
+        },
+    ));
     while let Some((_depth, dirpath, children)) = walker.next() {
-        let DirData { files } = {
+        let DirData {
+            files: patterns,
+            desc: _,
+            tags: _,
+        }: DirData = {
             match get_store_path::<true>(&dirpath) {
-                Some(path) => read_store_file(path)?,
+                Some(path) => loader.load(&path)?,
                 // Store file doesn't exist so everything is untracked.
                 None => {
                     untracked.extend(
-                        get_filenames(children)
-                            .filter_map(|f| get_relative_path(&dirpath, f, &root)),
+                        children
+                            .iter()
+                            .filter_map(|f| get_relative_path(&dirpath, &f.name(), &root)),
                     );
                     continue;
                 }
             }
         };
-        if let Some(patterns) = files {
-            untracked.extend(get_filenames(children).filter_map(|fname| {
-                let fnamestr = fname.to_str()?;
-                if patterns.iter().any(|p| glob_match(&p.path, fnamestr)) {
-                    None
-                } else {
-                    get_relative_path(&dirpath, fname, &root)
-                }
-            }));
-        } else {
-            untracked.extend(
-                get_filenames(children).filter_map(|f| get_relative_path(&dirpath, f, &root)),
-            );
-        }
+        untracked.extend(children.iter().filter_map(|child| {
+            let fnamestr = child.name().to_str()?;
+            if patterns.iter().any(|p| glob_match(&p.path, fnamestr)) {
+                None
+            } else {
+                get_relative_path(&dirpath, &child.name(), &root)
+            }
+        }));
     }
     return Ok(untracked);
 }
 
 pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
-    #[derive(Deserialize)]
-    struct FileData {
-        path: PathBuf,
-        tags: Option<Vec<String>>,
-    }
-    #[derive(Deserialize)]
-    struct DirData {
-        tags: Option<Vec<String>>,
-        files: Option<Vec<FileData>>,
-    }
     let mut alltags: Vec<String> = Vec::new();
     let mut walker = WalkDirectories::from(path)?;
+    let mut loader = Loader::new(LoaderOptions::new(
+        true,
+        false,
+        FileLoadingOptions::Load {
+            file_tags: true,
+            file_desc: false,
+        },
+    ));
     while let Some((_depth, dirpath, _filenames)) = walker.next() {
-        let DirData { tags, files } = {
+        let DirData {
+            mut tags,
+            mut files,
+            desc: _,
+        } = {
             match get_store_path::<true>(&dirpath) {
-                Some(path) => read_store_file(path)?,
+                Some(path) => loader.load(&path)?,
                 None => continue,
             }
         };
-        if let Some(mut tags) = tags {
-            alltags.extend(tags.drain(..));
-        }
-        alltags.extend(implicit_tags(dirpath.file_name())); // Implicit tags of the directory.
-        if let Some(mut files) = files {
-            for fdata in files.drain(..) {
-                alltags.extend(implicit_tags(fdata.path.file_name()));
-                if let Some(mut ftags) = fdata.tags {
-                    alltags.extend(ftags.drain(..));
-                }
-            }
+        alltags.extend(
+            tags.drain(..)
+                .map(|t| t.to_string())
+                .chain(implicit_tags_os_str(dirpath.file_name())),
+        );
+        for mut fdata in files.drain(..) {
+            alltags.extend(
+                fdata
+                    .tags
+                    .drain(..)
+                    .map(|t| t.to_string())
+                    .chain(implicit_tags_str(fdata.path)),
+            );
         }
     }
     alltags.sort();
     alltags.dedup();
     return Ok(alltags);
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn t_infer_year_range() {
-        let inputs = vec![OsString::from("2021_to_2023"), OsString::from("2021_2023")];
-        let expected = vec!["2021", "2022", "2023"];
-        for input in inputs {
-            let actual: Vec<_> = implicit_tags(Some(&input)).collect();
-            assert_eq!(actual, expected);
-        }
-        let inputs = vec![
-            OsString::from("1998_MyDirectory"),
-            OsString::from("1998_MyFile.pdf"),
-        ];
-        let expected = vec!["1998"];
-        for input in inputs {
-            let actual: Vec<_> = implicit_tags(Some(&input)).collect();
-            assert_eq!(actual, expected);
-        }
-    }
 }

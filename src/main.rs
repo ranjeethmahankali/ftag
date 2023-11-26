@@ -2,13 +2,16 @@ mod core;
 mod filter;
 mod interactive;
 mod query;
+mod load;
+mod walk;
 
 use crate::{
-    core::{get_all_tags, get_store_path, untracked_files, FstoreError},
+    core::{get_all_tags, untracked_files, FstoreError},
     query::run_query,
 };
 use clap::{command, value_parser, Arg};
 use query::DenseTagTable;
+use load::get_store_path;
 use std::path::PathBuf;
 
 fn main() -> Result<(), FstoreError> {
