@@ -2,7 +2,7 @@ mod core;
 mod filter;
 mod interactive;
 mod query;
-mod read;
+mod load;
 mod walk;
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 };
 use clap::{command, value_parser, Arg};
 use query::DenseTagTable;
-use read::get_store_path;
+use load::get_store_path;
 use std::path::PathBuf;
 
 fn main() -> Result<(), FstoreError> {

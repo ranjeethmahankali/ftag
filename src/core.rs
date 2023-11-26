@@ -1,6 +1,9 @@
 use crate::{
     filter::FilterParseError,
-    read::{get_store_path, read_store_file, DirData, FileData, GlobMatches},
+    load::{
+        get_store_path, implicit_tags_os_str, implicit_tags_str, DirData, FileData,
+        FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
+    },
     walk::WalkDirectories,
 };
 use std::{
@@ -30,6 +33,14 @@ pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
     let mut success = true;
     let mut walker = WalkDirectories::from(path)?;
     let mut matcher = GlobMatches::new();
+    let mut loader = Loader::new(LoaderOptions::new(
+        false,
+        false,
+        FileLoadingOptions::Load {
+            file_tags: false,
+            file_desc: false,
+        },
+    ));
     while let Some((_depth, dirpath, children)) = walker.next() {
         let DirData {
             files,
@@ -37,22 +48,20 @@ pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
             tags: _,
         } = {
             match get_store_path::<true>(&dirpath) {
-                Some(path) => read_store_file(path)?,
+                Some(path) => loader.load(&path)?,
                 None => continue,
             }
         };
-        if let Some(files) = files {
-            matcher.find_matches(children, &files, true);
-            for pattern in files.iter().enumerate().filter_map(|(i, f)| {
-                if !matcher.is_glob_matched(i) {
-                    Some(&f.path)
-                } else {
-                    None
-                }
-            }) {
-                eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
-                success = false;
+        matcher.find_matches(children, &files, true);
+        for pattern in files.iter().enumerate().filter_map(|(i, f)| {
+            if !matcher.is_glob_matched(i) {
+                Some(&f.path)
+            } else {
+                None
             }
+        }) {
+            eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
+            success = false;
         }
     }
     if success {
@@ -92,33 +101,45 @@ pub(crate) fn what_is(path: &PathBuf) -> Result<String, FstoreError> {
 
 fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
     use glob_match::glob_match;
+    let mut loader = Loader::new(LoaderOptions::new(
+        true,
+        true,
+        FileLoadingOptions::Load {
+            file_tags: true,
+            file_desc: true,
+        },
+    ));
     let DirData { desc, tags, files } = {
         match get_store_path::<true>(path) {
-            Some(storepath) => read_store_file(storepath)?,
+            Some(storepath) => loader.load(&storepath)?,
             None => return Err(FstoreError::InvalidPath(path.clone())),
         }
     };
-    let mut outdesc = desc.unwrap_or(String::new());
-    let mut outtags = tags.unwrap_or(Vec::new());
+    let mut outdesc = desc.unwrap_or("").to_string();
+    let mut outtags = tags.iter().map(|t| t.to_string()).collect::<Vec<_>>();
+    if let Some(parent) = path.parent() {
+        outtags.extend(implicit_tags_os_str(parent.file_name()));
+    }
     let filenamestr = path
         .file_name()
         .ok_or(FstoreError::InvalidPath(path.clone()))?
         .to_str()
         .ok_or(FstoreError::InvalidPath(path.clone()))?;
-    if let Some(files) = files {
-        for FileData {
-            path: pattern,
-            desc: fdesc,
-            tags: ftags,
-        } in files
-        {
-            if glob_match(&pattern, filenamestr) {
-                if let Some(ftags) = ftags {
-                    outtags.extend(ftags.into_iter());
-                }
-                if let Some(fdesc) = fdesc {
-                    outdesc = format!("{}\n{}", fdesc, outdesc);
-                }
+    for FileData {
+        path: pattern,
+        desc: fdesc,
+        tags: ftags,
+    } in files
+    {
+        if glob_match(&pattern, filenamestr) {
+            outtags.extend(
+                ftags
+                    .iter()
+                    .map(|t| t.to_string())
+                    .chain(implicit_tags_str(filenamestr)),
+            );
+            if let Some(fdesc) = fdesc {
+                outdesc = format!("{}\n{}", fdesc, outdesc);
             }
         }
     }
@@ -129,18 +150,23 @@ fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
 }
 
 fn what_is_dir(path: &PathBuf) -> Result<String, FstoreError> {
+    let mut loader = Loader::new(LoaderOptions::new(true, true, FileLoadingOptions::Skip));
     let DirData {
         desc,
         tags,
         files: _,
     } = {
         match get_store_path::<true>(path) {
-            Some(storepath) => read_store_file(storepath)?,
+            Some(storepath) => loader.load(&storepath)?,
             None => return Err(FstoreError::InvalidPath(path.clone())),
         }
     };
-    let desc = desc.unwrap_or(String::new());
-    let tags = tags.unwrap_or(Vec::new());
+    let desc = desc.unwrap_or("").to_string();
+    let tags = tags
+        .iter()
+        .map(|t| t.to_string())
+        .chain(implicit_tags_os_str(path.file_name()))
+        .collect::<Vec<_>>();
     return Ok(full_description(tags, desc));
 }
 
@@ -159,14 +185,22 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError
     use glob_match::glob_match;
     let mut walker = WalkDirectories::from(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
+    let mut loader = Loader::new(LoaderOptions::new(
+        false,
+        false,
+        FileLoadingOptions::Load {
+            file_tags: false,
+            file_desc: false,
+        },
+    ));
     while let Some((_depth, dirpath, children)) = walker.next() {
         let DirData {
-            files,
+            files: patterns,
             desc: _,
             tags: _,
         }: DirData = {
             match get_store_path::<true>(&dirpath) {
-                Some(path) => read_store_file(path)?,
+                Some(path) => loader.load(&path)?,
                 // Store file doesn't exist so everything is untracked.
                 None => {
                     untracked.extend(
@@ -178,22 +212,14 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError
                 }
             }
         };
-        if let Some(patterns) = files {
-            untracked.extend(children.iter().filter_map(|child| {
-                let fnamestr = child.name().to_str()?;
-                if patterns.iter().any(|p| glob_match(&p.path, fnamestr)) {
-                    None
-                } else {
-                    get_relative_path(&dirpath, &child.name(), &root)
-                }
-            }));
-        } else {
-            untracked.extend(
-                children
-                    .iter()
-                    .filter_map(|child| get_relative_path(&dirpath, &child.name(), &root)),
-            );
-        }
+        untracked.extend(children.iter().filter_map(|child| {
+            let fnamestr = child.name().to_str()?;
+            if patterns.iter().any(|p| glob_match(&p.path, fnamestr)) {
+                None
+            } else {
+                get_relative_path(&dirpath, &child.name(), &root)
+            }
+        }));
     }
     return Ok(untracked);
 }
@@ -201,26 +227,38 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError
 pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
     let mut alltags: Vec<String> = Vec::new();
     let mut walker = WalkDirectories::from(path)?;
+    let mut loader = Loader::new(LoaderOptions::new(
+        true,
+        false,
+        FileLoadingOptions::Load {
+            file_tags: true,
+            file_desc: false,
+        },
+    ));
     while let Some((_depth, dirpath, _filenames)) = walker.next() {
         let DirData {
-            tags,
-            files,
+            mut tags,
+            mut files,
             desc: _,
         } = {
             match get_store_path::<true>(&dirpath) {
-                Some(path) => read_store_file(path)?,
+                Some(path) => loader.load(&path)?,
                 None => continue,
             }
         };
-        if let Some(mut tags) = tags {
-            alltags.extend(tags.drain(..));
-        }
-        if let Some(mut files) = files {
-            for fdata in files.drain(..) {
-                if let Some(mut ftags) = fdata.tags {
-                    alltags.extend(ftags.drain(..));
-                }
-            }
+        alltags.extend(
+            tags.drain(..)
+                .map(|t| t.to_string())
+                .chain(implicit_tags_os_str(dirpath.file_name())),
+        );
+        for mut fdata in files.drain(..) {
+            alltags.extend(
+                fdata
+                    .tags
+                    .drain(..)
+                    .map(|t| t.to_string())
+                    .chain(implicit_tags_str(fdata.path)),
+            );
         }
     }
     alltags.sort();

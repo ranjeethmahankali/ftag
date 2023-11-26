@@ -1,0 +1,387 @@
+use glob_match::glob_match;
+use std::{
+    ffi::OsStr,
+    fs::File,
+    io::Read,
+    ops::Range,
+    path::{Path, PathBuf},
+};
+
+use crate::{
+    core::{FstoreError, FSTORE},
+    walk::DirEntry,
+};
+
+fn infer_year_range_bytes(mut input: &[u8]) -> Option<Range<u16>> {
+    use nom::{
+        bytes::complete::{tag, take_while_m_n},
+        character::is_digit,
+        error::Error,
+        IResult, ParseTo,
+    };
+    type Result<'a> = IResult<&'a [u8], &'a [u8], Error<&'a [u8]>>;
+    let result: Result = take_while_m_n(4, 4, is_digit)(input);
+    let first: u16 = match result {
+        Ok((i, o)) if o.len() > 3 => {
+            input = i;
+            o.parse_to()?
+        }
+        _ => return None,
+    };
+    let result: Result = tag("_")(input);
+    match result {
+        Ok((i, _o)) => input = i,
+        Err(_) => return Some(first..(first + 1)),
+    }
+    let result: Result = take_while_m_n(4, 4, is_digit)(input);
+    if let Ok((_i, o)) = result {
+        let second: u16 = o.parse_to().unwrap_or(first);
+        return Some(first..(second + 1));
+    }
+    let result: Result = tag("to_")(input);
+    match result {
+        Ok((i, _o)) => input = i,
+        Err(_) => return Some(first..(first + 1)),
+    }
+    let result: Result = take_while_m_n(4, 4, is_digit)(input);
+    if let Ok((_i, o)) = result {
+        let second: u16 = o.parse_to().unwrap_or(first);
+        return Some(first..(second + 1));
+    }
+    return None;
+}
+
+fn infer_year_range_os_str(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
+    match nameopt {
+        Some(val) => infer_year_range_bytes(val.as_encoded_bytes()),
+        None => None,
+    }
+}
+
+fn infer_year_range_str(name: &str) -> Option<Range<u16>> {
+    return infer_year_range_bytes(name.as_bytes());
+}
+
+pub(crate) fn implicit_tags_os_str(name: Option<&OsStr>) -> impl Iterator<Item = String> {
+    infer_year_range_os_str(name)
+        .unwrap_or(0..0)
+        .map(|y| y.to_string())
+}
+
+pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> {
+    infer_year_range_str(name)
+        .unwrap_or(0..0)
+        .map(|y| y.to_string())
+}
+
+pub(crate) struct GlobMatches {
+    table: Vec<bool>,
+    glob_matches: Vec<Option<usize>>, // Direct map from glob to file.
+    num_files: usize,
+    num_globs: usize,
+}
+
+impl GlobMatches {
+    pub fn new() -> GlobMatches {
+        GlobMatches {
+            table: Vec::new(),
+            glob_matches: Vec::new(),
+            num_files: 0,
+            num_globs: 0,
+        }
+    }
+    fn row(&self, gi: usize) -> &[bool] {
+        let start = gi * self.num_files;
+        &self.table[start..(start + self.num_files)]
+    }
+
+    fn row_and_match(&mut self, gi: usize) -> (&mut [bool], &mut Option<usize>) {
+        let start = gi * self.num_files;
+        (
+            &mut self.table[start..(start + self.num_files)],
+            &mut self.glob_matches[gi],
+        )
+    }
+
+    pub fn find_matches(&mut self, files: &[DirEntry], globs: &[FileData], short_circuit: bool) {
+        self.num_files = files.len();
+        self.num_globs = globs.len();
+        self.table.clear();
+        self.table.resize(files.len() * globs.len(), false);
+        self.glob_matches.clear();
+        self.glob_matches.resize(globs.len(), None);
+        // Find perfect matches.
+        for (gi, g) in globs.iter().enumerate() {
+            let (row, gmatch) = self.row_and_match(gi);
+            for (fi, f) in files.iter().enumerate() {
+                if let Some(fstr) = f.name().to_str() {
+                    if g.path == fstr {
+                        row[fi] = true;
+                        *gmatch = Some(fi);
+                        break;
+                    }
+                }
+            }
+            if gmatch.is_some() {
+                continue;
+            }
+            for (fi, f) in files.iter().enumerate() {
+                if let Some(fstr) = f.name().to_str() {
+                    if glob_match(&g.path, fstr) {
+                        row[fi] = true;
+                        if short_circuit {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn matched_globs<'a>(&'a self, file_index: usize) -> impl Iterator<Item = usize> + 'a {
+        (0..self.num_globs).filter(move |gi| self.row(*gi)[file_index])
+    }
+
+    pub fn is_glob_matched(&self, glob_index: usize) -> bool {
+        self.row(glob_index).iter().any(|m| *m)
+    }
+}
+
+pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
+    let mut out = if path.exists() {
+        if path.is_dir() {
+            PathBuf::from(path)
+        } else {
+            let mut out = PathBuf::from(path);
+            out.pop();
+            out
+        }
+    } else {
+        return None;
+    };
+    out.push(FSTORE);
+    if MUST_EXIST && !out.exists() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+pub(crate) struct Loader {
+    raw_text: String,
+    options: LoaderOptions,
+}
+
+pub(crate) struct FileData<'a> {
+    pub desc: Option<&'a str>,
+    pub path: &'a str,
+    pub tags: Vec<&'a str>,
+}
+
+pub(crate) struct DirData<'a> {
+    pub desc: Option<&'a str>,
+    pub tags: Vec<&'a str>,
+    pub files: Vec<FileData<'a>>,
+}
+
+pub(crate) enum FileLoadingOptions {
+    Skip,
+    Load { file_tags: bool, file_desc: bool },
+}
+
+pub(crate) struct LoaderOptions {
+    dir_tags: bool,
+    dir_desc: bool,
+    file_options: FileLoadingOptions,
+}
+
+impl LoaderOptions {
+    pub fn new(dir_tags: bool, dir_desc: bool, file_options: FileLoadingOptions) -> Self {
+        LoaderOptions {
+            dir_tags,
+            dir_desc,
+            file_options,
+        }
+    }
+}
+
+impl Loader {
+    pub fn new(options: LoaderOptions) -> Loader {
+        Loader {
+            raw_text: String::new(),
+            options,
+        }
+    }
+
+    pub fn include_file_desc(&self) -> bool {
+        match self.options.file_options {
+            FileLoadingOptions::Skip => false,
+            FileLoadingOptions::Load {
+                file_tags: _,
+                file_desc,
+            } => file_desc,
+        }
+    }
+
+    pub fn include_file_tags(&self) -> bool {
+        match self.options.file_options {
+            FileLoadingOptions::Skip => false,
+            FileLoadingOptions::Load {
+                file_tags,
+                file_desc: _,
+            } => file_tags,
+        }
+    }
+
+    pub fn load<'a>(&'a mut self, storefile: &Path) -> Result<DirData<'a>, FstoreError> {
+        self.raw_text.clear();
+        File::open(&storefile)
+            .map_err(|_| FstoreError::CannotReadStoreFile(storefile.to_path_buf()))?
+            .read_to_string(&mut self.raw_text)
+            .map_err(|_| FstoreError::CannotReadStoreFile(storefile.to_path_buf()))?;
+        let mut tags: Vec<&str> = Vec::new();
+        let mut desc: Option<&str> = None;
+        let mut files: Vec<FileData<'a>> = Vec::new();
+        let mut curfile: Option<FileData<'a>> = None;
+        let mut input = self.raw_text.trim();
+        if !input.starts_with('[') {
+            return Err(FstoreError::CannotParseYaml(
+                "The file must begin with a header".into(),
+            ));
+        }
+        while let Some(start) = input.find('[') {
+            // Walk the text one header at a time.
+            let start = start + 1;
+            let end = input.find(']').ok_or(FstoreError::CannotParseYaml(
+                "Header doesn't terminate".into(),
+            ))?;
+            let header = &input[start..end];
+            let start = end + 1;
+            input = &input[start..];
+            let content = match input.find("\n[") {
+                Some(end) => {
+                    let c = &input[..end];
+                    input = &input[end..];
+                    c
+                }
+                None => {
+                    let c = input;
+                    input = "";
+                    c
+                }
+            }
+            .trim();
+            input = input.trim();
+            if header == "desc" {
+                if let Some(file) = &mut curfile {
+                    if !self.include_file_desc() {
+                        continue;
+                    }
+                    let FileData {
+                        path,
+                        tags: _,
+                        desc,
+                    } = file;
+                    if let Some(_) = desc {
+                        return Err(FstoreError::CannotParseYaml(format!(
+                            "While parsing file: {}\nMultiple descriptions not allowed for file {}",
+                            storefile.display(),
+                            path
+                        )));
+                    } else {
+                        *desc = Some(content);
+                    }
+                } else {
+                    if !self.options.dir_desc {
+                        continue;
+                    }
+                    if let Some(_) = &mut desc {
+                        return Err(FstoreError::CannotParseYaml(format!(
+                            "While parsing file: {}\nMultiple descriptions found.",
+                            storefile.display()
+                        )));
+                    } else {
+                        desc = Some(content);
+                    }
+                }
+            } else if header == "tags" {
+                if let Some(file) = &mut curfile {
+                    if !self.include_file_tags() {
+                        continue;
+                    }
+                    let FileData {
+                        path,
+                        tags,
+                        desc: _,
+                    } = file;
+                    if tags.is_empty() {
+                        tags.extend(content.split_whitespace().map(|w| w.trim()));
+                    } else {
+                        return Err(FstoreError::CannotParseYaml(format!(
+                            "While parsing file: {}\nMultiple 'tags' headers under file: {}",
+                            storefile.display(),
+                            path
+                        )));
+                    }
+                } else {
+                    if !self.options.dir_tags {
+                        continue;
+                    }
+                    if tags.is_empty() {
+                        tags.extend(content.split_whitespace().map(|w| w.trim()));
+                    } else {
+                        return Err(FstoreError::CannotParseYaml(format!(
+                            "While parsing file: {}\nMultiple headers for tags are not allowed.",
+                            storefile.display()
+                        )));
+                    }
+                }
+            } else if header == "path" {
+                if let FileLoadingOptions::Skip = self.options.file_options {
+                    break; // Stop parsing the file.
+                }
+                let newfile: FileData = FileData {
+                    desc: None,
+                    path: content.trim(),
+                    tags: Vec::new(),
+                };
+                if let Some(prev) = std::mem::replace(&mut curfile, Some(newfile)) {
+                    files.push(prev);
+                }
+            } else {
+                return Err(FstoreError::CannotParseYaml(format!(
+                    "Unrecognized header: {header}"
+                )));
+            }
+        }
+        if let Some(file) = curfile {
+            files.push(file);
+        }
+        return Ok(DirData { desc, tags, files });
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn t_infer_year_range() {
+        let inputs = vec![OsString::from("2021_to_2023"), OsString::from("2021_2023")];
+        let expected = vec!["2021", "2022", "2023"];
+        for input in inputs {
+            let actual: Vec<_> = implicit_tags_os_str(Some(&input)).collect();
+            assert_eq!(actual, expected);
+        }
+        let inputs = vec![
+            OsString::from("1998_MyDirectory"),
+            OsString::from("1998_MyFile.pdf"),
+        ];
+        let expected = vec!["1998"];
+        for input in inputs {
+            let actual: Vec<_> = implicit_tags_os_str(Some(&input)).collect();
+            assert_eq!(actual, expected);
+        }
+    }
+}
