@@ -12,54 +12,49 @@ use crate::{
     walk::DirEntry,
 };
 
-fn infer_year_range_bytes(mut input: &[u8]) -> Option<Range<u16>> {
-    use nom::{
-        bytes::complete::{tag, take_while_m_n},
-        character::is_digit,
-        error::Error,
-        IResult, ParseTo,
-    };
-    type Result<'a> = IResult<&'a [u8], &'a [u8], Error<&'a [u8]>>;
-    let result: Result = take_while_m_n(4, 4, is_digit)(input);
-    let first: u16 = match result {
-        Ok((i, o)) if o.len() > 3 => {
-            input = i;
-            o.parse_to()?
-        }
-        _ => return None,
-    };
-    let result: Result = tag("_")(input);
-    match result {
-        Ok((i, _o)) => input = i,
-        Err(_) => return Some(first..(first + 1)),
-    }
-    let result: Result = take_while_m_n(4, 4, is_digit)(input);
-    if let Ok((_i, o)) = result {
-        let second: u16 = o.parse_to().unwrap_or(first);
-        return Some(first..(second + 1));
-    }
-    let result: Result = tag("to_")(input);
-    match result {
-        Ok((i, _o)) => input = i,
-        Err(_) => return Some(first..(first + 1)),
-    }
-    let result: Result = take_while_m_n(4, 4, is_digit)(input);
-    if let Ok((_i, o)) = result {
-        let second: u16 = o.parse_to().unwrap_or(first);
-        return Some(first..(second + 1));
-    }
-    return None;
-}
-
 fn infer_year_range_os_str(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
     match nameopt {
-        Some(val) => infer_year_range_bytes(val.as_encoded_bytes()),
+        Some(val) => match val.to_str() {
+            Some(strval) => infer_year_range_str(strval),
+            None => None,
+        },
         None => None,
     }
 }
 
-fn infer_year_range_str(name: &str) -> Option<Range<u16>> {
-    return infer_year_range_bytes(name.as_bytes());
+fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
+    if input.len() < 4 {
+        return None;
+    }
+    let first: u16 = {
+        let word = &input[..4];
+        if word.chars().all(|b| b.is_ascii_digit()) {
+            word.parse().ok()?
+        } else {
+            return None;
+        }
+    };
+    input = &input[4..];
+    if let Some(input) = input.strip_prefix('_') {
+        if input.len() < 4 {
+            return Some(first..(first + 1));
+        }
+        let word = &input[..4];
+        if word.chars().all(|b| b.is_ascii_digit()) {
+            let second = word.parse().unwrap_or(first);
+            return Some(first..(second + 1));
+        } else if let Some(input) = input.strip_prefix("to_") {
+            if input.len() < 4 {
+                return Some(first..(first + 1));
+            }
+            let word = &input[..4];
+            if word.chars().all(|b| b.is_ascii_digit()) {
+                let second = word.parse().unwrap_or(first);
+                return Some(first..(second + 1));
+            }
+        }
+    }
+    return Some(first..(first + 1));
 }
 
 pub(crate) fn implicit_tags_os_str(name: Option<&OsStr>) -> impl Iterator<Item = String> {
