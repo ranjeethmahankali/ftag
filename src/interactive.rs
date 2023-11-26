@@ -16,9 +16,7 @@ use ratatui::{
     },
     Frame,
 };
-use std::{fmt::Display, io::stdout, path::PathBuf};
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
+use std::{io::stdout, path::PathBuf};
 
 enum State {
     Default,
@@ -27,7 +25,6 @@ enum State {
 }
 use State::*;
 
-#[derive(EnumIter)]
 enum Command {
     Exit,
     Quit,
@@ -35,19 +32,6 @@ enum Command {
     Filter(Filter<usize>),
     WhatIs(PathBuf),
     Open(PathBuf),
-}
-
-impl Display for Command {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Command::Exit => write!(f, "exit"),
-            Command::Quit => write!(f, "quit"),
-            Command::Reset => write!(f, "reset"),
-            Command::Filter(_) => write!(f, "filter"),
-            Command::WhatIs(_) => write!(f, "whatis"),
-            Command::Open(_) => write!(f, "open"),
-        }
-    }
 }
 
 struct App {
@@ -116,7 +100,10 @@ impl App {
             frameheight: 0,
             filtered_indices: (0..nfiles).collect(),
             file_index_width: count_digits(nfiles - 1),
-            command_completions: Command::iter().map(|c| format!("{}", c)).collect(),
+            command_completions: ["exit", "quit", "reset", "filter", "whatis", "open"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             suggestions: Vec::new(),
             suggestion_index: 0,
         };
