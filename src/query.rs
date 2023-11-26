@@ -1,12 +1,11 @@
 use crate::{
     core::{
         get_filenames, get_relative_path, get_store_path, glob_filter, implicit_tags,
-        read_store_file, FstoreError, WalkDirectories,
+        read_store_file, DirData, FileData, FstoreError, WalkDirectories,
     },
     filter::{Filter, TagMaker},
 };
 use hashbrown::HashMap;
-use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
@@ -69,16 +68,6 @@ impl TagTable {
         // These structs are locally defined because their only
         // purpose is to use with serde_yaml to extract relevant
         // information from the YAML files.
-        #[derive(Deserialize)]
-        struct FileData {
-            path: String,
-            tags: Option<Vec<String>>,
-        }
-        #[derive(Deserialize)]
-        struct DirData {
-            tags: Option<Vec<String>>,
-            files: Option<Vec<FileData>>,
-        }
         let mut table = TagTable {
             root: dirpath,
             index_map: HashMap::new(),
@@ -95,7 +84,11 @@ impl TagTable {
         while let Some((depth, curpath, children)) = walker.next() {
             inherited.update(depth)?;
             // Deserialize yaml without copy.
-            let DirData { tags, files } = {
+            let DirData {
+                tags,
+                files,
+                desc: _,
+            } = {
                 match get_store_path::<true>(&curpath) {
                     Some(path) => read_store_file(path)?,
                     None => continue,
@@ -122,6 +115,7 @@ impl TagTable {
             // Process all files in the directory.
             if let Some(files) = files {
                 for FileData {
+                    desc: _,
                     path: pattern,
                     tags,
                 } in files

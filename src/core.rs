@@ -1,6 +1,6 @@
 use crate::filter::FilterParseError;
 use glob_match::glob_match;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::Deserialize;
 use std::{
     ffi::{OsStr, OsString},
     fs::File,
@@ -208,7 +208,21 @@ pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<Path
     }
 }
 
-pub(crate) fn read_store_file<T: DeserializeOwned>(storefile: PathBuf) -> Result<T, FstoreError> {
+#[derive(Deserialize)]
+pub(crate) struct FileData {
+    pub desc: Option<String>,
+    pub path: String,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct DirData {
+    pub desc: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub files: Option<Vec<FileData>>,
+}
+
+pub(crate) fn read_store_file(storefile: PathBuf) -> Result<DirData, FstoreError> {
     let data = serde_yaml::from_reader(BufReader::new(
         File::open(&storefile).map_err(|_| FstoreError::CannotReadStoreFile(storefile.clone()))?,
     ))
@@ -217,18 +231,14 @@ pub(crate) fn read_store_file<T: DeserializeOwned>(storefile: PathBuf) -> Result
 }
 
 pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
-    #[derive(Deserialize)]
-    struct FileData {
-        path: String,
-    }
-    #[derive(Deserialize)]
-    struct DirData {
-        files: Option<Vec<FileData>>,
-    }
     let mut success = true;
     let mut walker = WalkDirectories::from(path)?;
     while let Some((_depth, dirpath, children)) = walker.next() {
-        let DirData { files } = {
+        let DirData {
+            files,
+            desc: _,
+            tags: _,
+        } = {
             match get_store_path::<true>(&dirpath) {
                 Some(path) => read_store_file(path)?,
                 None => continue,
@@ -280,18 +290,6 @@ pub(crate) fn what_is(path: &PathBuf) -> Result<String, FstoreError> {
 }
 
 fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
-    #[derive(Deserialize)]
-    struct FileData {
-        path: String,
-        desc: Option<String>,
-        tags: Option<Vec<String>>,
-    }
-    #[derive(Deserialize)]
-    struct DirData {
-        desc: Option<String>,
-        tags: Option<Vec<String>>,
-        files: Option<Vec<FileData>>,
-    }
     let DirData { desc, tags, files } = {
         match get_store_path::<true>(path) {
             Some(storepath) => read_store_file(storepath)?,
@@ -333,12 +331,11 @@ fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
 }
 
 fn what_is_dir(path: &PathBuf) -> Result<String, FstoreError> {
-    #[derive(Deserialize)]
-    struct DirData {
-        desc: Option<String>,
-        tags: Option<Vec<String>>,
-    }
-    let DirData { desc, tags } = {
+    let DirData {
+        desc,
+        tags,
+        files: _,
+    } = {
         match get_store_path::<true>(path) {
             Some(storepath) => read_store_file(storepath)?,
             None => return Err(FstoreError::InvalidPath(path.clone())),
@@ -366,18 +363,14 @@ pub(crate) fn get_relative_path(
 }
 
 pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
-    #[derive(Deserialize)]
-    struct FileData {
-        path: String,
-    }
-    #[derive(Deserialize)]
-    struct DirData {
-        files: Option<Vec<FileData>>,
-    }
     let mut walker = WalkDirectories::from(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
     while let Some((_depth, dirpath, children)) = walker.next() {
-        let DirData { files } = {
+        let DirData {
+            files,
+            desc: _,
+            tags: _,
+        }: DirData = {
             match get_store_path::<true>(&dirpath) {
                 Some(path) => read_store_file(path)?,
                 // Store file doesn't exist so everything is untracked.
@@ -409,20 +402,14 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError
 }
 
 pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
-    #[derive(Deserialize)]
-    struct FileData {
-        path: PathBuf,
-        tags: Option<Vec<String>>,
-    }
-    #[derive(Deserialize)]
-    struct DirData {
-        tags: Option<Vec<String>>,
-        files: Option<Vec<FileData>>,
-    }
     let mut alltags: Vec<String> = Vec::new();
     let mut walker = WalkDirectories::from(path)?;
     while let Some((_depth, dirpath, _filenames)) = walker.next() {
-        let DirData { tags, files } = {
+        let DirData {
+            tags,
+            files,
+            desc: _,
+        } = {
             match get_store_path::<true>(&dirpath) {
                 Some(path) => read_store_file(path)?,
                 None => continue,
@@ -434,7 +421,7 @@ pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
         alltags.extend(implicit_tags(dirpath.file_name())); // Implicit tags of the directory.
         if let Some(mut files) = files {
             for fdata in files.drain(..) {
-                alltags.extend(implicit_tags(fdata.path.file_name()));
+                alltags.extend(implicit_tags(Some(&OsString::from(fdata.path))));
                 if let Some(mut ftags) = fdata.tags {
                     alltags.extend(ftags.drain(..));
                 }
