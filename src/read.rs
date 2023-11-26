@@ -8,7 +8,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::core::{FstoreError, FSTORE};
+use crate::{
+    core::{FstoreError, FSTORE},
+    walk::DirEntry,
+};
 
 fn infer_year_range_bytes(mut input: &[u8]) -> Option<Range<u16>> {
     use nom::{
@@ -72,14 +75,77 @@ pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> {
         .map(|y| y.to_string())
 }
 
-pub(crate) fn glob_filter<'a>(pattern: &'a str) -> impl FnMut(&&'a OsStr) -> bool {
-    let func = |fname: &&OsStr| -> bool {
-        if let Some(fname) = fname.to_str() {
-            return glob_match(pattern, fname);
+pub(crate) struct GlobMatches {
+    table: Vec<bool>,
+    glob_matches: Vec<Option<usize>>, // Direct map from glob to file.
+    num_files: usize,
+    num_globs: usize,
+}
+
+impl GlobMatches {
+    pub fn new() -> GlobMatches {
+        GlobMatches {
+            table: Vec::new(),
+            glob_matches: Vec::new(),
+            num_files: 0,
+            num_globs: 0,
         }
-        return false;
-    };
-    return func;
+    }
+    fn row(&self, gi: usize) -> &[bool] {
+        let start = gi * self.num_files;
+        &self.table[start..(start + self.num_files)]
+    }
+
+    fn row_and_match(&mut self, gi: usize) -> (&mut [bool], &mut Option<usize>) {
+        let start = gi * self.num_files;
+        (
+            &mut self.table[start..(start + self.num_files)],
+            &mut self.glob_matches[gi],
+        )
+    }
+
+    pub fn find_matches(&mut self, files: &[DirEntry], globs: &[FileData], short_circuit: bool) {
+        self.num_files = files.len();
+        self.num_globs = globs.len();
+        self.table.clear();
+        self.table.resize(files.len() * globs.len(), false);
+        self.glob_matches.clear();
+        self.glob_matches.resize(globs.len(), None);
+        // Find perfect matches.
+        for (gi, g) in globs.iter().enumerate() {
+            let (row, gmatch) = self.row_and_match(gi);
+            for (fi, f) in files.iter().enumerate() {
+                if let Some(fstr) = f.name().to_str() {
+                    if g.path == fstr {
+                        row[fi] = true;
+                        *gmatch = Some(fi);
+                        break;
+                    }
+                }
+            }
+            if let Some(_) = *gmatch {
+                continue;
+            }
+            for (fi, f) in files.iter().enumerate() {
+                if let Some(fstr) = f.name().to_str() {
+                    if glob_match(&g.path, fstr) {
+                        row[fi] = true;
+                        if short_circuit {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn matched_globs<'a>(&'a self, file_index: usize) -> impl Iterator<Item = usize> + 'a {
+        (0..self.num_globs).filter(move |gi| self.row(*gi)[file_index])
+    }
+
+    pub fn is_glob_matched(&self, glob_index: usize) -> bool {
+        self.row(glob_index).iter().any(|m| *m)
+    }
 }
 
 pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {

@@ -1,6 +1,6 @@
 use crate::{
     filter::FilterParseError,
-    read::{get_store_path, glob_filter, read_store_file, DirData, FileData},
+    read::{get_store_path, read_store_file, DirData, FileData, GlobMatches},
     walk::WalkDirectories,
 };
 use glob_match::glob_match;
@@ -30,6 +30,7 @@ pub(crate) enum FstoreError {
 pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
     let mut success = true;
     let mut walker = WalkDirectories::from(path)?;
+    let mut matcher = GlobMatches::new();
     while let Some((_depth, dirpath, children)) = walker.next() {
         let DirData {
             files,
@@ -41,18 +42,17 @@ pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
                 None => continue,
             }
         };
-        if let Some(mut files) = files {
-            for pattern in files.drain(..).map(|f| f.path) {
-                if let None = children
-                    .iter()
-                    .map(|c| c.name())
-                    .filter(glob_filter(&pattern))
-                    .next()
-                {
-                    // Glob didn't match with any file.
-                    eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
-                    success = false;
+        if let Some(files) = files {
+            matcher.find_matches(children, &files, true);
+            for pattern in files.iter().enumerate().filter_map(|(i, f)| {
+                if !matcher.is_glob_matched(i) {
+                    Some(&f.path)
+                } else {
+                    None
                 }
+            }) {
+                eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
+                success = false;
             }
         }
     }

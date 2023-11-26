@@ -1,7 +1,7 @@
 use crate::{
     core::{get_relative_path, FstoreError},
     filter::{Filter, TagMaker},
-    read::{get_store_path, glob_filter, read_store_file, DirData, FileData},
+    read::{get_store_path, read_store_file, DirData, GlobMatches},
     walk::WalkDirectories,
 };
 use hashbrown::HashMap;
@@ -80,6 +80,8 @@ impl TagTable {
         };
         let rootdir = table.root.clone(); // We'll need this copy later.
         let mut walker = WalkDirectories::from(table.root.clone())?;
+        let mut gmatcher = GlobMatches::new();
+        let mut filetags: Vec<String> = Vec::new();
         while let Some((depth, curpath, children)) = walker.next() {
             inherited.update(depth)?;
             // Deserialize yaml without copy.
@@ -105,20 +107,19 @@ impl TagTable {
             }
             // Process all files in the directory.
             if let Some(files) = files {
-                for FileData {
-                    desc: _,
-                    path: pattern,
-                    tags,
-                } in files
+                gmatcher.find_matches(children, &files, false);
+                for (ci, cpath) in children
+                    .iter()
+                    .filter_map(|ch| get_relative_path(&curpath, ch.name(), &rootdir))
+                    .enumerate()
                 {
-                    for fpath in children
-                        .iter()
-                        .map(|c| c.name())
-                        .filter(glob_filter(&pattern))
-                        .filter_map(|fname| get_relative_path(&curpath, fname, &rootdir))
-                    {
-                        table.add_file(fpath, &tags, &mut num_tags, &inherited.tag_indices);
+                    filetags.clear();
+                    for fi in gmatcher.matched_globs(ci) {
+                        if let Some(tags) = &files[fi].tags {
+                            filetags.extend(tags.clone());
+                        }
                     }
+                    table.add_file(cpath, &filetags, &mut num_tags, &inherited.tag_indices);
                 }
             }
         }
@@ -135,20 +136,18 @@ impl TagTable {
     fn add_file(
         &mut self,
         path: PathBuf,
-        tags: &Option<Vec<String>>,
+        tags: &Vec<String>,
         num_tags: &mut usize,
         inherited: &Vec<usize>,
     ) {
         let flags = self.table.entry(path).or_insert(Vec::new());
         // Set the file's explicit tags.
-        if let Some(tags) = tags {
-            flags.reserve(flags.len() + tags.len());
-            for tag in tags {
-                safe_set_flag(
-                    flags,
-                    Self::get_tag_index(tag, &mut self.index_map, num_tags),
-                );
-            }
+        flags.reserve(flags.len() + tags.len());
+        for tag in tags {
+            safe_set_flag(
+                flags,
+                Self::get_tag_index(tag, &mut self.index_map, num_tags),
+            );
         }
         // Set inherited tags.
         for i in inherited {
