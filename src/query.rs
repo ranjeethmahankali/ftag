@@ -1,9 +1,8 @@
 use crate::{
-    core::{
-        get_relative_path, get_store_path, glob_filter, read_store_file, DirData, FileData,
-        FstoreError, WalkDirectories,
-    },
+    core::{get_relative_path, FstoreError},
     filter::{Filter, TagMaker},
+    read::{get_store_path, glob_filter, read_store_file, DirData, FileData},
+    walk::WalkDirectories,
 };
 use hashbrown::HashMap;
 use std::path::{Path, PathBuf};
