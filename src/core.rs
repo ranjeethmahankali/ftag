@@ -28,53 +28,66 @@ pub(crate) enum FstoreError {
     TagInheritanceFailed,
 }
 
-pub(crate) fn implicit_tags(name: Option<&OsStr>) -> impl Iterator<Item = String> {
-    fn infer_year_range(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
-        use nom::{
-            bytes::complete::{tag, take_while_m_n},
-            character::is_digit,
-            error::Error,
-            IResult, ParseTo,
-        };
-        let name: &OsStr = match nameopt {
-            Some(val) => val,
-            None => return None,
-        };
-        let mut input = name.as_bytes();
-        type Result<'a> = IResult<&'a [u8], &'a [u8], Error<&'a [u8]>>;
-        let result: Result = take_while_m_n(4, 4, is_digit)(input);
-        let first: u16 = match result {
-            Ok((i, o)) if o.len() > 3 => {
-                input = i;
-                o.parse_to()?
-            }
-            _ => return None,
-        };
-        let result: Result = tag("_")(input);
-        match result {
-            Ok((i, _o)) => input = i,
-            Err(_) => return Some(first..(first + 1)),
+fn infer_year_range_bytes(mut input: &[u8]) -> Option<Range<u16>> {
+    use nom::{
+        bytes::complete::{tag, take_while_m_n},
+        character::is_digit,
+        error::Error,
+        IResult, ParseTo,
+    };
+    type Result<'a> = IResult<&'a [u8], &'a [u8], Error<&'a [u8]>>;
+    let result: Result = take_while_m_n(4, 4, is_digit)(input);
+    let first: u16 = match result {
+        Ok((i, o)) if o.len() > 3 => {
+            input = i;
+            o.parse_to()?
         }
-        let result: Result = take_while_m_n(4, 4, is_digit)(input);
-        if let Ok((_i, o)) = result {
-            let second: u16 = o.parse_to().unwrap_or(first);
-            return Some(first..(second + 1));
-        }
-        let result: Result = tag("to_")(input);
-        match result {
-            Ok((i, _o)) => input = i,
-            Err(_) => return Some(first..(first + 1)),
-        }
-        let result: Result = take_while_m_n(4, 4, is_digit)(input);
-        if let Ok((_i, o)) = result {
-            let second: u16 = o.parse_to().unwrap_or(first);
-            return Some(first..(second + 1));
-        }
-        return None;
+        _ => return None,
+    };
+    let result: Result = tag("_")(input);
+    match result {
+        Ok((i, _o)) => input = i,
+        Err(_) => return Some(first..(first + 1)),
     }
-    return infer_year_range(name)
+    let result: Result = take_while_m_n(4, 4, is_digit)(input);
+    if let Ok((_i, o)) = result {
+        let second: u16 = o.parse_to().unwrap_or(first);
+        return Some(first..(second + 1));
+    }
+    let result: Result = tag("to_")(input);
+    match result {
+        Ok((i, _o)) => input = i,
+        Err(_) => return Some(first..(first + 1)),
+    }
+    let result: Result = take_while_m_n(4, 4, is_digit)(input);
+    if let Ok((_i, o)) = result {
+        let second: u16 = o.parse_to().unwrap_or(first);
+        return Some(first..(second + 1));
+    }
+    return None;
+}
+
+fn infer_year_range_os_str(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
+    match nameopt {
+        Some(val) => infer_year_range_bytes(val.as_bytes()),
+        None => None,
+    }
+}
+
+fn infer_year_range_str(name: &str) -> Option<Range<u16>> {
+    return infer_year_range_bytes(name.as_bytes());
+}
+
+pub(crate) fn implicit_tags_os_str(name: Option<&OsStr>) -> impl Iterator<Item = String> {
+    infer_year_range_os_str(name)
         .unwrap_or(0..0)
-        .map(|y| y.to_string());
+        .map(|y| y.to_string())
+}
+
+pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> {
+    infer_year_range_str(name)
+        .unwrap_or(0..0)
+        .map(|y| y.to_string())
 }
 
 pub(crate) fn glob_filter<'a>(pattern: &'a str) -> impl FnMut(&&'a OsString) -> bool {
@@ -222,11 +235,39 @@ pub(crate) struct DirData {
     pub files: Option<Vec<FileData>>,
 }
 
+impl DirData {
+    fn infer_implicit_tags(&mut self, dname: Option<&OsStr>) {
+        let iter = implicit_tags_os_str(dname);
+        match &mut self.tags {
+            Some(tags) => tags.extend(iter),
+            None => self.tags = Some(iter.collect()),
+        }
+        if let Some(files) = &mut self.files {
+            for file in files.iter_mut() {
+                file.infer_implicit_tags();
+            }
+        }
+    }
+}
+
+impl FileData {
+    fn infer_implicit_tags(&mut self) {
+        let iter = implicit_tags_str(&self.path);
+        match &mut self.tags {
+            Some(tags) => tags.extend(iter),
+            None => self.tags = Some(iter.collect()),
+        }
+    }
+}
+
 pub(crate) fn read_store_file(storefile: PathBuf) -> Result<DirData, FstoreError> {
-    let data = serde_yaml::from_reader(BufReader::new(
+    let mut data: DirData = serde_yaml::from_reader(BufReader::new(
         File::open(&storefile).map_err(|_| FstoreError::CannotReadStoreFile(storefile.clone()))?,
     ))
     .map_err(|e| FstoreError::CannotParseYaml(format!("{:?}\n{:?}", storefile, e)))?;
+    if let Some(parent) = storefile.parent() {
+        data.infer_implicit_tags(parent.file_name());
+    }
     return Ok(data);
 }
 
@@ -298,10 +339,6 @@ fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
     };
     let mut outdesc = desc.unwrap_or(String::new());
     let mut outtags = tags.unwrap_or(Vec::new());
-    if let Some(parent) = path.parent() {
-        outtags.extend(implicit_tags(parent.file_name())); // Implicit tags of the parent directory.
-    }
-    outtags.extend(implicit_tags(path.file_name())); // Implicit tags of the file.
     let filenamestr = path
         .file_name()
         .ok_or(FstoreError::InvalidPath(path.clone()))?
@@ -342,8 +379,7 @@ fn what_is_dir(path: &PathBuf) -> Result<String, FstoreError> {
         }
     };
     let desc = desc.unwrap_or(String::new());
-    let mut tags = tags.unwrap_or(Vec::new());
-    tags.extend(implicit_tags(path.file_name())); // Implicit tags of the directory.
+    let tags = tags.unwrap_or(Vec::new());
     return Ok(full_description(tags, desc));
 }
 
@@ -418,10 +454,8 @@ pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
         if let Some(mut tags) = tags {
             alltags.extend(tags.drain(..));
         }
-        alltags.extend(implicit_tags(dirpath.file_name())); // Implicit tags of the directory.
         if let Some(mut files) = files {
             for fdata in files.drain(..) {
-                alltags.extend(implicit_tags(Some(&OsString::from(fdata.path))));
                 if let Some(mut ftags) = fdata.tags {
                     alltags.extend(ftags.drain(..));
                 }
@@ -442,7 +476,7 @@ mod test {
         let inputs = vec![OsString::from("2021_to_2023"), OsString::from("2021_2023")];
         let expected = vec!["2021", "2022", "2023"];
         for input in inputs {
-            let actual: Vec<_> = implicit_tags(Some(&input)).collect();
+            let actual: Vec<_> = implicit_tags_os_str(Some(&input)).collect();
             assert_eq!(actual, expected);
         }
         let inputs = vec![
@@ -451,7 +485,7 @@ mod test {
         ];
         let expected = vec!["1998"];
         for input in inputs {
-            let actual: Vec<_> = implicit_tags(Some(&input)).collect();
+            let actual: Vec<_> = implicit_tags_os_str(Some(&input)).collect();
             assert_eq!(actual, expected);
         }
     }
