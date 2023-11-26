@@ -7,7 +7,7 @@ use crate::{
     },
     walk::WalkDirectories,
 };
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
