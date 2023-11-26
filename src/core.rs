@@ -3,7 +3,6 @@ use crate::{
     read::{get_store_path, read_store_file, DirData, FileData, GlobMatches},
     walk::WalkDirectories,
 };
-use glob_match::glob_match;
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -92,6 +91,7 @@ pub(crate) fn what_is(path: &PathBuf) -> Result<String, FstoreError> {
 }
 
 fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
+    use glob_match::glob_match;
     let DirData { desc, tags, files } = {
         match get_store_path::<true>(path) {
             Some(storepath) => read_store_file(storepath)?,
@@ -156,6 +156,7 @@ pub(crate) fn get_relative_path(dirpath: &Path, filename: &OsStr, root: &Path) -
 }
 
 pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
+    use glob_match::glob_match;
     let mut walker = WalkDirectories::from(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
     while let Some((_depth, dirpath, children)) = walker.next() {
