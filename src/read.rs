@@ -123,7 +123,7 @@ impl GlobMatches {
                     }
                 }
             }
-            if let Some(_) = *gmatch {
+            if gmatch.is_some() {
                 continue;
             }
             for (fi, f) in files.iter().enumerate() {

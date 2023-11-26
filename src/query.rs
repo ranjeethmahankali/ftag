@@ -114,12 +114,16 @@ impl TagTable {
                     .enumerate()
                 {
                     filetags.clear();
+                    let mut found: bool = false;
                     for fi in gmatcher.matched_globs(ci) {
+                        found = true;
                         if let Some(tags) = &files[fi].tags {
                             filetags.extend(tags.clone());
                         }
                     }
-                    table.add_file(cpath, &filetags, &mut num_tags, &inherited.tag_indices);
+                    if found {
+                        table.add_file(cpath, &filetags, &mut num_tags, &inherited.tag_indices);
+                    }
                 }
             }
         }
