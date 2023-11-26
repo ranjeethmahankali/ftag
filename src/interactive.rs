@@ -142,7 +142,7 @@ impl App {
 
     fn parse_index_to_filepath(&self, numstr: &str) -> Result<PathBuf, FstoreError> {
         let index = match numstr.parse::<usize>() {
-            Ok(num) if num < self.num_files() => Ok(num),
+            Ok(num) if num < self.filtered_indices.len() => Ok(num),
             Ok(_) => Err(FstoreError::InvalidCommand(String::from(
                 "Index out of bounds.",
             ))),
@@ -151,7 +151,7 @@ impl App {
             ))),
         }?;
         let mut path = self.table.path().to_path_buf();
-        path.push(&self.table.files()[index]);
+        path.push(&self.table.files()[self.filtered_indices[index]]);
         return Ok(path);
     }
 
