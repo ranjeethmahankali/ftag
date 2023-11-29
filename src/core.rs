@@ -14,11 +14,11 @@ use std::{
 pub(crate) const FSTORE: &str = ".fstore";
 
 #[derive(Debug)]
-pub(crate) enum FstoreError {
+pub(crate) enum Error {
     InvalidCommand(String),
     InteractiveModeError(String),
     EditCommandFailed(String),
-    MissingFiles,
+    UnmatchedPatterns,
     InvalidArgs,
     InvalidWorkingDirectory,
     InvalidPath(PathBuf),
@@ -29,7 +29,7 @@ pub(crate) enum FstoreError {
     TagInheritanceFailed,
 }
 
-pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
+pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
     let mut success = true;
     let mut walker = WalkDirectories::from(path)?;
     let mut matcher = GlobMatches::new();
@@ -68,7 +68,7 @@ pub(crate) fn check(path: PathBuf) -> Result<(), FstoreError> {
         println!("No problems found.");
         Ok(())
     } else {
-        Err(FstoreError::MissingFiles)
+        Err(Error::UnmatchedPatterns)
     }
 }
 
@@ -89,17 +89,17 @@ fn full_description(tags: Vec<String>, desc: String) -> String {
     )
 }
 
-pub(crate) fn what_is(path: &PathBuf) -> Result<String, FstoreError> {
+pub(crate) fn what_is(path: &PathBuf) -> Result<String, Error> {
     if path.is_file() {
         what_is_file(path)
     } else if path.is_dir() {
         what_is_dir(path)
     } else {
-        Err(FstoreError::InvalidPath(path.clone()))
+        Err(Error::InvalidPath(path.clone()))
     }
 }
 
-fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
+fn what_is_file(path: &PathBuf) -> Result<String, Error> {
     use glob_match::glob_match;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
@@ -112,7 +112,7 @@ fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
     let DirData { desc, tags, files } = {
         match get_store_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
-            None => return Err(FstoreError::InvalidPath(path.clone())),
+            None => return Err(Error::InvalidPath(path.clone())),
         }
     };
     let mut outdesc = desc.unwrap_or("").to_string();
@@ -122,9 +122,9 @@ fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
     }
     let filenamestr = path
         .file_name()
-        .ok_or(FstoreError::InvalidPath(path.clone()))?
+        .ok_or(Error::InvalidPath(path.clone()))?
         .to_str()
-        .ok_or(FstoreError::InvalidPath(path.clone()))?;
+        .ok_or(Error::InvalidPath(path.clone()))?;
     for FileData {
         path: pattern,
         desc: fdesc,
@@ -149,7 +149,7 @@ fn what_is_file(path: &PathBuf) -> Result<String, FstoreError> {
     return Ok(full_description(outtags, outdesc));
 }
 
-fn what_is_dir(path: &PathBuf) -> Result<String, FstoreError> {
+fn what_is_dir(path: &PathBuf) -> Result<String, Error> {
     let mut loader = Loader::new(LoaderOptions::new(true, true, FileLoadingOptions::Skip));
     let DirData {
         desc,
@@ -158,7 +158,7 @@ fn what_is_dir(path: &PathBuf) -> Result<String, FstoreError> {
     } = {
         match get_store_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
-            None => return Err(FstoreError::InvalidPath(path.clone())),
+            None => return Err(Error::InvalidPath(path.clone())),
         }
     };
     let desc = desc.unwrap_or("").to_string();
@@ -181,7 +181,7 @@ pub(crate) fn get_relative_path(dirpath: &Path, filename: &OsStr, root: &Path) -
     }
 }
 
-pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError> {
+pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
     use glob_match::glob_match;
     let mut walker = WalkDirectories::from(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
@@ -224,7 +224,7 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, FstoreError
     return Ok(untracked);
 }
 
-pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, FstoreError> {
+pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     let mut alltags: Vec<String> = Vec::new();
     let mut walker = WalkDirectories::from(path)?;
     let mut loader = Loader::new(LoaderOptions::new(

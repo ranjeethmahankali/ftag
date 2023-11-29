@@ -6,7 +6,7 @@ mod query;
 mod walk;
 
 use crate::{
-    core::{get_all_tags, untracked_files, FstoreError},
+    core::{get_all_tags, untracked_files, Error},
     query::run_query,
 };
 use clap::{command, value_parser, Arg};
@@ -14,14 +14,14 @@ use load::get_store_path;
 use query::DenseTagTable;
 use std::path::PathBuf;
 
-fn main() -> Result<(), FstoreError> {
+fn main() -> Result<(), Error> {
     let matches = parse_args();
     let current_dir = if let Some(rootdir) = matches.get_one::<PathBuf>("path") {
         rootdir
             .canonicalize()
-            .map_err(|_| FstoreError::InvalidPath(rootdir.clone()))?
+            .map_err(|_| Error::InvalidPath(rootdir.clone()))?
     } else {
-        std::env::current_dir().map_err(|_| FstoreError::InvalidWorkingDirectory)?
+        std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?
     };
     // Handle tab completions first.
     if let Some(complete) = matches.subcommand_matches(cmd::BASH_COMPLETE) {
@@ -37,11 +37,11 @@ fn main() -> Result<(), FstoreError> {
             current_dir,
             matches
                 .get_one::<String>(arg::FILTER)
-                .ok_or(FstoreError::InvalidArgs)?,
+                .ok_or(Error::InvalidArgs)?,
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
         return interactive::start(DenseTagTable::from_dir(current_dir)?)
-            .map_err(|err| FstoreError::InteractiveModeError(format!("{:?}", err)));
+            .map_err(|err| Error::InteractiveModeError(format!("{:?}", err)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);
     } else if let Some(matches) = matches.subcommand_matches(cmd::WHATIS) {
@@ -49,20 +49,20 @@ fn main() -> Result<(), FstoreError> {
             Some(path) => {
                 let path = path
                     .canonicalize()
-                    .map_err(|_| FstoreError::InvalidPath(path.clone()))?;
+                    .map_err(|_| Error::InvalidPath(path.clone()))?;
                 println!("{}", core::what_is(&path)?);
                 return Ok(());
             }
-            None => return Err(FstoreError::InvalidArgs),
+            None => return Err(Error::InvalidArgs),
         }
     } else if let Some(matches) = matches.subcommand_matches(cmd::EDIT) {
         let path = matches
             .get_one::<PathBuf>(arg::PATH)
             .unwrap_or(&current_dir);
         edit::edit_file(
-            get_store_path::<false>(path).ok_or(FstoreError::InvalidPath(path.clone()))?,
+            get_store_path::<false>(path).ok_or(Error::InvalidPath(path.clone()))?,
         )
-        .map_err(|e| FstoreError::EditCommandFailed(format!("{:?}", e)))?;
+        .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))?;
         return Ok(());
     } else if let Some(_matches) = matches.subcommand_matches(cmd::UNTRACKED) {
         for path in untracked_files(current_dir)? {
@@ -73,7 +73,7 @@ fn main() -> Result<(), FstoreError> {
         println!("{}", get_all_tags(current_dir)?.join("\n"));
         return Ok(());
     } else {
-        return Err(FstoreError::InvalidArgs);
+        return Err(Error::InvalidArgs);
     }
 }
 
