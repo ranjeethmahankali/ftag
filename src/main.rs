@@ -41,7 +41,7 @@ fn main() -> Result<(), Error> {
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
         return interactive::start(DenseTagTable::from_dir(current_dir)?)
-            .map_err(|err| Error::InteractiveModeError(format!("{:?}", err)));
+            .map_err(|err| Error::TUIError(format!("{:?}", err)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);
     } else if let Some(matches) = matches.subcommand_matches(cmd::WHATIS) {

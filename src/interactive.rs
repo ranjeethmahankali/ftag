@@ -1,6 +1,6 @@
 use crate::{
-    core::{what_is, Error},
-    filter::Filter,
+    core::what_is,
+    filter::{Filter, FilterParseError},
     query::DenseTagTable,
 };
 use crossterm::{
@@ -32,6 +32,12 @@ enum Command {
     Filter(Filter<usize>),
     WhatIs(PathBuf),
     Open(PathBuf),
+}
+
+#[derive(Debug)]
+enum Error {
+    InvalidCommand(String),
+    InvalidFilter(FilterParseError),
 }
 
 struct App {
@@ -130,12 +136,13 @@ impl App {
     fn parse_index_to_filepath(&self, numstr: &str) -> Result<PathBuf, Error> {
         let index = match numstr.parse::<usize>() {
             Ok(num) if num < self.filtered_indices.len() => Ok(num),
-            Ok(_) => Err(Error::InvalidCommand(String::from(
-                "Index out of bounds.",
+            Ok(num) => Err(Error::InvalidCommand(format!(
+                "{num} is not a valid choice. Please choose an index between 0 and  {}",
+                self.filtered_indices.len()
             ))),
-            Err(_) => Err(Error::InvalidCommand(String::from(
-                "Unable to parse the number.",
-            ))),
+            Err(_) => Err(Error::InvalidCommand(String::from(format!(
+                "Unable to parse '{numstr}' to an index."
+            )))),
         }?;
         let mut path = self.table.path().to_path_buf();
         path.push(&self.table.files()[self.filtered_indices[index]]);
