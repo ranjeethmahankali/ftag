@@ -123,7 +123,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
                 }
             }
         }
-        _ => {} // Do nothing, let default completion take over.
+        _ => {} // Defer to default bash completion for files and directories..
     }
 }
 
