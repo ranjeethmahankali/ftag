@@ -1,8 +1,8 @@
 mod core;
 mod filter;
 mod interactive;
-mod query;
 mod load;
+mod query;
 mod walk;
 
 use crate::{
@@ -10,8 +10,8 @@ use crate::{
     query::run_query,
 };
 use clap::{command, value_parser, Arg};
-use query::DenseTagTable;
 use load::get_store_path;
+use query::DenseTagTable;
 use std::path::PathBuf;
 
 fn main() -> Result<(), FstoreError> {
@@ -23,6 +23,15 @@ fn main() -> Result<(), FstoreError> {
     } else {
         std::env::current_dir().map_err(|_| FstoreError::InvalidWorkingDirectory)?
     };
+    // Handle tab completions first.
+    if let Some(complete) = matches.subcommand_matches(cmd::BASH_COMPLETE) {
+        // Bash completions can be registered with:
+        // complete -o default -C 'fstore --bash-complete' fstore
+        if let Some(words) = complete.get_many::<String>(arg::BASH_COMPLETE_WORDS) {
+            handle_bash_completions(current_dir, words.map(|s| s.as_str()).collect());
+        }
+        return Ok(());
+    }
     if let Some(matches) = matches.subcommand_matches(cmd::QUERY) {
         return run_query(
             current_dir,
@@ -68,6 +77,56 @@ fn main() -> Result<(), FstoreError> {
     }
 }
 
+fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
+    if words.len() != 3 {
+        return;
+    }
+    if words[0] != "fstore" {
+        return;
+    }
+    const PREV_WORDS: [&str; 10] = [
+        "query",
+        "-q",
+        "interactive",
+        "check",
+        "whatis",
+        "edit",
+        "untracked",
+        "tags",
+        "--path",
+        "-p",
+    ];
+    match words.pop() {
+        Some("fstore") => {
+            if let Some(cmd) = words.pop() {
+                for suggestion in PREV_WORDS.iter().filter(|c| c.starts_with(cmd)) {
+                    println!("{}", suggestion);
+                }
+            }
+        }
+        Some(cmd::QUERY) | Some(cmd::QUERY_SHORT) => {
+            if let (Some(word), Ok(tags)) = (words.pop(), get_all_tags(current_dir)) {
+                let (left, right) = {
+                    let mut last = 0usize;
+                    for (i, c) in word.char_indices() {
+                        match c {
+                            '|' | '(' | ')' | '&' | '!' => last = i,
+                            _ if c.is_whitespace() => last = i,
+                            _ => {} // Do nothing.
+                        }
+                    }
+                    let last = if last == 0 { last } else { last + 1 };
+                    (&word[..last], &word[last..])
+                };
+                for tag in tags.iter().filter(|t| t.starts_with(&right)) {
+                    println!("{left}{}", tag);
+                }
+            }
+        }
+        _ => {} // Defer to default bash completion for files and directories..
+    }
+}
+
 fn parse_args() -> clap::ArgMatches {
     command!()
         .arg(
@@ -79,7 +138,7 @@ fn parse_args() -> clap::ArgMatches {
         )
         .subcommand(
             clap::Command::new(cmd::QUERY)
-                .alias("-q")
+                .alias(cmd::QUERY_SHORT)
                 .about(about::QUERY)
                 .arg(
                     Arg::new(arg::FILTER)
@@ -120,22 +179,29 @@ fn parse_args() -> clap::ArgMatches {
         )
         .subcommand(clap::Command::new(cmd::UNTRACKED).about(about::UNTRACKED))
         .subcommand(clap::Command::new(cmd::TAGS).about(about::TAGS))
+        .subcommand(
+            clap::Command::new(cmd::BASH_COMPLETE)
+                .arg(Arg::new(arg::BASH_COMPLETE_WORDS).num_args(3)),
+        )
         .get_matches()
 }
 
 mod cmd {
     pub const QUERY: &str = "query";
+    pub const QUERY_SHORT: &str = "-q";
     pub const INTERACTIVE: &str = "interactive";
     pub const CHECK: &str = "check";
     pub const WHATIS: &str = "whatis";
     pub const EDIT: &str = "edit";
     pub const UNTRACKED: &str = "untracked";
     pub const TAGS: &str = "tags";
+    pub const BASH_COMPLETE: &str = "--bash-complete";
 }
 
 mod arg {
     pub const FILTER: &str = "filter";
     pub const PATH: &str = "path";
+    pub const BASH_COMPLETE_WORDS: &str = "bash-complete-words";
 }
 
 mod about {
