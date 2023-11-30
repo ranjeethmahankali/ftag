@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::core::{FstoreError, FSTORE};
+use crate::core::{Error, FSTORE};
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub(crate) enum DirEntryType {
@@ -55,9 +55,9 @@ pub(crate) struct WalkDirectories {
 }
 
 impl WalkDirectories {
-    pub fn from(dirpath: PathBuf) -> Result<Self, FstoreError> {
+    pub fn from(dirpath: PathBuf) -> Result<Self, Error> {
         if !dirpath.is_dir() {
-            return Err(FstoreError::InvalidPath(dirpath));
+            return Err(Error::InvalidPath(dirpath));
         }
         Ok(WalkDirectories {
             cur_path: dirpath,

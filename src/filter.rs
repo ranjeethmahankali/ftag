@@ -1,12 +1,25 @@
+use std::fmt::Debug;
+
 use crate::query::safe_get_flag;
 
-#[derive(Debug)]
 pub(crate) enum FilterParseError {
     EmptyQuery,
     MalformedParens,
     ExpectedBinaryOperator,
-    UnexpectedBinaryOperator,
+    UnexpectedBinaryOperator(String),
     EndOfTokens,
+}
+
+impl Debug for FilterParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FilterParseError::EmptyQuery => write!(f, "The filter string is empty."),
+            FilterParseError::MalformedParens => write!(f, "Parentheses are unbalanced."),
+            FilterParseError::ExpectedBinaryOperator => write!(f, "A binary operator is missing."),
+            FilterParseError::UnexpectedBinaryOperator(t) => write!(f, "'{}' was not expected.", t),
+            FilterParseError::EndOfTokens => write!(f, "Unexpected end of tokens."),
+        }
+    }
 }
 
 pub(crate) trait TagData: std::fmt::Display + Clone + Default {}
@@ -103,11 +116,10 @@ impl Filter<usize> {
     }
 }
 
-impl Filter<String> {
-    #[cfg(test)]
-    pub fn to_string(&self) -> String {
+impl<T: TagData> ToString for Filter<T> {
+    fn to_string(&self) -> String {
         match self {
-            Tag(tag) => tag.clone(),
+            Tag(tag) => format!("{}", tag),
             And(lhs, rhs) => format!(
                 "{} & {}",
                 Self::maybe_parens(self, lhs, lhs.to_string()),
@@ -125,12 +137,22 @@ impl Filter<String> {
     }
 }
 
-#[derive(Debug)]
 enum Token<T: TagData> {
     And,
     Or,
     Not,
     Parsed(Filter<T>),
+}
+
+impl<T: TagData> ToString for Token<T> {
+    fn to_string(&self) -> String {
+        match self {
+            Token::And => "&".into(),
+            Token::Or => "|".into(),
+            Token::Not => "!".into(),
+            Token::Parsed(p) => p.to_string(),
+        }
+    }
 }
 
 fn parse_filter<T: TagData>(
@@ -186,6 +208,9 @@ fn parse_filter<T: TagData>(
             _ => {}
         };
     }
+    if !parens.is_empty() {
+        return Err(FilterParseError::MalformedParens);
+    }
     push_tag(input, begin, end + 1, &mut stack, tagmaker);
     return parse_tokens(stack.drain(..));
 }
@@ -209,7 +234,9 @@ fn next_filter<T: TagData, I: Iterator<Item = Token<T>>>(
 ) -> Result<Filter<T>, FilterParseError> {
     match iter.next() {
         Some(t) => match t {
-            Token::And | Token::Or => Err(FilterParseError::UnexpectedBinaryOperator),
+            Token::And | Token::Or => {
+                Err(FilterParseError::UnexpectedBinaryOperator(t.to_string()))
+            }
             Token::Not => Ok(not_filter(next_filter(iter)?)),
             Token::Parsed(filter) => Ok(filter),
         },

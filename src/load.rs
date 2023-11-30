@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    core::{FstoreError, FSTORE},
+    core::{Error, FSTORE},
     walk::DirEntry,
 };
 
@@ -228,26 +228,28 @@ impl Loader {
         }
     }
 
-    pub fn load<'a>(&'a mut self, storefile: &Path) -> Result<DirData<'a>, FstoreError> {
+    pub fn load<'a>(&'a mut self, storefile: &Path) -> Result<DirData<'a>, Error> {
         self.raw_text.clear();
         File::open(&storefile)
-            .map_err(|_| FstoreError::CannotReadStoreFile(storefile.to_path_buf()))?
+            .map_err(|_| Error::CannotReadStoreFile(storefile.to_path_buf()))?
             .read_to_string(&mut self.raw_text)
-            .map_err(|_| FstoreError::CannotReadStoreFile(storefile.to_path_buf()))?;
+            .map_err(|_| Error::CannotReadStoreFile(storefile.to_path_buf()))?;
         let mut tags: Vec<&str> = Vec::new();
         let mut desc: Option<&str> = None;
         let mut files: Vec<FileData<'a>> = Vec::new();
         let mut curfile: Option<FileData<'a>> = None;
         let mut input = self.raw_text.trim();
         if !input.starts_with('[') {
-            return Err(FstoreError::CannotParseYaml(
-                "The file must begin with a header".into(),
+            return Err(Error::CannotParseYaml(
+                storefile.to_path_buf(),
+                "File does not begin with a header.".into(),
             ));
         }
         while let Some(start) = input.find('[') {
             // Walk the text one header at a time.
             let start = start + 1;
-            let end = input.find(']').ok_or(FstoreError::CannotParseYaml(
+            let end = input.find(']').ok_or(Error::CannotParseYaml(
+                storefile.to_path_buf(),
                 "Header doesn't terminate".into(),
             ))?;
             let header = &input[start..end];
@@ -278,11 +280,10 @@ impl Loader {
                         desc,
                     } = file;
                     if let Some(_) = desc {
-                        return Err(FstoreError::CannotParseYaml(format!(
-                            "While parsing file: {}\nMultiple descriptions not allowed for file {}",
-                            storefile.display(),
-                            path
-                        )));
+                        return Err(Error::CannotParseYaml(
+                            storefile.to_path_buf(),
+                            format!("'{}' has more than one description.", path),
+                        ));
                     } else {
                         *desc = Some(content);
                     }
@@ -291,10 +292,10 @@ impl Loader {
                         continue;
                     }
                     if let Some(_) = &mut desc {
-                        return Err(FstoreError::CannotParseYaml(format!(
-                            "While parsing file: {}\nMultiple descriptions found.",
-                            storefile.display()
-                        )));
+                        return Err(Error::CannotParseYaml(
+                            storefile.to_path_buf(),
+                            "The directory has more than one description.".into(),
+                        ));
                     } else {
                         desc = Some(content);
                     }
@@ -312,11 +313,10 @@ impl Loader {
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
-                        return Err(FstoreError::CannotParseYaml(format!(
-                            "While parsing file: {}\nMultiple 'tags' headers under file: {}",
-                            storefile.display(),
-                            path
-                        )));
+                        return Err(Error::CannotParseYaml(
+                            storefile.to_path_buf(),
+                            format!("'{}' has more than one 'tags' header.", path),
+                        ));
                     }
                 } else {
                     if !self.options.dir_tags {
@@ -325,10 +325,10 @@ impl Loader {
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
-                        return Err(FstoreError::CannotParseYaml(format!(
-                            "While parsing file: {}\nMultiple headers for tags are not allowed.",
-                            storefile.display()
-                        )));
+                        return Err(Error::CannotParseYaml(
+                            storefile.to_path_buf(),
+                            "The directory has more than one 'tags' header.".into(),
+                        ));
                     }
                 }
             } else if header == "path" {
@@ -344,9 +344,10 @@ impl Loader {
                     files.push(prev);
                 }
             } else {
-                return Err(FstoreError::CannotParseYaml(format!(
-                    "Unrecognized header: {header}"
-                )));
+                return Err(Error::CannotParseYaml(
+                    storefile.to_path_buf(),
+                    format!("Unrecognized header: {header}"),
+                ));
             }
         }
         if let Some(file) = curfile {

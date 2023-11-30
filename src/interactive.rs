@@ -1,6 +1,6 @@
 use crate::{
-    core::{what_is, FstoreError},
-    filter::Filter,
+    core::what_is,
+    filter::{Filter, FilterParseError},
     query::DenseTagTable,
 };
 use crossterm::{
@@ -32,6 +32,12 @@ enum Command {
     Filter(Filter<usize>),
     WhatIs(PathBuf),
     Open(PathBuf),
+}
+
+#[derive(Debug)]
+enum Error {
+    InvalidCommand(String),
+    InvalidFilter(FilterParseError),
 }
 
 struct App {
@@ -127,22 +133,23 @@ impl App {
         self.scrollstate = ScrollbarState::new(self.table.tags().len());
     }
 
-    fn parse_index_to_filepath(&self, numstr: &str) -> Result<PathBuf, FstoreError> {
+    fn parse_index_to_filepath(&self, numstr: &str) -> Result<PathBuf, Error> {
         let index = match numstr.parse::<usize>() {
             Ok(num) if num < self.filtered_indices.len() => Ok(num),
-            Ok(_) => Err(FstoreError::InvalidCommand(String::from(
-                "Index out of bounds.",
+            Ok(num) => Err(Error::InvalidCommand(format!(
+                "{num} is not a valid choice. Please choose an index between 0 and  {}",
+                self.filtered_indices.len()
             ))),
-            Err(_) => Err(FstoreError::InvalidCommand(String::from(
-                "Unable to parse the number.",
-            ))),
+            Err(_) => Err(Error::InvalidCommand(String::from(format!(
+                "Unable to parse '{numstr}' to an index."
+            )))),
         }?;
         let mut path = self.table.path().to_path_buf();
         path.push(&self.table.files()[self.filtered_indices[index]]);
         return Ok(path);
     }
 
-    fn parse_command(&self) -> Result<Command, FstoreError> {
+    fn parse_command(&self) -> Result<Command, Error> {
         let cmd = self.command.trim();
         if cmd == "exit" {
             Ok(Command::Exit)
@@ -153,14 +160,14 @@ impl App {
         } else if let Some(filterstr) = cmd.strip_prefix("filter ") {
             Ok(Command::Filter(
                 Filter::<usize>::parse(filterstr, &self.table)
-                    .map_err(|e| FstoreError::InvalidFilter(e))?,
+                    .map_err(|e| Error::InvalidFilter(e))?,
             ))
         } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
             Ok(Command::WhatIs(self.parse_index_to_filepath(numstr)?))
         } else if let Some(numstr) = cmd.strip_prefix("open ") {
             Ok(Command::Open(self.parse_index_to_filepath(numstr)?))
         } else {
-            Err(FstoreError::InvalidCommand(cmd.to_string()))
+            Err(Error::InvalidCommand(cmd.to_string()))
         }
     }
 

@@ -1,5 +1,5 @@
 use crate::{
-    core::{get_relative_path, FstoreError},
+    core::{get_relative_path, Error},
     filter::{Filter, TagMaker},
     load::{
         get_store_path, implicit_tags_os_str, DirData, FileLoadingOptions, GlobMatches, Loader,
@@ -28,21 +28,18 @@ struct InheritedTags {
 }
 
 impl InheritedTags {
-    fn update(&mut self, newdepth: usize) -> Result<(), FstoreError> {
+    fn update(&mut self, newdepth: usize) -> Result<(), Error> {
         if self.depth + 1 == newdepth {
             self.offsets.push(self.tag_indices.len());
         } else if self.depth >= newdepth {
             let mut marker = self.tag_indices.len();
             for _ in 0..(self.depth + 1 - newdepth) {
-                marker = self
-                    .offsets
-                    .pop()
-                    .ok_or(FstoreError::TagInheritanceFailed)?;
+                marker = self.offsets.pop().ok_or(Error::DirectoryTraversalFailed)?;
             }
             self.tag_indices.truncate(marker);
             self.offsets.push(marker);
         } else {
-            return Err(FstoreError::DirectoryTraversalFailed);
+            return Err(Error::DirectoryTraversalFailed);
         }
         self.depth = newdepth;
         return Ok(());
@@ -66,7 +63,7 @@ impl TagTable {
         })
     }
 
-    pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, FstoreError> {
+    pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, Error> {
         // These structs are locally defined because their only
         // purpose is to use with serde_yaml to extract relevant
         // information from the YAML files.
@@ -179,10 +176,10 @@ impl TagMaker<usize> for TagTable {
     }
 }
 
-pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), FstoreError> {
+pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
-    let filter = Filter::<usize>::parse(filter.as_str(), &table)
-        .map_err(|e| FstoreError::InvalidFilter(e))?;
+    let filter =
+        Filter::<usize>::parse(filter.as_str(), &table).map_err(|e| Error::InvalidFilter(e))?;
     for path in table.query(filter) {
         println!("{}", path);
     }
@@ -222,7 +219,7 @@ pub(crate) struct DenseTagTable {
 }
 
 impl DenseTagTable {
-    pub fn from_dir(dirpath: PathBuf) -> Result<DenseTagTable, FstoreError> {
+    pub fn from_dir(dirpath: PathBuf) -> Result<DenseTagTable, Error> {
         let TagTable {
             root,
             index_map: tag_indices,
