@@ -8,29 +8,69 @@ use crate::{
 };
 use std::{
     ffi::OsStr,
+    fmt::Debug,
     path::{Path, PathBuf},
 };
 
 pub(crate) const FSTORE: &str = ".fstore";
 
-#[derive(Debug)]
+pub(crate) struct GlobInfo {
+    glob: String,
+    dirpath: PathBuf,
+}
+
 pub(crate) enum Error {
     TUIError(String),
     EditCommandFailed(String),
-    UnmatchedPatterns,
+    UnmatchedGlobs(Vec<GlobInfo>),
     InvalidArgs,
     InvalidWorkingDirectory,
     InvalidPath(PathBuf),
     CannotReadStoreFile(PathBuf),
-    CannotParseYaml(String),
+    CannotParseYaml(PathBuf, String),
     InvalidFilter(FilterParseError),
     DirectoryTraversalFailed,
-    TagInheritanceFailed,
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TUIError(arg0) => f.debug_tuple("TUIError").field(arg0).finish(),
+            Self::EditCommandFailed(arg0) => {
+                f.debug_tuple("EditCommandFailed").field(arg0).finish()
+            }
+            Self::UnmatchedGlobs(infos) => {
+                writeln!(f, "")?;
+                for info in infos {
+                    writeln!(
+                        f,
+                        "No files in '{}' matching '{}'",
+                        info.dirpath.display(),
+                        info.glob
+                    )?;
+                }
+                return Ok(());
+            }
+            Self::InvalidArgs => write!(f, "InvalidArgs"),
+            Self::InvalidWorkingDirectory => write!(f, "This is not a valid working directory."),
+            Self::InvalidPath(path) => write!(f, "'{}' is not a valid path.", path.display()),
+            Self::CannotReadStoreFile(path) => {
+                write!(f, "Unable to read file: '{}'", path.display())
+            }
+            Self::CannotParseYaml(path, message) => {
+                writeln!(f, "While parsing file '{}'", path.display())?;
+                write!(f, "{}", message)
+            }
+            Self::InvalidFilter(err) => write!(f, "Unable to parse filter:\n{:?}", err),
+            Self::DirectoryTraversalFailed => {
+                write!(f, "Something went wrong when traversing directories.")
+            }
+        }
+    }
 }
 
 pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
-    let mut success = true;
-    let mut walker = WalkDirectories::from(path)?;
+    let mut walker = WalkDirectories::from(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
         false,
@@ -40,6 +80,7 @@ pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
             file_desc: false,
         },
     ));
+    let mut missing: Vec<GlobInfo> = Vec::new();
     while let Some((_depth, dirpath, children)) = walker.next() {
         let DirData {
             files,
@@ -52,22 +93,24 @@ pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
             }
         };
         matcher.find_matches(children, &files, true);
-        for pattern in files.iter().enumerate().filter_map(|(i, f)| {
+        missing.extend(files.iter().enumerate().filter_map(|(i, f)| {
             if !matcher.is_glob_matched(i) {
-                Some(&f.path)
+                Some(GlobInfo {
+                    glob: f.path.to_string(),
+                    dirpath: match dirpath.strip_prefix(&path) {
+                        Ok(dpath) => dpath.to_path_buf(),
+                        Err(_) => dirpath.to_path_buf(),
+                    },
+                })
             } else {
                 None
             }
-        }) {
-            eprintln!("No files matching '{}' in {}", pattern, dirpath.display());
-            success = false;
-        }
+        }));
     }
-    if success {
-        println!("No problems found.");
+    if missing.is_empty() {
         Ok(())
     } else {
-        Err(Error::UnmatchedPatterns)
+        Err(Error::UnmatchedGlobs(missing))
     }
 }
 

@@ -34,10 +34,7 @@ impl InheritedTags {
         } else if self.depth >= newdepth {
             let mut marker = self.tag_indices.len();
             for _ in 0..(self.depth + 1 - newdepth) {
-                marker = self
-                    .offsets
-                    .pop()
-                    .ok_or(Error::TagInheritanceFailed)?;
+                marker = self.offsets.pop().ok_or(Error::DirectoryTraversalFailed)?;
             }
             self.tag_indices.truncate(marker);
             self.offsets.push(marker);
@@ -181,8 +178,8 @@ impl TagMaker<usize> for TagTable {
 
 pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
-    let filter = Filter::<usize>::parse(filter.as_str(), &table)
-        .map_err(|e| Error::InvalidFilter(e))?;
+    let filter =
+        Filter::<usize>::parse(filter.as_str(), &table).map_err(|e| Error::InvalidFilter(e))?;
     for path in table.query(filter) {
         println!("{}", path);
     }

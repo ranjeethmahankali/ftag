@@ -59,10 +59,8 @@ fn main() -> Result<(), Error> {
         let path = matches
             .get_one::<PathBuf>(arg::PATH)
             .unwrap_or(&current_dir);
-        edit::edit_file(
-            get_store_path::<false>(path).ok_or(Error::InvalidPath(path.clone()))?,
-        )
-        .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))?;
+        edit::edit_file(get_store_path::<false>(path).ok_or(Error::InvalidPath(path.clone()))?)
+            .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))?;
         return Ok(());
     } else if let Some(_matches) = matches.subcommand_matches(cmd::UNTRACKED) {
         for path in untracked_files(current_dir)? {
