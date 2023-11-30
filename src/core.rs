@@ -35,10 +35,10 @@ pub(crate) enum Error {
 impl Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TUIError(arg0) => f.debug_tuple("TUIError").field(arg0).finish(),
-            Self::EditCommandFailed(arg0) => {
-                f.debug_tuple("EditCommandFailed").field(arg0).finish()
+            Self::TUIError(message) => {
+                write!(f, "Something went wrong in interactive mode:\n{}", message)
             }
+            Self::EditCommandFailed(message) => write!(f, "Unable to edit file:\n{}", message),
             Self::UnmatchedGlobs(infos) => {
                 writeln!(f, "")?;
                 for info in infos {
