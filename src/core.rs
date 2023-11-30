@@ -14,9 +14,10 @@ use std::{
 
 pub(crate) const FSTORE: &str = ".fstore";
 
+/// The data related to a glob in an fstore file.
 pub(crate) struct GlobInfo {
     glob: String,
-    dirpath: PathBuf,
+    dirpath: PathBuf, // The store file where the glob was found.
 }
 
 pub(crate) enum Error {
@@ -69,6 +70,9 @@ impl Debug for Error {
     }
 }
 
+/// Recursively check all directories. This will read all .fstore
+/// files, and make sure every listed glob / path matches at least one
+/// file on disk.
 pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
     let mut walker = WalkDirectories::from(path.clone())?;
     let mut matcher = GlobMatches::new();
@@ -114,6 +118,7 @@ pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
     }
 }
 
+/// Get a description string from the tags and description of a file.
 fn full_description(tags: Vec<String>, desc: String) -> String {
     let tagstr = {
         let mut tags = tags.into_iter();
@@ -126,11 +131,12 @@ fn full_description(tags: Vec<String>, desc: String) -> String {
         if desc.is_empty() {
             desc
         } else {
-            format!("\n\n{}", desc)
+            format!("\n{}", desc)
         }
     )
 }
 
+/// Get the description of a file or a directory.
 pub(crate) fn what_is(path: &PathBuf) -> Result<String, Error> {
     if path.is_file() {
         what_is_file(path)
@@ -212,6 +218,7 @@ fn what_is_dir(path: &PathBuf) -> Result<String, Error> {
     return Ok(full_description(tags, desc));
 }
 
+/// Get the path of `filename` which is in the directory `dirpath`, relative to `root`.
 pub(crate) fn get_relative_path(dirpath: &Path, filename: &OsStr, root: &Path) -> Option<PathBuf> {
     match dirpath.strip_prefix(root) {
         Ok(path) => {
@@ -223,6 +230,8 @@ pub(crate) fn get_relative_path(dirpath: &Path, filename: &OsStr, root: &Path) -
     }
 }
 
+/// Recursively traverse the directories starting from `root` and
+/// return all files that are not tracked.
 pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
     use glob_match::glob_match;
     let mut walker = WalkDirectories::from(root.clone())?;
@@ -266,6 +275,7 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
     return Ok(untracked);
 }
 
+/// Recursively traverse the directories from `path` and get all tags.
 pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     let mut alltags: Vec<String> = Vec::new();
     let mut walker = WalkDirectories::from(path)?;

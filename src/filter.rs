@@ -1,6 +1,5 @@
-use std::fmt::Debug;
-
 use crate::query::safe_get_flag;
+use std::fmt::Debug;
 
 pub(crate) enum FilterParseError {
     EmptyQuery,
@@ -22,12 +21,19 @@ impl Debug for FilterParseError {
     }
 }
 
+/// Data representing a tag. Tags are usually strings, so this can be
+/// a string. But sometimes it can be more efficient to represent tags
+/// as indices into a list / table of strings.
 pub(crate) trait TagData: std::fmt::Display + Clone + Default {}
 
 impl TagData for String {}
 
 impl TagData for usize {}
 
+/// The user always supplies tags as strings. But `TagData` can be
+/// other things such as indices. A class that implements this trait
+/// should know how to convert a user supplied tag string into a
+/// filter that wraps `TagData`.
 pub(crate) trait TagMaker<T: TagData> {
     fn create_tag(&self, input: &str) -> Filter<T>;
 }
@@ -244,6 +250,9 @@ fn next_filter<T: TagData, I: Iterator<Item = Token<T>>>(
     }
 }
 
+/// Instead of simply wrapping a filter in a `not` filter, this will
+/// check if the given filter is already a not filter and fold
+/// `!!something` into `something`.
 fn not_filter<T: TagData>(filter: Filter<T>) -> Filter<T> {
     match filter {
         Tag(_) | And(_, _) | Or(_, _) => Filter::Not(Box::new(filter)),

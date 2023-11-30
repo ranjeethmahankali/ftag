@@ -16,8 +16,9 @@ use ratatui::{
     },
     Frame,
 };
-use std::{io::stdout, path::PathBuf};
+use std::{fmt::Debug, io::stdout, path::PathBuf};
 
+/// State of the app.
 enum State {
     Default,
     Autocomplete,
@@ -34,10 +35,18 @@ enum Command {
     Open(PathBuf),
 }
 
-#[derive(Debug)]
 enum Error {
     InvalidCommand(String),
     InvalidFilter(FilterParseError),
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidCommand(message) => write!(f, "Invalid command: {}", message),
+            Self::InvalidFilter(err) => write!(f, "Invalid filter: {err:?}"),
+        }
+    }
 }
 
 struct App {
@@ -61,6 +70,10 @@ struct App {
     suggestion_index: usize,
 }
 
+/// Given `prev` and `curr`, this function removes the common prefix
+/// from `curr` and returns the resulting string as part of a
+/// tuple. The first element of the tuple is the length of the prefix
+/// that was trimmed.
 fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
     let stop = usize::min(prev.len(), curr.len());
     let mut iter = prev.chars().zip(curr.chars()).enumerate();
@@ -76,6 +89,7 @@ fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
     return (start, &curr[start..]);
 }
 
+/// Count digits in the integer as written in base 10.
 fn count_digits(mut num: usize) -> u8 {
     if num == 0 {
         return 1;
