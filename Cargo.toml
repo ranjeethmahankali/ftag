@@ -7,7 +7,6 @@ description = "CLI tool for tagging and searching files. See README.md for more 
 readme = "README.md"
 repository = "https://github.com/ranjeethmahankali/fstore"
 license = "GPL-3.0-only"
-license-file = "LICENSE"
 keywords = ["file", "files", "tag", "tags", "tagging", "search", "organize", "archive"]
 categories = ["command-line-utilities"]
 
