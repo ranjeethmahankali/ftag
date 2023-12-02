@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    core::{Error, FSTORE},
+    core::{Error, FTAG_FILE},
     walk::DirEntry,
 };
 
@@ -76,7 +76,7 @@ pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> {
 }
 
 /// This datastructure is responsible for finding matches between the
-/// files on disk, and globs listed in the fstore file. This can be
+/// files on disk, and globs listed in the ftag file. This can be
 /// reused for multiple folders to avoid reallocations.
 pub(crate) struct GlobMatches {
     table: Vec<bool>, //The major index represents the files matched by a single glob.
@@ -182,7 +182,7 @@ pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<Path
     } else {
         return None;
     };
-    out.push(FSTORE);
+    out.push(FTAG_FILE);
     if MUST_EXIST && !out.exists() {
         None
     } else {
@@ -190,27 +190,27 @@ pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<Path
     }
 }
 
-/// Loads and parses an fstore file. Reuse this to avoid allocations.
+/// Loads and parses an ftag file. Reuse this to avoid allocations.
 pub(crate) struct Loader {
     raw_text: String,
     options: LoaderOptions,
 }
 
-/// Data in an fstore file, corresponding to one file / glob.
+/// Data in an ftag file, corresponding to one file / glob.
 pub(crate) struct FileData<'a> {
     pub desc: Option<&'a str>,
     pub path: &'a str,
     pub tags: Vec<&'a str>,
 }
 
-/// Data from an fstore file.
+/// Data from an ftag file.
 pub(crate) struct DirData<'a> {
     pub desc: Option<&'a str>,
     pub tags: Vec<&'a str>,
     pub files: Vec<FileData<'a>>,
 }
 
-/// Options for loading the file data from an fstore file.
+/// Options for loading the file data from an ftag file.
 pub(crate) enum FileLoadingOptions {
     /// Skip loading the file data altogether.
     Skip,
@@ -220,7 +220,7 @@ pub(crate) enum FileLoadingOptions {
     Load { file_tags: bool, file_desc: bool },
 }
 
-/// Options for loading data from an fstore file.
+/// Options for loading data from an ftag file.
 pub(crate) struct LoaderOptions {
     /// Load tags of the directory.
     dir_tags: bool,
