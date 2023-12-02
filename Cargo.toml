@@ -7,7 +7,7 @@ description = "CLI tool for tagging and searching files. See README.md for more 
 readme = "README.md"
 repository = "https://github.com/ranjeethmahankali/fstore"
 license = "GPL-3.0-only"
-keywords = ["file", "files", "tag", "tags", "tagging", "search", "organize", "archive"]
+keywords = ["file", "tag", "search", "organize", "archive"]
 categories = ["command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
