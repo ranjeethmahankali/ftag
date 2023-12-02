@@ -104,7 +104,7 @@ If you wish to modify the metadata, the `edit` command opens up the
 directory is provided, the current working directory is assumed.
 
 ```bash
-ftore edit path/to/directory
+ftag edit path/to/directory
 # OR
 ftag edit # Edit working directory
 ```
