@@ -31,7 +31,7 @@ your data.
 ## Installation
 
 Fstore is written in Rust. It is not available as a crate yet, but you
-can clone this repo install it using cargo by running:
+can clone this repo and install it using cargo by running:
 
 ```bash
 cargo install --path /path/to/fstore/repo/
