@@ -25,8 +25,8 @@ archiving. All your tags and metadata are stored in plain text
 files. If you move or copy a directory, the plain text file(s)
 containing the metadata for that directory and all the files within
 get moved or copied with it. Because fstore uses plain text files, it
-is perfect for long term archives, as it gives full ownership of your
-own data to you.
+is perfect for long term archives, as it gives you full ownership of
+your data.
 
 ## Installation
 
@@ -172,3 +172,54 @@ Other commands you can use in interactive mode are:
 - `quit` or `exit` will exit out of the interactive mode.
 
 ### `.fstore` files
+
+The format of a `.fstore` file should be a header, followed by content
+under that header, followed by another header and so on till the end
+of the file. Supported headers are: `desc` for description, `tags` for
+tags and `path` for filepaths and globs. Headers should be in their
+own line, wrapped in `[]` brackets, similar to TOML or INI files. So a
+typical `.fstore` file might look like:
+
+```ini
+[desc]
+This is the description of this directory.
+The description can span multiple lines and paragraphs.
+
+[tags]
+tag1 tag2 tag3 tag4
+tag5
+tag6
+
+[path]
+my_file_1.pdf
+[tags]
+ftag1 pdf document
+
+[path]
+my_file_2.pdf
+[desc]
+This is my second file.
+[tags]
+ftag2 pdf document
+```
+
+Tags and description headers that occur at the start of the `.fstore`
+file are associated with the directory itself. Tags and description
+headers that occur after a `path` header are associated with that
+specific file or glob. `path` doesn't need to be one specific
+file. Instead it can be a glob, in which case, the provided tags and
+description are applied to all files that match the glob. Globs can be
+used to avoid repitition when you want to associate the same set of
+tags with many files. As such, multiple globs can match a single
+file. The tags associated with that file will be the union of tags
+associated with the globs that match the file. The descriptions are
+concatenated.
+
+### Graph mode
+
+In theory, the tags can be used to render a zettelkasten style graph,
+where the files are represented as nodes and any two files that share
+a tag are connected by an edge. This in combination with filtering,
+can be a powerful, visual way of searching through a large collection
+of files. This is not implemented yet. At this stage, this is just an
+idea in the making.
