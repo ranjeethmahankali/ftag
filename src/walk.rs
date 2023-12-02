@@ -11,6 +11,9 @@ pub(crate) enum DirEntryType {
     Dir,
 }
 
+/// Implementing sort means that among the entries of a directory, the
+/// nested directories will be at the start and the files will be at
+/// the end.
 impl PartialOrd for DirEntryType {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         use std::cmp::Ordering::*;
@@ -35,6 +38,9 @@ impl Ord for DirEntryType {
     }
 }
 
+/// Entry found during recursive traversal. `depth` 1 corresponds to
+/// the root of the recursive traversal, and subsequent depths
+/// indicate the level of nesting.
 pub(crate) struct DirEntry {
     depth: usize,
     entry_type: DirEntryType,
@@ -47,6 +53,8 @@ impl DirEntry {
     }
 }
 
+/// Recursively walk directories, while caching useful information
+/// about the contents of the directory. The traversal is depth first.
 pub(crate) struct WalkDirectories {
     cur_path: PathBuf,
     stack: Vec<DirEntry>,
@@ -71,6 +79,9 @@ impl WalkDirectories {
         })
     }
 
+    /// Move on to the next directory. Returns a tuple containing the
+    /// depth of the directory, its path, and a slice containing info
+    /// about the files in this directory.
     pub(crate) fn next<'a>(&'a mut self) -> Option<(usize, &'a Path, &'a [DirEntry])> {
         while let Some(DirEntry {
             depth,

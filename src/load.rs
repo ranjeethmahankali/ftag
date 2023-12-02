@@ -12,6 +12,7 @@ use crate::{
     walk::DirEntry,
 };
 
+/// Try to infer a range of years, from the name of a document or file.
 fn infer_year_range_os_str(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
     match nameopt {
         Some(val) => match val.to_str() {
@@ -22,6 +23,7 @@ fn infer_year_range_os_str(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
     }
 }
 
+/// Try to infer a range of years from the name of a document or file.
 fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
     if input.len() < 4 {
         return None;
@@ -57,21 +59,28 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
     return Some(first..(first + 1));
 }
 
+/// Get an iterator over all the implicit tags that can be inferred
+/// from the name of the file or directory.
 pub(crate) fn implicit_tags_os_str(name: Option<&OsStr>) -> impl Iterator<Item = String> {
     infer_year_range_os_str(name)
         .unwrap_or(0..0)
         .map(|y| y.to_string())
 }
 
+/// Get an iterator over all the implicit tags that can be inferred
+/// from the name of the file or directory.
 pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> {
     infer_year_range_str(name)
         .unwrap_or(0..0)
         .map(|y| y.to_string())
 }
 
+/// This datastructure is responsible for finding matches between the
+/// files on disk, and globs listed in the fstore file. This can be
+/// reused for multiple folders to avoid reallocations.
 pub(crate) struct GlobMatches {
-    table: Vec<bool>,
-    glob_matches: Vec<Option<usize>>, // Direct map from glob to file.
+    table: Vec<bool>, //The major index represents the files matched by a single glob.
+    glob_matches: Vec<Option<usize>>, // Direct 1 to 1 map from glob to file.
     num_files: usize,
     num_globs: usize,
 }
@@ -85,6 +94,7 @@ impl GlobMatches {
             num_globs: 0,
         }
     }
+
     fn row(&self, gi: usize) -> &[bool] {
         let start = gi * self.num_files;
         &self.table[start..(start + self.num_files)]
@@ -98,7 +108,18 @@ impl GlobMatches {
         )
     }
 
-    pub fn find_matches(&mut self, files: &[DirEntry], globs: &[FileData], short_circuit: bool) {
+    /// Initialize this struct with matches from a new set of `files`
+    /// and `globs`. If `short_circuit_globs` is true, then each glob
+    /// will be matched with at most 1 file on disk. This is useful
+    /// when you're not interested in matching all possible files, but
+    /// only interested in knowing if a glob matches at least one
+    /// file.
+    pub fn find_matches(
+        &mut self,
+        files: &[DirEntry],
+        globs: &[FileData],
+        short_circuit_globs: bool,
+    ) {
         self.num_files = files.len();
         self.num_globs = globs.len();
         self.table.clear();
@@ -124,7 +145,7 @@ impl GlobMatches {
                 if let Some(fstr) = f.name().to_str() {
                     if glob_match(&g.path, fstr) {
                         row[fi] = true;
-                        if short_circuit {
+                        if short_circuit_globs {
                             break;
                         }
                     }
@@ -133,15 +154,22 @@ impl GlobMatches {
         }
     }
 
+    /// For a given file at `file_index`, get indices of all globs
+    /// that matched the file.
     pub fn matched_globs<'a>(&'a self, file_index: usize) -> impl Iterator<Item = usize> + 'a {
         (0..self.num_globs).filter(move |gi| self.row(*gi)[file_index])
     }
 
+    /// Check if the glob at `glob_index` matched at least one file.
     pub fn is_glob_matched(&self, glob_index: usize) -> bool {
         self.row(glob_index).iter().any(|m| *m)
     }
 }
 
+/// Get the path of the store file corresponding to `path`. `path` can
+/// be a filepath, in which case the store file will be it's sibling,
+/// or a directory path, in which case the store file will be it's
+/// child.
 pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     let mut out = if path.exists() {
         if path.is_dir() {
@@ -162,31 +190,43 @@ pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<Path
     }
 }
 
+/// Loads and parses an fstore file. Reuse this to avoid allocations.
 pub(crate) struct Loader {
     raw_text: String,
     options: LoaderOptions,
 }
 
+/// Data in an fstore file, corresponding to one file / glob.
 pub(crate) struct FileData<'a> {
     pub desc: Option<&'a str>,
     pub path: &'a str,
     pub tags: Vec<&'a str>,
 }
 
+/// Data from an fstore file.
 pub(crate) struct DirData<'a> {
     pub desc: Option<&'a str>,
     pub tags: Vec<&'a str>,
     pub files: Vec<FileData<'a>>,
 }
 
+/// Options for loading the file data from an fstore file.
 pub(crate) enum FileLoadingOptions {
+    /// Skip loading the file data altogether.
     Skip,
+    /// `file_tags` controls whether the tags of files are
+    /// loaded. `file_desc` controls whether the descriptions of files
+    /// are loaded.
     Load { file_tags: bool, file_desc: bool },
 }
 
+/// Options for loading data from an fstore file.
 pub(crate) struct LoaderOptions {
+    /// Load tags of the directory.
     dir_tags: bool,
+    /// Load description of the directory.
     dir_desc: bool,
+    /// Options for loading file data.
     file_options: FileLoadingOptions,
 }
 

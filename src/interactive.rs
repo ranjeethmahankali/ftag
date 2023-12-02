@@ -103,7 +103,7 @@ fn count_digits(mut num: usize) -> u8 {
 }
 
 impl App {
-    fn from(table: DenseTagTable) -> App {
+    fn init(table: DenseTagTable) -> App {
         let taglist = table.tags().to_vec();
         let ntags = table.tags().len();
         let nfiles = table.files().len();
@@ -422,7 +422,7 @@ pub(crate) fn start(table: DenseTagTable) -> std::io::Result<()> {
     enable_raw_mode()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.clear()?;
-    let mut app = App::from(table);
+    let mut app = App::init(table);
     run_app(&mut terminal, &mut app)?;
     // Clean up.
     stdout().execute(LeaveAlternateScreen)?;

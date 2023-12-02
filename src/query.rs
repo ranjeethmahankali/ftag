@@ -46,6 +46,7 @@ impl InheritedTags {
     }
 }
 
+/// Table of all files and tags, that can be loaded recursively from any path.
 pub(crate) struct TagTable {
     root: PathBuf,
     index_map: HashMap<String, usize>,
@@ -63,6 +64,8 @@ impl TagTable {
         })
     }
 
+    /// Create a new tag table by recursively traversing directories
+    /// from `dirpath`.
     pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, Error> {
         // These structs are locally defined because their only
         // purpose is to use with serde_yaml to extract relevant
@@ -186,6 +189,7 @@ pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), Error> 
     return Ok(());
 }
 
+/// 2d array of bools.
 pub(crate) struct BoolTable {
     data: Box<[bool]>, // Cannot be resized by accident.
     ncols: usize,
@@ -210,6 +214,9 @@ impl BoolTable {
     }
 }
 
+/// This is similar to a `TagTable`, but the flags indicating in which
+/// file has which tags are stored in a dense 2d array rather than a
+/// sparse hash-map of vectors.
 pub(crate) struct DenseTagTable {
     root: PathBuf,
     flags: BoolTable,
