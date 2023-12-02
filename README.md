@@ -30,8 +30,13 @@ your data.
 
 ## Installation
 
-Ftag is written in Rust. It is not available as a crate yet, but you
-can clone this repo and install it using cargo by running:
+Ftag is written in Rust and is available on
+[crates.io](https://crates.io/):
+```bash
+cargo install ftag
+```
+
+Or you can clone this repo and install it from there:
 
 ```bash
 cargo install --path /path/to/ftag/repo/
