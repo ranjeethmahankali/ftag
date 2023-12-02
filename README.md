@@ -39,25 +39,25 @@ cargo install --path /path/to/ftag/repo/
 
 ## Usage
 
-`.fstore` files contain all the metadata, i.e. tags and descriptions
-for your files and directories. You can place a `.fstore` file
+`.ftag` files contain all the metadata, i.e. tags and descriptions
+for your files and directories. You can place a `.ftag` file
 anywhere in your file system, in whichever directory you wish to
-organize using tags. Each `.fstore` file should contain the metadata
-for the directory containing that `.fstore` file and the files that
+organize using tags. Each `.ftag` file should contain the metadata
+for the directory containing that `.ftag` file and the files that
 are immediate children of that directory, i.e. siblings of the
-`.fstore` file. It should not contain the metadata for any of the
+`.ftag` file. It should not contain the metadata for any of the
 nested directories. The nested directories should use their own
-`.fstore` files. It is important to keep the metadata decentralized in
+`.ftag` files. It is important to keep the metadata decentralized in
 this way, so that when you move or copy the directories, you don't
 invalidate the metadata.
 
-By design, `ftag` never modifies the `.fstore` files. `.fstore`
+By design, `ftag` never modifies the `.ftag` files. `.ftag`
 files are meant to be authored by the user, and only consumed and
 queried by `ftag`. As an Emacs user myself, I wrote [this major
-mode](https://github.com/ranjeethmahankali/fstore-mode) which provides
-autocompletion, file preview etc. and makes authoring `.fstore` files
+mode](https://github.com/ranjeethmahankali/ftag-mode) which provides
+autocompletion, file preview etc. and makes authoring `.ftag` files
 a breeze (I haven't written plugins for any other editor but if you
-like `ftag`, feel free to contribute!). Further details of `.fstore`
+like `ftag`, feel free to contribute!). Further details of `.ftag`
 files are discussed later.
 
 ### `ftag` CLI tool
@@ -84,7 +84,7 @@ ftag -q 'my-tag & other-tag & !exclude-tag | (tag1 & tag2)'
 ```
 
 Below command will traverse the directories and check to make sure all
-`.fstore` files are valid, i.e. the metadata contained within them has
+`.ftag` files are valid, i.e. the metadata contained within them has
 not been invalidated due to a renaming, moving or deleting files.
 
 ```bash
@@ -100,7 +100,7 @@ ftag whatis path/to/my/file
 ```
 
 If you wish to modify the metadata, the `edit` command opens up the
-`.fstore` in the given directory in your default editor. If no
+`.ftag` in the given directory in your default editor. If no
 directory is provided, the current working directory is assumed.
 
 ```bash
@@ -121,7 +121,7 @@ ftag untracked
 
 This command will traverse the directories recursively and produce a
 list of all tags. As this command walks the directories recursively,
-if a directory doesn't contain a `.fstore` file, it is ignored. It is
+if a directory doesn't contain a `.ftag` file, it is ignored. It is
 assumed that you don't wish to track the files in that directory and
 they are not reported as untracked.
 
@@ -171,14 +171,14 @@ Other commands you can use in interactive mode are:
   application.
 - `quit` or `exit` will exit out of the interactive mode.
 
-### `.fstore` files
+### `.ftag` files
 
-The format of a `.fstore` file should be a header, followed by content
+The format of a `.ftag` file should be a header, followed by content
 under that header, followed by another header and so on till the end
 of the file. Supported headers are: `desc` for description, `tags` for
 tags and `path` for filepaths and globs. Headers should be in their
 own line, wrapped in `[]` brackets, similar to TOML or INI files. So a
-typical `.fstore` file might look like:
+typical `.ftag` file might look like:
 
 ```ini
 [desc]
@@ -203,7 +203,7 @@ This is my second file.
 ftag2 pdf document
 ```
 
-Tags and description headers that occur at the start of the `.fstore`
+Tags and description headers that occur at the start of the `.ftag`
 file are associated with the directory itself. Tags and description
 headers that occur after a `path` header are associated with that
 specific file or glob. `path` doesn't need to be one specific

@@ -216,13 +216,13 @@ tag.";
     pub const INTERACTIVE: &str = "\
 Launch interactive mode in the working directory.
 // TODO Add more docs later after the interactive mode is implemented.";
-    pub const CHECK: &str = "Recursively traverse directories starting from the working directory and check to see if all the files listed in every .fstore file is exists.";
+    pub const CHECK: &str = "Recursively traverse directories starting from the working directory and check to see if all the files listed in every .ftag file is exists.";
     pub const CHECK_PATH:&str = "The directory path where to start checking recursively. If ommitted, the workind directory is assumed.";
     pub const WHATIS: &str = "Get the tags and description (if found) of the given file.";
     pub const WHATIS_PATH: &str = "Path of the file to describe.";
-    pub const EDIT: &str = "Edit the .fstore file of the given (optional) directory.
+    pub const EDIT: &str = "Edit the .ftag file of the given (optional) directory.
 If the environment variable EDITOR is set, it will be used to open the file. If it is not set, ftag can try to guess your default editor, but this is not guaranteed to work. Setting the EDITOR environment variable is recommended.";
-    pub const EDIT_PATH: &str = "Path to the directory whose .fstore file you wish to edit. If no path is specified, the current working
+    pub const EDIT_PATH: &str = "Path to the directory whose .ftag file you wish to edit. If no path is specified, the current working
 directory is used as default.";
     pub const UNTRACKED: &str =
         "List all files that are not tracked by ftag, recursively from the current directory.";

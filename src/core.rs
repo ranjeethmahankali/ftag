@@ -12,9 +12,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) const FSTORE: &str = ".fstore";
+pub(crate) const FTAG_FILE: &str = ".ftag";
 
-/// The data related to a glob in an fstore file.
+/// The data related to a glob in an ftag file.
 pub(crate) struct GlobInfo {
     glob: String,
     dirpath: PathBuf, // The store file where the glob was found.
@@ -70,7 +70,7 @@ impl Debug for Error {
     }
 }
 
-/// Recursively check all directories. This will read all .fstore
+/// Recursively check all directories. This will read all .ftag
 /// files, and make sure every listed glob / path matches at least one
 /// file on disk.
 pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
