@@ -1,11 +1,11 @@
 [package]
-name = "fstore-rs"
+name = "ftag"
 version = "0.1.0"
 edition = "2021"
 authors = ["Ranjeeth Mahankali <ranjeethmahankali@gmail.com>"]
 description = "CLI tool for tagging and searching files. See README.md for more info."
 readme = "README.md"
-repository = "https://github.com/ranjeethmahankali/fstore"
+repository = "https://github.com/ranjeethmahankali/ftag"
 license = "GPL-3.0-only"
 keywords = ["file", "tag", "search", "organize", "archive"]
 categories = ["command-line-utilities"]
