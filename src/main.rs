@@ -26,7 +26,7 @@ fn main() -> Result<(), Error> {
     // Handle tab completions first.
     if let Some(complete) = matches.subcommand_matches(cmd::BASH_COMPLETE) {
         // Bash completions can be registered with:
-        // complete -o default -C 'fstore --bash-complete' fstore
+        // complete -o default -C 'ftag --bash-complete' ftag
         if let Some(words) = complete.get_many::<String>(arg::BASH_COMPLETE_WORDS) {
             handle_bash_completions(current_dir, words.map(|s| s.as_str()).collect());
         }
@@ -79,7 +79,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
     if words.len() != 3 {
         return;
     }
-    if words[0] != "fstore" {
+    if words[0] != "ftag" {
         return;
     }
     const PREV_WORDS: [&str; 10] = [
@@ -95,7 +95,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
         "-p",
     ];
     match words.pop() {
-        Some("fstore") => {
+        Some("ftag") => {
             if let Some(cmd) = words.pop() {
                 for suggestion in PREV_WORDS.iter().filter(|c| c.starts_with(cmd)) {
                     println!("{}", suggestion);
@@ -221,10 +221,10 @@ Launch interactive mode in the working directory.
     pub const WHATIS: &str = "Get the tags and description (if found) of the given file.";
     pub const WHATIS_PATH: &str = "Path of the file to describe.";
     pub const EDIT: &str = "Edit the .fstore file of the given (optional) directory.
-If the environment variable EDITOR is set, it will be used to open the file. If it is not set, fstore can try to guess your default editor, but this is not guaranteed to work. Setting the EDITOR environment variable is recommended.";
+If the environment variable EDITOR is set, it will be used to open the file. If it is not set, ftag can try to guess your default editor, but this is not guaranteed to work. Setting the EDITOR environment variable is recommended.";
     pub const EDIT_PATH: &str = "Path to the directory whose .fstore file you wish to edit. If no path is specified, the current working
 directory is used as default.";
     pub const UNTRACKED: &str =
-        "List all files that are not tracked by fstore, recursively from the current directory.";
+        "List all files that are not tracked by ftag, recursively from the current directory.";
     pub const TAGS: &str = "List all tags found by traversing the directories recursively from the current directory. The output list of tags will not contain duplicates.";
 }

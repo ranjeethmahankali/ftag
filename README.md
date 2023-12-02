@@ -1,6 +1,6 @@
-# fstore
+# ftag
 
-fstore is a tool that lets you attach tags and descriptions to files,
+ftag is a tool that lets you attach tags and descriptions to files,
 then later query and retrieve files based on their tags. This is
 designed for use with large archives of files such as documents or
 pictures.
@@ -12,29 +12,29 @@ of files. There is never a clear logic behind why one set of
 directories should be higher in the directory tree than another set of
 directories. You can easily end up with deep directory trees, which
 are difficult to navigate and make it difficult to retrieve a file
-that you are looking for. `fstore` is written to solve exactly this
+that you are looking for. `ftag` is written to solve exactly this
 problem. Associating arbitrary tags with files, is a much more
 flexible and powerful way of organizing files. This allows you to
 search for files using any combination of tags. This also lets you
 have a relatively flat directory structure and make it easy to find
 the files you're looking for.
 
-While there are other tools providing similar features, `fstore` is
+While there are other tools providing similar features, `ftag` is
 designed to be simple, reliable and suitable for long term
 archiving. All your tags and metadata are stored in plain text
 files. If you move or copy a directory, the plain text file(s)
 containing the metadata for that directory and all the files within
-get moved or copied with it. Because fstore uses plain text files, it
+get moved or copied with it. Because ftag uses plain text files, it
 is perfect for long term archives, as it gives you full ownership of
 your data.
 
 ## Installation
 
-Fstore is written in Rust. It is not available as a crate yet, but you
+Ftag is written in Rust. It is not available as a crate yet, but you
 can clone this repo and install it using cargo by running:
 
 ```bash
-cargo install --path /path/to/fstore/repo/
+cargo install --path /path/to/ftag/repo/
 ```
 
 ## Usage
@@ -51,23 +51,23 @@ nested directories. The nested directories should use their own
 this way, so that when you move or copy the directories, you don't
 invalidate the metadata.
 
-By design, `fstore` never modifies the `.fstore` files. `.fstore`
+By design, `ftag` never modifies the `.fstore` files. `.fstore`
 files are meant to be authored by the user, and only consumed and
-queried by `fstore`. As an Emacs user myself, I wrote [this major
+queried by `ftag`. As an Emacs user myself, I wrote [this major
 mode](https://github.com/ranjeethmahankali/fstore-mode) which provides
 autocompletion, file preview etc. and makes authoring `.fstore` files
 a breeze (I haven't written plugins for any other editor but if you
-like `fstore`, feel free to contribute!). Further details of `.fstore`
+like `ftag`, feel free to contribute!). Further details of `.fstore`
 files are discussed later.
 
-### `fstore` CLI tool
+### `ftag` CLI tool
 
 This query will recursively traverse the directory structure from the
 working directory and print a list of files that are tagged with
 "my-tag".
 
 ```bash
-fstore query my-tag
+ftag query my-tag
 ```
 
 You can get fancy with your queries and compose Boolean expressions
@@ -80,7 +80,7 @@ the provided query string. This includes files that have "my-tag" and
 "tag2".
 
 ```bash
-fstore -q 'my-tag & other-tag & !exclude-tag | (tag1 & tag2)'
+ftag -q 'my-tag & other-tag & !exclude-tag | (tag1 & tag2)'
 ```
 
 Below command will traverse the directories and check to make sure all
@@ -88,7 +88,7 @@ Below command will traverse the directories and check to make sure all
 not been invalidated due to a renaming, moving or deleting files.
 
 ```bash
-fstore check
+ftag check
 ```
 
 Below command will produce a list of tags for the given directory or
@@ -96,7 +96,7 @@ file, and a description. The description is just a string that was
 authored by the user to describe the file.
 
 ```bash
-fstore whatis path/to/my/file
+ftag whatis path/to/my/file
 ```
 
 If you wish to modify the metadata, the `edit` command opens up the
@@ -104,9 +104,9 @@ If you wish to modify the metadata, the `edit` command opens up the
 directory is provided, the current working directory is assumed.
 
 ```bash
-ftore edit path/to/directory
+ftag edit path/to/directory
 # OR
-fstore edit # Edit working directory
+ftag edit # Edit working directory
 ```
 
 When you start tagging a large collection of existing files, you won't
@@ -116,7 +116,7 @@ assigned any metadata. This command will produce a list of untracked
 files.
 
 ```bash
-fstore untracked
+ftag untracked
 ```
 
 This command will traverse the directories recursively and produce a
@@ -126,17 +126,17 @@ assumed that you don't wish to track the files in that directory and
 they are not reported as untracked.
 
 ```bash
-fstore tags
+ftag tags
 ```
 
-Most `fstore` subcommands recursively traverse the directory from the
+Most `ftag` subcommands recursively traverse the directory from the
 current working directory and produce the output that you asked
 for. If you wish to produce to same output from a different path
 instead of the current working directory, you can override it by
 providing a `--path | -p` flag.
 
 ```bash
-fstore --path different/starting/directory
+ftag --path different/starting/directory
 ```
 
 ### Bash autocompletion
@@ -145,7 +145,7 @@ When searching for files, you may not remember the exact tags you're
 supposed to search for. Having autocompletion for tags and commands
 can be very helpful. To enable tab-autocompletion in bash, add this to your bash profile:
 ```bash
-complete -o default -C 'fstore --bash-complete' fstore
+complete -o default -C 'ftag --bash-complete' ftag
 ```
 
 ### Interactive mode with TUI
