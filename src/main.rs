@@ -26,7 +26,7 @@ fn main() -> Result<(), Error> {
     // Handle tab completions first.
     if let Some(complete) = matches.subcommand_matches(cmd::BASH_COMPLETE) {
         // Bash completions can be registered with:
-        // complete -o default -C 'ftag --bash-complete' ftag
+        // complete -o default -C 'ftag --bash-complete --' ftag
         if let Some(words) = complete.get_many::<String>(arg::BASH_COMPLETE_WORDS) {
             handle_bash_completions(current_dir, words.map(|s| s.as_str()).collect());
         }
