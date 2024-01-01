@@ -160,21 +160,32 @@ very helpful. It recursively traverses all directories, loads all
 metadata and starts an interactive session with a TUI. You'll see a
 list of all tracked files, and a union of all tags these files
 have. You can figure out what to search for by looking through the
-list of tags, or start typing something like `filter tag1 & tag..` and
+list of tags, or start typing something like `tag1 & tag..` and
 let the autocompletion help you find the right tag. If you hit return,
 the list of files is filtered down to only the ones that satisfy the
 query. Similarly you should also see the collection of tags
 shrink. You can iteratively refine your search until you find the file
-you are looking for.
+you are looking for. If you simply start typing text into the REPL
+interface, the text is interpreted as a filter string. If you begin
+with a `/`, then the text is interpreted as a command.
 
-Other commands you can use in interactive mode are:
-- `reset` to remove the current filter
-- `whatis <index>` to see the tags and description of the file in the
+Commands you can use in interactive mode are:
+- `/reset` to remove the current filter
+- `/whatis <index>` to see the tags and description of the file in the
   current list. You choose the file by it's index rather than name or
   path.
-- `open <index>` to open the file with the given index in your default
+- `/open <index>` to open the file with the given index in your default
   application.
-- `quit` or `exit` will exit out of the interactive mode.
+- `/quit` or `exit` will exit out of the interactive mode.
+
+If you already have a filter applied, and are looking at a narrowed
+down list of files, the next filter you type will be appended to the
+existing filter. For example, if you enter the filter `tag1 & tag2`,
+and hit return, that filter is applied and a smaller list of files is
+shown. If you then type `| tag3` and hit return, it will be appended
+to the existing filter resulting in `(tag1 & tag2) | tag3`. This is
+useful when incrementally tightening the filter to find the file you
+want.
 
 ### `.ftag` files
 
