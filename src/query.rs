@@ -17,7 +17,7 @@ fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     flags[index] = true;
 }
 
-pub(crate) fn safe_get_flag(flags: &Vec<bool>, index: usize) -> bool {
+pub(crate) fn safe_get_flag(flags: &[bool], index: usize) -> bool {
     *flags.get(index).unwrap_or(&false)
 }
 
@@ -56,7 +56,7 @@ pub(crate) struct TagTable {
 impl TagTable {
     fn query<'a>(&'a self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'a>> {
         self.table.iter().filter_map(move |(path, flags)| {
-            if filter.eval_vec(flags) {
+            if filter.eval(flags) {
                 Some(path.display())
             } else {
                 None

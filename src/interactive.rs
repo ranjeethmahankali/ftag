@@ -286,7 +286,7 @@ impl App {
                             self.filtered_indices.clear();
                             self.filtered_indices.extend(
                                 (0..self.num_files())
-                                    .filter(|i| filter.eval_slice(self.table.flags(*i))),
+                                    .filter(|i| filter.eval(self.table.flags(*i))),
                             );
                             self.update_lists();
                             self.echo =
