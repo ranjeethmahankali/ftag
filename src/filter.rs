@@ -77,23 +77,12 @@ impl<T: TagData> Filter<T> {
 }
 
 impl Filter<usize> {
-    pub fn eval_vec(&self, flags: &Vec<bool>) -> bool {
+    pub fn eval(&self, flags: &[bool]) -> bool {
         match self {
             Tag(ti) => safe_get_flag(flags, *ti),
-            And(lhs, rhs) => lhs.eval_vec(flags) && rhs.eval_vec(flags),
-            Or(lhs, rhs) => lhs.eval_vec(flags) || rhs.eval_vec(flags),
-            Not(input) => !input.eval_vec(flags),
-            FalseTag => false,
-            TrueTag => true,
-        }
-    }
-
-    pub fn eval_slice(&self, flags: &[bool]) -> bool {
-        match self {
-            Tag(ti) => flags[*ti],
-            And(lhs, rhs) => lhs.eval_slice(flags) && rhs.eval_slice(flags),
-            Or(lhs, rhs) => lhs.eval_slice(flags) || rhs.eval_slice(flags),
-            Not(input) => !input.eval_slice(flags),
+            And(lhs, rhs) => lhs.eval(flags) && rhs.eval(flags),
+            Or(lhs, rhs) => lhs.eval(flags) || rhs.eval(flags),
+            Not(input) => !input.eval(flags),
             FalseTag => false,
             TrueTag => true,
         }

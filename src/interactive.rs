@@ -57,6 +57,7 @@ struct App {
     state: State,
     tag_active: Vec<bool>,
     filtered_indices: Vec<usize>,
+    filter_str: String,
     taglist: Vec<String>,
     filelist: Vec<String>,
     // UI management.
@@ -119,8 +120,9 @@ impl App {
             scrollstate: ScrollbarState::new(ntags),
             frameheight: 0,
             filtered_indices: (0..nfiles).collect(),
+            filter_str: String::new(),
             file_index_width: count_digits(nfiles - 1),
-            command_completions: ["exit", "quit", "reset", "filter", "whatis", "open"]
+            command_completions: ["exit", "quit", "reset", "whatis", "open"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -137,6 +139,7 @@ impl App {
     }
 
     fn reset(&mut self) {
+        self.filter_str.clear();
         self.filtered_indices.clear();
         self.filtered_indices.extend(0..self.num_files());
         self.update_lists();
@@ -163,25 +166,28 @@ impl App {
         return Ok(path);
     }
 
-    fn parse_command(&self) -> Result<Command, Error> {
+    fn parse_command(&mut self) -> Result<Command, Error> {
         let cmd = self.command.trim();
-        if cmd == "exit" {
-            Ok(Command::Exit)
-        } else if cmd == "quit" {
-            Ok(Command::Quit)
-        } else if cmd == "reset" {
-            Ok(Command::Reset)
-        } else if let Some(filterstr) = cmd.strip_prefix("filter ") {
+        if let Some(cmd) = cmd.strip_prefix('/') {
+            if cmd == "exit" {
+                Ok(Command::Exit)
+            } else if cmd == "quit" {
+                Ok(Command::Quit)
+            } else if cmd == "reset" {
+                Ok(Command::Reset)
+            } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
+                Ok(Command::WhatIs(self.parse_index_to_filepath(numstr)?))
+            } else if let Some(numstr) = cmd.strip_prefix("open ") {
+                Ok(Command::Open(self.parse_index_to_filepath(numstr)?))
+            } else {
+                Err(Error::InvalidCommand(cmd.to_string()))
+            }
+        } else {
+            let newfilter = format!("{} {cmd}", self.filter_str);
             Ok(Command::Filter(
-                Filter::<usize>::parse(filterstr, &self.table)
+                Filter::<usize>::parse(&newfilter, &self.table)
                     .map_err(|e| Error::InvalidFilter(e))?,
             ))
-        } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
-            Ok(Command::WhatIs(self.parse_index_to_filepath(numstr)?))
-        } else if let Some(numstr) = cmd.strip_prefix("open ") {
-            Ok(Command::Open(self.parse_index_to_filepath(numstr)?))
-        } else {
-            Err(Error::InvalidCommand(cmd.to_string()))
         }
     }
 
@@ -257,7 +263,7 @@ impl App {
     }
 
     fn last_word_start(&self) -> usize {
-        const DELIMS: &str = " ()&|!";
+        const DELIMS: &str = " ()&|!/";
         DELIMS
             .chars()
             .map(|ch| match self.command.rfind(ch) {
@@ -285,12 +291,10 @@ impl App {
                         Command::Filter(filter) => {
                             self.filtered_indices.clear();
                             self.filtered_indices.extend(
-                                (0..self.num_files())
-                                    .filter(|i| filter.eval_slice(self.table.flags(*i))),
+                                (0..self.num_files()).filter(|i| filter.eval(self.table.flags(*i))),
                             );
                             self.update_lists();
-                            self.echo =
-                                format!("Filter: '{}'", filter.to_string(self.table.tags()));
+                            self.filter_str = filter.to_string(self.table.tags());
                             self.scroll = 0;
                             self.scrollstate = self.scrollstate.content_length(self.taglist.len());
                         }
@@ -336,7 +340,7 @@ impl App {
                 self.suggestions.clear();
                 let start = self.last_word_start();
                 let word = &self.command[start..];
-                if start == 0 {
+                if self.command.starts_with('/') {
                     // Complete commands.
                     self.suggestions
                         .extend(self.command_completions.iter().filter_map(|c| {
@@ -346,7 +350,7 @@ impl App {
                                 None
                             }
                         }));
-                } else if self.command.starts_with("filter ") {
+                } else {
                     self.suggestions
                         .extend(self.table.tags().iter().filter_map(|t| {
                             if t.starts_with(word) {
@@ -466,7 +470,7 @@ fn render(f: &mut Frame, app: &mut App) {
             Constraint::Percentage(100 - TAGWIDTH_PERCENT),
         ])
         .split(f.size());
-    let vlayout = Layout::default()
+    let rblocks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
             Constraint::Max(1001),
@@ -474,10 +478,15 @@ fn render(f: &mut Frame, app: &mut App) {
             Constraint::Length(2),
         ])
         .split(hlayout[1]);
-    let tagblock = hlayout[0];
-    let fileblock = vlayout[0];
-    let echoblock = vlayout[1];
-    let cmdblock = vlayout[2];
+    let lblocks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(vec![Constraint::Max(1000), Constraint::Length(6)])
+        .split(hlayout[0]);
+    let tagblock = lblocks[0];
+    let filterblock = lblocks[1];
+    let fileblock = rblocks[0];
+    let echoblock = rblocks[1];
+    let cmdblock = rblocks[2];
     // Tags.
     f.render_widget(
         Paragraph::new(
@@ -524,6 +533,14 @@ fn render(f: &mut Frame, app: &mut App) {
                 .borders(Borders::TOP),
         ),
         echoblock,
+    );
+    f.render_widget(
+        Paragraph::new(Text::from(app.filter_str.clone())).block(
+            Block::new()
+                .padding(Padding::horizontal(2))
+                .borders(Borders::TOP | Borders::RIGHT),
+        ),
+        filterblock,
     );
     f.render_widget(
         Paragraph::new(Text::from(format!(">>> {}█", app.command)))
