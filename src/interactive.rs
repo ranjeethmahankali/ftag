@@ -183,9 +183,9 @@ impl App {
                 Err(Error::InvalidCommand(cmd.to_string()))
             }
         } else {
-            self.filter_str += cmd;
+            let newfilter = format!("{} {cmd}", self.filter_str);
             Ok(Command::Filter(
-                Filter::<usize>::parse(&self.filter_str, &self.table)
+                Filter::<usize>::parse(&newfilter, &self.table)
                     .map_err(|e| Error::InvalidFilter(e))?,
             ))
         }
@@ -294,8 +294,7 @@ impl App {
                                 (0..self.num_files()).filter(|i| filter.eval(self.table.flags(*i))),
                             );
                             self.update_lists();
-                            self.echo =
-                                format!("Filter: '{}'", filter.to_string(self.table.tags()));
+                            self.filter_str = filter.to_string(self.table.tags());
                             self.scroll = 0;
                             self.scrollstate = self.scrollstate.content_length(self.taglist.len());
                         }
@@ -471,7 +470,7 @@ fn render(f: &mut Frame, app: &mut App) {
             Constraint::Percentage(100 - TAGWIDTH_PERCENT),
         ])
         .split(f.size());
-    let vlayout = Layout::default()
+    let rblocks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
             Constraint::Max(1001),
@@ -479,10 +478,15 @@ fn render(f: &mut Frame, app: &mut App) {
             Constraint::Length(2),
         ])
         .split(hlayout[1]);
-    let tagblock = hlayout[0];
-    let fileblock = vlayout[0];
-    let echoblock = vlayout[1];
-    let cmdblock = vlayout[2];
+    let lblocks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(vec![Constraint::Max(1000), Constraint::Length(6)])
+        .split(hlayout[0]);
+    let tagblock = lblocks[0];
+    let filterblock = lblocks[1];
+    let fileblock = rblocks[0];
+    let echoblock = rblocks[1];
+    let cmdblock = rblocks[2];
     // Tags.
     f.render_widget(
         Paragraph::new(
@@ -529,6 +533,14 @@ fn render(f: &mut Frame, app: &mut App) {
                 .borders(Borders::TOP),
         ),
         echoblock,
+    );
+    f.render_widget(
+        Paragraph::new(Text::from(app.filter_str.clone())).block(
+            Block::new()
+                .padding(Padding::horizontal(2))
+                .borders(Borders::TOP | Borders::RIGHT),
+        ),
+        filterblock,
     );
     f.render_widget(
         Paragraph::new(Text::from(format!(">>> {}█", app.command)))
