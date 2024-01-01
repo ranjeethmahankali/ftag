@@ -57,6 +57,7 @@ struct App {
     state: State,
     tag_active: Vec<bool>,
     filtered_indices: Vec<usize>,
+    filter_str: String,
     taglist: Vec<String>,
     filelist: Vec<String>,
     // UI management.
@@ -119,6 +120,7 @@ impl App {
             scrollstate: ScrollbarState::new(ntags),
             frameheight: 0,
             filtered_indices: (0..nfiles).collect(),
+            filter_str: String::new(),
             file_index_width: count_digits(nfiles - 1),
             command_completions: ["exit", "quit", "reset", "filter", "whatis", "open"]
                 .iter()
@@ -137,6 +139,7 @@ impl App {
     }
 
     fn reset(&mut self) {
+        self.filter_str.clear();
         self.filtered_indices.clear();
         self.filtered_indices.extend(0..self.num_files());
         self.update_lists();
@@ -163,7 +166,7 @@ impl App {
         return Ok(path);
     }
 
-    fn parse_command(&self) -> Result<Command, Error> {
+    fn parse_command(&mut self) -> Result<Command, Error> {
         let cmd = self.command.trim();
         if cmd == "exit" {
             Ok(Command::Exit)
@@ -172,8 +175,9 @@ impl App {
         } else if cmd == "reset" {
             Ok(Command::Reset)
         } else if let Some(filterstr) = cmd.strip_prefix("filter ") {
+            self.filter_str += filterstr;
             Ok(Command::Filter(
-                Filter::<usize>::parse(filterstr, &self.table)
+                Filter::<usize>::parse(&self.filter_str, &self.table)
                     .map_err(|e| Error::InvalidFilter(e))?,
             ))
         } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
@@ -285,8 +289,7 @@ impl App {
                         Command::Filter(filter) => {
                             self.filtered_indices.clear();
                             self.filtered_indices.extend(
-                                (0..self.num_files())
-                                    .filter(|i| filter.eval(self.table.flags(*i))),
+                                (0..self.num_files()).filter(|i| filter.eval(self.table.flags(*i))),
                             );
                             self.update_lists();
                             self.echo =
