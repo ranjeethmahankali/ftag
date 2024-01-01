@@ -122,7 +122,7 @@ impl App {
             filtered_indices: (0..nfiles).collect(),
             filter_str: String::new(),
             file_index_width: count_digits(nfiles - 1),
-            command_completions: ["exit", "quit", "reset", "filter", "whatis", "open"]
+            command_completions: ["exit", "quit", "reset", "whatis", "open"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -168,24 +168,26 @@ impl App {
 
     fn parse_command(&mut self) -> Result<Command, Error> {
         let cmd = self.command.trim();
-        if cmd == "exit" {
-            Ok(Command::Exit)
-        } else if cmd == "quit" {
-            Ok(Command::Quit)
-        } else if cmd == "reset" {
-            Ok(Command::Reset)
-        } else if let Some(filterstr) = cmd.strip_prefix("filter ") {
-            self.filter_str += filterstr;
+        if let Some(cmd) = cmd.strip_prefix('/') {
+            if cmd == "exit" {
+                Ok(Command::Exit)
+            } else if cmd == "quit" {
+                Ok(Command::Quit)
+            } else if cmd == "reset" {
+                Ok(Command::Reset)
+            } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
+                Ok(Command::WhatIs(self.parse_index_to_filepath(numstr)?))
+            } else if let Some(numstr) = cmd.strip_prefix("open ") {
+                Ok(Command::Open(self.parse_index_to_filepath(numstr)?))
+            } else {
+                Err(Error::InvalidCommand(cmd.to_string()))
+            }
+        } else {
+            self.filter_str += cmd;
             Ok(Command::Filter(
                 Filter::<usize>::parse(&self.filter_str, &self.table)
                     .map_err(|e| Error::InvalidFilter(e))?,
             ))
-        } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
-            Ok(Command::WhatIs(self.parse_index_to_filepath(numstr)?))
-        } else if let Some(numstr) = cmd.strip_prefix("open ") {
-            Ok(Command::Open(self.parse_index_to_filepath(numstr)?))
-        } else {
-            Err(Error::InvalidCommand(cmd.to_string()))
         }
     }
 
@@ -261,7 +263,7 @@ impl App {
     }
 
     fn last_word_start(&self) -> usize {
-        const DELIMS: &str = " ()&|!";
+        const DELIMS: &str = " ()&|!/";
         DELIMS
             .chars()
             .map(|ch| match self.command.rfind(ch) {
@@ -339,7 +341,7 @@ impl App {
                 self.suggestions.clear();
                 let start = self.last_word_start();
                 let word = &self.command[start..];
-                if start == 0 {
+                if self.command.starts_with('/') {
                     // Complete commands.
                     self.suggestions
                         .extend(self.command_completions.iter().filter_map(|c| {
@@ -349,7 +351,7 @@ impl App {
                                 None
                             }
                         }));
-                } else if self.command.starts_with("filter ") {
+                } else {
                     self.suggestions
                         .extend(self.table.tags().iter().filter_map(|t| {
                             if t.starts_with(word) {
