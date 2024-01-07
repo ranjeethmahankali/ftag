@@ -32,6 +32,10 @@ fn main() -> Result<(), Error> {
         }
         return Ok(());
     }
+    if let Some(_matches) = matches.subcommand_matches(cmd::COUNT) {
+        println!("{}", query::count_files(current_dir)?);
+        return Ok(());
+    }
     if let Some(matches) = matches.subcommand_matches(cmd::QUERY) {
         return run_query(
             current_dir,
@@ -134,6 +138,7 @@ fn parse_args() -> clap::ArgMatches {
                 .required(false)
                 .value_parser(value_parser!(PathBuf)),
         )
+        .subcommand(clap::Command::new(cmd::COUNT).about(about::COUNT))
         .subcommand(
             clap::Command::new(cmd::QUERY)
                 .alias(cmd::QUERY_SHORT)
@@ -185,6 +190,7 @@ fn parse_args() -> clap::ArgMatches {
 }
 
 mod cmd {
+    pub const COUNT: &str = "count";
     pub const QUERY: &str = "query";
     pub const QUERY_SHORT: &str = "-q";
     pub const INTERACTIVE: &str = "interactive";
@@ -203,6 +209,7 @@ mod arg {
 }
 
 mod about {
+    pub const COUNT: &str = "Output the number of tracked files.";
     pub const QUERY: &str = "List all files that match the given query string.";
     pub const QUERY_FILTER: &str = "The query string to compare the files against.";
     pub const QUERY_FILTER_LONG: &str =

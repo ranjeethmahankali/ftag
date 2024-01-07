@@ -179,6 +179,10 @@ impl TagMaker<usize> for TagTable {
     }
 }
 
+pub(crate) fn count_files(path: PathBuf) -> Result<usize, Error> {
+    return Ok(TagTable::from_dir(path)?.table.len());
+}
+
 pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter =
