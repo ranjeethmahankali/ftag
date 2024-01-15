@@ -134,6 +134,13 @@ they are not reported as untracked.
 ftag tags
 ```
 
+If you want to know the number of files tracked by ftags from your
+current working directory recursively, use this command:
+
+```bash
+ftag count
+```
+
 Most `ftag` subcommands recursively traverse the directory from the
 current working directory and produce the output that you asked
 for. If you wish to produce to same output from a different path
@@ -141,7 +148,7 @@ instead of the current working directory, you can override it by
 providing a `--path | -p` flag.
 
 ```bash
-ftag --path different/starting/directory
+ftag --path different/starting/directory <COMMAND>
 ```
 
 ### Bash autocompletion
