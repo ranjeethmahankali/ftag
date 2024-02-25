@@ -49,7 +49,7 @@ impl InheritedTags {
 /// Table of all files and tags, that can be loaded recursively from any path.
 pub(crate) struct TagTable {
     root: PathBuf,
-    index_map: HashMap<String, usize>,
+    tag_index_map: HashMap<String, usize>,
     table: HashMap<PathBuf, Vec<bool>>,
 }
 
@@ -72,7 +72,7 @@ impl TagTable {
         // information from the YAML files.
         let mut table = TagTable {
             root: dirpath,
-            index_map: HashMap::new(),
+            tag_index_map: HashMap::new(),
             table: HashMap::new(),
         };
         let mut num_tags: usize = 0;
@@ -114,7 +114,7 @@ impl TagTable {
             {
                 inherited.tag_indices.push(Self::get_tag_index(
                     tag,
-                    &mut table.index_map,
+                    &mut table.tag_index_map,
                     &mut num_tags,
                 ));
             }
@@ -160,7 +160,7 @@ impl TagTable {
         for tag in tags.drain(..) {
             safe_set_flag(
                 flags,
-                Self::get_tag_index(tag, &mut self.index_map, num_tags),
+                Self::get_tag_index(tag, &mut self.tag_index_map, num_tags),
             );
         }
         // Set inherited tags.
@@ -172,15 +172,16 @@ impl TagTable {
 
 impl TagMaker<usize> for TagTable {
     fn create_tag(&self, input: &str) -> Filter<usize> {
-        match self.index_map.get(&input.to_string()) {
+        match self.tag_index_map.get(&input.to_string()) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,
         }
     }
 }
 
-pub(crate) fn count_files(path: PathBuf) -> Result<usize, Error> {
-    return Ok(TagTable::from_dir(path)?.table.len());
+pub(crate) fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
+    let tt = TagTable::from_dir(path)?;
+    return Ok((tt.table.len(), tt.tag_index_map.len()));
 }
 
 pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), Error> {
@@ -233,7 +234,7 @@ impl DenseTagTable {
     pub fn from_dir(dirpath: PathBuf) -> Result<DenseTagTable, Error> {
         let TagTable {
             root,
-            index_map: tag_indices,
+            tag_index_map: tag_indices,
             table: sparse,
         } = TagTable::from_dir(dirpath)?;
         let tags: Box<[String]> = {

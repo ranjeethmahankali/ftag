@@ -33,7 +33,8 @@ fn main() -> Result<(), Error> {
         return Ok(());
     }
     if let Some(_matches) = matches.subcommand_matches(cmd::COUNT) {
-        println!("{}", query::count_files(current_dir)?);
+        let (nfiles, ntags) = query::count_files_tags(current_dir)?;
+        println!("{} files; {} tags", nfiles, ntags);
         return Ok(());
     }
     if let Some(matches) = matches.subcommand_matches(cmd::QUERY) {
