@@ -1,6 +1,6 @@
 [package]
 name = "ftag"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 authors = ["Ranjeeth Mahankali <ranjeethmahankali@gmail.com>"]
 description = "CLI tool for tagging and searching files. See README.md for more info."
@@ -16,9 +16,8 @@ categories = ["command-line-utilities"]
 clap = { version = "4.4", features = ["cargo"] }
 glob-match = "0.2"
 edit = "0.1"
-# For the TUI mode.
 crossterm = "0.27.0"
-ratatui = "0.24.0"
+ratatui = "0.26"
 opener = "0.6"
 
 # For smaller binary size.
