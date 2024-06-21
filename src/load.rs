@@ -1,6 +1,5 @@
 use glob_match::glob_match;
 use std::{
-    ffi::OsStr,
     fs::File,
     io::Read,
     ops::Range,
@@ -11,17 +10,6 @@ use crate::{
     core::{Error, FTAG_FILE},
     walk::DirEntry,
 };
-
-/// Try to infer a range of years, from the name of a document or file.
-fn infer_year_range_os_str(nameopt: Option<&OsStr>) -> Option<Range<u16>> {
-    match nameopt {
-        Some(val) => match val.to_str() {
-            Some(strval) => infer_year_range_str(strval),
-            None => None,
-        },
-        None => None,
-    }
-}
 
 /// Try to infer a range of years from the name of a document or file.
 fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
@@ -59,12 +47,13 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
     return Some(first..(first + 1));
 }
 
-/// Get an iterator over all the implicit tags that can be inferred
-/// from the name of the file or directory.
-pub(crate) fn implicit_tags_os_str(name: Option<&OsStr>) -> impl Iterator<Item = String> {
-    infer_year_range_os_str(name)
-        .unwrap_or(0..0)
-        .map(|y| y.to_string())
+pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
+    Ok(match path.file_name() {
+        Some(fname) => fname
+            .to_str()
+            .ok_or(Error::InvalidPath(path.to_path_buf()))?,
+        None => "",
+    })
 }
 
 /// Get an iterator over all the implicit tags that can be inferred
@@ -400,23 +389,19 @@ impl Loader {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::ffi::OsString;
 
     #[test]
     fn t_infer_year_range() {
-        let inputs = vec![OsString::from("2021_to_2023"), OsString::from("2021_2023")];
+        let inputs = vec!["2021_to_2023", "2021_2023"];
         let expected = vec!["2021", "2022", "2023"];
         for input in inputs {
-            let actual: Vec<_> = implicit_tags_os_str(Some(&input)).collect();
+            let actual: Vec<_> = implicit_tags_str(input).collect();
             assert_eq!(actual, expected);
         }
-        let inputs = vec![
-            OsString::from("1998_MyDirectory"),
-            OsString::from("1998_MyFile.pdf"),
-        ];
+        let inputs = vec!["1998_MyDirectory", "1998_MyFile.pdf"];
         let expected = vec!["1998"];
         for input in inputs {
-            let actual: Vec<_> = implicit_tags_os_str(Some(&input)).collect();
+            let actual: Vec<_> = implicit_tags_str(input).collect();
             assert_eq!(actual, expected);
         }
     }
