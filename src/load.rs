@@ -47,13 +47,18 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
     return Some(first..(first + 1));
 }
 
-pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
-    Ok(match path.file_name() {
-        Some(fname) => fname
-            .to_str()
-            .ok_or(Error::InvalidPath(path.to_path_buf()))?,
-        None => "",
-    })
+fn infer_video_tag(input: &str) -> impl Iterator<Item = String> {
+    if [
+        ".mov", ".MOV", ".flv", ".FLV", ".mp4", ".MP4", ".3gp", ".3GP",
+    ]
+    .iter()
+    .any(|ext| input.ends_with(ext))
+    {
+        0..1
+    } else {
+        0..0
+    }
+    .map(|_| "video".to_string())
 }
 
 /// Get an iterator over all the implicit tags that can be inferred
@@ -62,6 +67,16 @@ pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> {
     infer_year_range_str(name)
         .unwrap_or(0..0)
         .map(|y| y.to_string())
+        .chain(infer_video_tag(name))
+}
+
+pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
+    Ok(match path.file_name() {
+        Some(fname) => fname
+            .to_str()
+            .ok_or(Error::InvalidPath(path.to_path_buf()))?,
+        None => "",
+    })
 }
 
 /// This datastructure is responsible for finding matches between the
