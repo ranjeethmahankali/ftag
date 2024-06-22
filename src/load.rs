@@ -47,23 +47,26 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
     return Some(first..(first + 1));
 }
 
-fn infer_video_tag(input: &str) -> impl Iterator<Item = String> {
-    if [
-        ".mov", ".MOV", ".flv", ".FLV", ".mp4", ".MP4", ".3gp", ".3GP",
-    ]
-    .iter()
-    .any(|ext| input.ends_with(ext))
-    {
-        0..1
-    } else {
-        0..0
-    }
-    .map(|_| "video".to_string())
+fn infer_video_tag(input: &str) -> impl Iterator<Item = String> + '_ {
+    const EXT_TAG_MAP: &[(&[&str], &str)] = &[
+        (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
+        (&[".png", ".jpg", ".jpeg", ".bmp", ".webp"], "image"),
+    ];
+    return EXT_TAG_MAP.iter().filter_map(|(exts, tag)| {
+        if exts
+            .iter()
+            .any(|ext| input[input.len() - ext.len()..].eq_ignore_ascii_case(ext))
+        {
+            Some(tag.to_string())
+        } else {
+            None
+        }
+    });
 }
 
 /// Get an iterator over all the implicit tags that can be inferred
 /// from the name of the file or directory.
-pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> {
+pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> + '_ {
     infer_year_range_str(name)
         .unwrap_or(0..0)
         .map(|y| y.to_string())
