@@ -1,8 +1,8 @@
 use crate::{
     filter::FilterParseError,
     load::{
-        get_store_path, implicit_tags_os_str, implicit_tags_str, DirData, FileData,
-        FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
+        get_filename_str, get_store_path, implicit_tags_str, DirData, FileData, FileLoadingOptions,
+        GlobMatches, Loader, LoaderOptions,
     },
     walk::WalkDirectories,
 };
@@ -166,7 +166,7 @@ fn what_is_file(path: &PathBuf) -> Result<String, Error> {
     let mut outdesc = desc.unwrap_or("").to_string();
     let mut outtags = tags.iter().map(|t| t.to_string()).collect::<Vec<_>>();
     if let Some(parent) = path.parent() {
-        outtags.extend(implicit_tags_os_str(parent.file_name()));
+        outtags.extend(implicit_tags_str(get_filename_str(parent)?));
     }
     let filenamestr = path
         .file_name()
@@ -213,7 +213,7 @@ fn what_is_dir(path: &PathBuf) -> Result<String, Error> {
     let tags = tags
         .iter()
         .map(|t| t.to_string())
-        .chain(implicit_tags_os_str(path.file_name()))
+        .chain(implicit_tags_str(get_filename_str(&path)?))
         .collect::<Vec<_>>();
     return Ok(full_description(tags, desc));
 }
@@ -301,7 +301,7 @@ pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
         alltags.extend(
             tags.drain(..)
                 .map(|t| t.to_string())
-                .chain(implicit_tags_os_str(dirpath.file_name())),
+                .chain(implicit_tags_str(get_filename_str(dirpath)?)),
         );
         for mut fdata in files.drain(..) {
             alltags.extend(

@@ -2,8 +2,8 @@ use crate::{
     core::{get_relative_path, Error},
     filter::{Filter, TagMaker},
     load::{
-        get_store_path, implicit_tags_os_str, DirData, FileLoadingOptions, GlobMatches, Loader,
-        LoaderOptions,
+        get_filename_str, get_store_path, implicit_tags_str, DirData, FileLoadingOptions,
+        GlobMatches, Loader, LoaderOptions,
     },
     walk::WalkDirectories,
 };
@@ -110,7 +110,7 @@ impl TagTable {
             for tag in tags
                 .iter()
                 .map(|t| t.to_string())
-                .chain(implicit_tags_os_str(curpath.file_name()))
+                .chain(implicit_tags_str(get_filename_str(curpath)?))
             {
                 inherited.tag_indices.push(Self::get_tag_index(
                     tag,
@@ -130,7 +130,7 @@ impl TagTable {
                 for fi in gmatcher.matched_globs(ci) {
                     found = true;
                     filetags.extend(files[fi].tags.iter().map(|t| t.to_string()));
-                    filetags.extend(implicit_tags_os_str(cpath.file_name()));
+                    filetags.extend(implicit_tags_str(get_filename_str(&cpath)?));
                 }
                 if found {
                     table.add_file(cpath, &mut filetags, &mut num_tags, &inherited.tag_indices);
