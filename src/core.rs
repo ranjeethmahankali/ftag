@@ -14,7 +14,8 @@ use std::{
 
 pub(crate) const FTAG_FILE: &str = ".ftag";
 
-/// The data related to a glob in an ftag file.
+/// The data related to a glob in an ftag file. This is meant to be used in
+/// error reporting.
 pub(crate) struct GlobInfo {
     glob: String,
     dirpath: PathBuf, // The store file where the glob was found.
@@ -147,6 +148,8 @@ pub(crate) fn what_is(path: &PathBuf) -> Result<String, Error> {
     }
 }
 
+/// Get a full description of the file that includes the tags and the
+/// description of said file.
 fn what_is_file(path: &PathBuf) -> Result<String, Error> {
     use glob_match::glob_match;
     let mut loader = Loader::new(LoaderOptions::new(
@@ -197,6 +200,8 @@ fn what_is_file(path: &PathBuf) -> Result<String, Error> {
     return Ok(full_description(outtags, outdesc));
 }
 
+/// Get the full description of a directory that includes it's tags and
+/// description.
 fn what_is_dir(path: &PathBuf) -> Result<String, Error> {
     let mut loader = Loader::new(LoaderOptions::new(true, true, FileLoadingOptions::Skip));
     let DirData {

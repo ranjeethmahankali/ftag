@@ -10,6 +10,9 @@ use crate::{
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Tries to set the flag at the given index. If the index is outside the bounds
+/// of the vector, the vector is automatically resized. That is what makes it
+/// 'safe'.
 fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     if index >= flags.len() {
         flags.resize(index + 1, false);
@@ -17,17 +20,35 @@ fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     flags[index] = true;
 }
 
+/// Read the flag at the given index in the slice. If the index is outside the
+/// bounds false is returned safely.
 pub(crate) fn safe_get_flag(flags: &[bool], index: usize) -> bool {
     *flags.get(index).unwrap_or(&false)
 }
 
+/*
+When a tags are specified for a folder, it's subfolders and all their subfolders
+inherit those tags. This inheritance follows the directory tree. When
+recursively loading all the data starting from a root directory, we have to keep
+track of inherited tags. We do this by pushing all the tags into a vector, and
+by storing the offsets that separate contiguous chunks of this vector across the
+depth-first chain of directories currently being traversed.
+ */
 struct InheritedTags {
+    /// Indices of currently loaded tags.
     tag_indices: Vec<usize>,
+    /// Offsets that separate the tags across the depth-first chain of directories currently being traversed.
     offsets: Vec<usize>,
+    /// Current depth of the traversal.
     depth: usize,
 }
 
 impl InheritedTags {
+    /// Update the inherited tags for the specified `newdepth`. A new depth that
+    /// is 1 more than the current depth implies traversing deeper into the
+    /// directory tree. A new depth that is smaller than the current depth
+    /// implies popping all the tags inherited from folders deeper than the new
+    /// depth.
     fn update(&mut self, newdepth: usize) -> Result<(), Error> {
         if self.depth + 1 == newdepth {
             self.offsets.push(self.tag_indices.len());
@@ -171,8 +192,9 @@ impl TagTable {
 }
 
 impl TagMaker<usize> for TagTable {
-    fn create_tag(&self, input: &str) -> Filter<usize> {
-        match self.tag_index_map.get(&input.to_string()) {
+    /// Return the index of the given string tag from the list of parsed tags.
+    fn create_tag(&self, tagstr: &str) -> Filter<usize> {
+        match self.tag_index_map.get(&tagstr.to_string()) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,
         }
@@ -285,6 +307,7 @@ impl DenseTagTable {
 }
 
 impl TagMaker<usize> for DenseTagTable {
+    /// Return the index of the given string tag from the list of parsed tags.
     fn create_tag(&self, input: &str) -> Filter<usize> {
         match self.tag_indices.get(&input.to_string()) {
             Some(i) => Filter::Tag(*i),

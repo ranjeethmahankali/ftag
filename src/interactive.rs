@@ -421,6 +421,7 @@ impl App {
     }
 }
 
+/// Start the interactive TUI mode of ftag.
 pub(crate) fn start(table: DenseTagTable) -> std::io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
