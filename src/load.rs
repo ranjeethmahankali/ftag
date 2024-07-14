@@ -47,7 +47,7 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
     return Some(first..(first + 1));
 }
 
-fn infer_video_tag(input: &str) -> impl Iterator<Item = String> + '_ {
+fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + '_ {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
         (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
         (&[".png", ".jpg", ".jpeg", ".bmp", ".webp"], "image"),
@@ -70,7 +70,7 @@ pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> + '_
     infer_year_range_str(name)
         .unwrap_or(0..0)
         .map(|y| y.to_string())
-        .chain(infer_video_tag(name))
+        .chain(infer_format_tag(name))
 }
 
 pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
