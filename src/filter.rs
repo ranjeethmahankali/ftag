@@ -26,8 +26,6 @@ impl Debug for FilterParseError {
 /// as indices into a list / table of strings.
 pub(crate) trait TagData: std::fmt::Display + Clone + Default {}
 
-impl TagData for String {}
-
 impl TagData for usize {}
 
 /// The user always supplies tags as strings. But `TagData` can be
@@ -36,14 +34,6 @@ impl TagData for usize {}
 /// filter that wraps `TagData`.
 pub(crate) trait TagMaker<T: TagData> {
     fn create_tag(&self, input: &str) -> Filter<T>;
-}
-
-struct StringMaker;
-
-impl TagMaker<String> for StringMaker {
-    fn create_tag(&self, input: &str) -> Filter<String> {
-        return Tag(input.to_string());
-    }
 }
 
 #[derive(Debug)]
@@ -150,6 +140,8 @@ impl<T: TagData> ToString for Token<T> {
     }
 }
 
+/// Parse filter from a string. The tagmaker is used to create tag-data from
+/// strings corresponding to the tags.
 fn parse_filter<T: TagData>(
     input: &str,
     tagmaker: &impl TagMaker<T>,
@@ -210,6 +202,7 @@ fn parse_filter<T: TagData>(
     return parse_tokens(stack.drain(..));
 }
 
+/// Reduce the iterator of tokens into a filter.
 fn parse_tokens<T: TagData, I: Iterator<Item = Token<T>>>(
     mut iter: I,
 ) -> Result<Filter<T>, FilterParseError> {
@@ -224,6 +217,7 @@ fn parse_tokens<T: TagData, I: Iterator<Item = Token<T>>>(
     return Ok(filter);
 }
 
+/// Get the next filter from a list of tokens.
 fn next_filter<T: TagData, I: Iterator<Item = Token<T>>>(
     iter: &mut I,
 ) -> Result<Filter<T>, FilterParseError> {
@@ -251,6 +245,8 @@ fn not_filter<T: TagData>(filter: Filter<T>) -> Filter<T> {
     }
 }
 
+/// Push the tag into the vector of tokens. The tag-data is created using the
+/// tag maker.
 fn push_tag<T: TagData>(
     input: &str,
     from: usize,
@@ -266,6 +262,16 @@ fn push_tag<T: TagData>(
 #[cfg(test)]
 mod test {
     use super::*;
+
+    struct StringMaker;
+
+    impl TagData for String {}
+
+    impl TagMaker<String> for StringMaker {
+        fn create_tag(&self, input: &str) -> Filter<String> {
+            return Tag(input.to_string());
+        }
+    }
 
     #[test]
     fn t_filter_parse_round_trip() {

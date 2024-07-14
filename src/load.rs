@@ -47,7 +47,9 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
     return Some(first..(first + 1));
 }
 
-fn infer_video_tag(input: &str) -> impl Iterator<Item = String> + '_ {
+/// Get an iterator over tags inferred from the format of the file. The input is
+/// expected to be the path / name of the file.
+fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + '_ {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
         (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
         (&[".png", ".jpg", ".jpeg", ".bmp", ".webp"], "image"),
@@ -70,9 +72,12 @@ pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> + '_
     infer_year_range_str(name)
         .unwrap_or(0..0)
         .map(|y| y.to_string())
-        .chain(infer_video_tag(name))
+        .chain(infer_format_tag(name))
 }
 
+/// Get the filename from the path as a string. If the path cannot be a valid
+/// string, an error is returned. If the path doesn't exist, an empty string is
+/// returned.
 pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
     Ok(match path.file_name() {
         Some(fname) => fname
@@ -102,11 +107,15 @@ impl GlobMatches {
         }
     }
 
+    /// Get a row from the table as a slice. The row indicates all the files
+    /// that a particular glob matches.
     fn row(&self, gi: usize) -> &[bool] {
         let start = gi * self.num_files;
         &self.table[start..(start + self.num_files)]
     }
 
+    /// Get the row and perfect match as mutable reference for the given glob
+    /// index.
     fn row_and_match(&mut self, gi: usize) -> (&mut [bool], &mut Option<usize>) {
         let start = gi * self.num_files;
         (
@@ -115,12 +124,11 @@ impl GlobMatches {
         )
     }
 
-    /// Initialize this struct with matches from a new set of `files`
-    /// and `globs`. If `short_circuit_globs` is true, then each glob
-    /// will be matched with at most 1 file on disk. This is useful
-    /// when you're not interested in matching all possible files, but
-    /// only interested in knowing if a glob matches at least one
-    /// file.
+    /// Populate this struct with matches from a new set of `files` and
+    /// `globs`. If `short_circuit_globs` is true, then each glob will be
+    /// matched with at most 1 file on disk. This is useful when you're not
+    /// interested in matching all possible files, but only interested in
+    /// knowing if a glob matches at least one file.
     pub fn find_matches(
         &mut self,
         files: &[DirEntry],
@@ -146,6 +154,8 @@ impl GlobMatches {
                 }
             }
             if gmatch.is_some() {
+                // If a glob matches a file directly, then it we don't need to
+                // search any further.
                 continue;
             }
             for (fi, f) in files.iter().enumerate() {
@@ -255,6 +265,7 @@ impl Loader {
         }
     }
 
+    /// Check whether the file description should be loaded.
     pub fn include_file_desc(&self) -> bool {
         match self.options.file_options {
             FileLoadingOptions::Skip => false,
@@ -265,6 +276,7 @@ impl Loader {
         }
     }
 
+    /// Check whether the file tags should be loaded.
     pub fn include_file_tags(&self) -> bool {
         match self.options.file_options {
             FileLoadingOptions::Skip => false,
@@ -275,12 +287,13 @@ impl Loader {
         }
     }
 
-    pub fn load<'a>(&'a mut self, storefile: &Path) -> Result<DirData<'a>, Error> {
+    /// Load the data from a .ftag file specified by the filepath.
+    pub fn load<'a>(&'a mut self, filepath: &Path) -> Result<DirData<'a>, Error> {
         self.raw_text.clear();
-        File::open(&storefile)
-            .map_err(|_| Error::CannotReadStoreFile(storefile.to_path_buf()))?
+        File::open(&filepath)
+            .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?
             .read_to_string(&mut self.raw_text)
-            .map_err(|_| Error::CannotReadStoreFile(storefile.to_path_buf()))?;
+            .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
         let mut tags: Vec<&str> = Vec::new();
         let mut desc: Option<&str> = None;
         let mut files: Vec<FileData<'a>> = Vec::new();
@@ -288,7 +301,7 @@ impl Loader {
         let mut input = self.raw_text.trim();
         if !input.starts_with('[') {
             return Err(Error::CannotParseYaml(
-                storefile.to_path_buf(),
+                filepath.to_path_buf(),
                 "File does not begin with a header.".into(),
             ));
         }
@@ -296,7 +309,7 @@ impl Loader {
             // Walk the text one header at a time.
             let start = start + 1;
             let end = input.find(']').ok_or(Error::CannotParseYaml(
-                storefile.to_path_buf(),
+                filepath.to_path_buf(),
                 "Header doesn't terminate".into(),
             ))?;
             let header = &input[start..end];
@@ -328,7 +341,7 @@ impl Loader {
                     } = file;
                     if let Some(_) = desc {
                         return Err(Error::CannotParseYaml(
-                            storefile.to_path_buf(),
+                            filepath.to_path_buf(),
                             format!("'{}' has more than one description.", path),
                         ));
                     } else {
@@ -340,7 +353,7 @@ impl Loader {
                     }
                     if let Some(_) = &mut desc {
                         return Err(Error::CannotParseYaml(
-                            storefile.to_path_buf(),
+                            filepath.to_path_buf(),
                             "The directory has more than one description.".into(),
                         ));
                     } else {
@@ -361,7 +374,7 @@ impl Loader {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
                         return Err(Error::CannotParseYaml(
-                            storefile.to_path_buf(),
+                            filepath.to_path_buf(),
                             format!("'{}' has more than one 'tags' header.", path),
                         ));
                     }
@@ -373,7 +386,7 @@ impl Loader {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
                         return Err(Error::CannotParseYaml(
-                            storefile.to_path_buf(),
+                            filepath.to_path_buf(),
                             "The directory has more than one 'tags' header.".into(),
                         ));
                     }
@@ -392,7 +405,7 @@ impl Loader {
                 }
             } else {
                 return Err(Error::CannotParseYaml(
-                    storefile.to_path_buf(),
+                    filepath.to_path_buf(),
                     format!("Unrecognized header: {header}"),
                 ));
             }
