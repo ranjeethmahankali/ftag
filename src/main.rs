@@ -81,6 +81,12 @@ fn main() -> Result<(), Error> {
 }
 
 fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
+    /*
+    Bash completion always passes in 3 words. The first word will be the main
+    binary: ftag. The second word will be an empty string, and the third word
+    will be the most recent word that the user typed, that provides the context
+    for completions.
+     */
     if words.len() != 3 {
         return;
     }
