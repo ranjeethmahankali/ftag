@@ -36,10 +36,10 @@ Ftag is written in Rust and is available on
 cargo install ftag
 ```
 
-Or you can clone this repo and install it from there:
+Or you can install from this repository:
 
 ```bash
-cargo install --path /path/to/ftag/repo/
+cargo install --git https://github.com/ranjeethmahankali/ftag.git
 ```
 
 ## Usage
@@ -134,7 +134,7 @@ they are not reported as untracked.
 ftag tags
 ```
 
-If you want to know the number of files tracked by ftags from your
+If you want to know the number of files tracked by ftag from your
 current working directory recursively, use this command:
 
 ```bash
@@ -151,7 +151,7 @@ providing a `--path | -p` flag.
 ftag --path different/starting/directory <COMMAND>
 ```
 
-### Bash autocompletion
+### Bash Autocompletion
 
 When searching for files, you may not remember the exact tags you're
 supposed to search for. Having autocompletion for tags and commands
@@ -194,7 +194,7 @@ to the existing filter resulting in `(tag1 & tag2) | tag3`. This is
 useful when incrementally tightening the filter to find the file you
 want.
 
-### `.ftag` files
+### `.ftag` Files
 
 The format of a `.ftag` file should be a header, followed by content
 under that header, followed by another header and so on till the end
@@ -232,7 +232,7 @@ headers that occur after a `path` header are associated with that
 specific file or glob. `path` doesn't need to be one specific
 file. Instead it can be a glob, in which case, the provided tags and
 description are applied to all files that match the glob. Globs can be
-used to avoid repitition when you want to associate the same set of
+used to avoid repetition when you want to associate the same set of
 tags with many files. As such, multiple globs can match a single
 file. The tags associated with that file will be the union of tags
 associated with the globs that match the file. The descriptions are
