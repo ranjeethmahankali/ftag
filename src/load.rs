@@ -154,7 +154,7 @@ impl GlobMatches {
                 }
             }
             if gmatch.is_some() {
-                // If a glob matches a file directly, then it we don't need to
+                // If a glob matches a file directly, then we don't need to
                 // search any further.
                 continue;
             }
@@ -297,7 +297,9 @@ impl Loader {
         let mut tags: Vec<&str> = Vec::new();
         let mut desc: Option<&str> = None;
         let mut files: Vec<FileData<'a>> = Vec::new();
-        let mut curfile: Option<FileData<'a>> = None;
+        // We store the data of the file we're currently parsing as:
+        // (list of globs, list of tags, optional description).
+        let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
         let mut input = self.raw_text.trim();
         if !input.starts_with('[') {
             return Err(Error::CannotParseYaml(
@@ -334,15 +336,14 @@ impl Loader {
                     if !self.include_file_desc() {
                         continue;
                     }
-                    let FileData {
-                        path,
-                        tags: _,
-                        desc,
-                    } = file;
+                    let (globs, _tags, desc) = file;
                     if let Some(_) = desc {
                         return Err(Error::CannotParseYaml(
                             filepath.to_path_buf(),
-                            format!("'{}' has more than one description.", path),
+                            format!(
+                                "Following globs have more than one description:\n{}.",
+                                globs.join("\n")
+                            ),
                         ));
                     } else {
                         *desc = Some(content);
@@ -365,17 +366,16 @@ impl Loader {
                     if !self.include_file_tags() {
                         continue;
                     }
-                    let FileData {
-                        path,
-                        tags,
-                        desc: _,
-                    } = file;
+                    let (globs, tags, _desc) = file;
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
                         return Err(Error::CannotParseYaml(
                             filepath.to_path_buf(),
-                            format!("'{}' has more than one 'tags' header.", path),
+                            format!(
+                                "The following globs have more than one 'tags' header:\n{}.",
+                                globs.join("\n")
+                            ),
                         ));
                     }
                 } else {
@@ -395,13 +395,15 @@ impl Loader {
                 if let FileLoadingOptions::Skip = self.options.file_options {
                     break; // Stop parsing the file.
                 }
-                let newfile: FileData = FileData {
-                    desc: None,
-                    path: content.trim(),
-                    tags: Vec::new(),
-                };
-                if let Some(prev) = std::mem::replace(&mut curfile, Some(newfile)) {
-                    files.push(prev);
+                let newfile = (content.lines().collect(), Vec::new(), None);
+                if let Some((globs, tags, desc)) = std::mem::replace(&mut curfile, Some(newfile)) {
+                    for g in globs {
+                        files.push(FileData {
+                            desc,
+                            path: g,
+                            tags: tags.clone(),
+                        })
+                    }
                 }
             } else {
                 return Err(Error::CannotParseYaml(
@@ -410,8 +412,14 @@ impl Loader {
                 ));
             }
         }
-        if let Some(file) = curfile {
-            files.push(file);
+        if let Some((globs, tags, desc)) = curfile {
+            for g in globs {
+                files.push(FileData {
+                    desc,
+                    path: g,
+                    tags: tags.clone(),
+                })
+            }
         }
         return Ok(DirData { desc, tags, files });
     }
