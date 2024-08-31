@@ -395,7 +395,7 @@ impl Loader {
                 if let FileLoadingOptions::Skip = self.options.file_options {
                     break; // Stop parsing the file.
                 }
-                let newfile = (Vec::new(), Vec::new(), None);
+                let newfile = (content.lines().collect(), Vec::new(), None);
                 if let Some((globs, tags, desc)) = std::mem::replace(&mut curfile, Some(newfile)) {
                     for g in globs {
                         files.push(FileData {
