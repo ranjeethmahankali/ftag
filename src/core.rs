@@ -202,7 +202,7 @@ fn what_is_file(path: &PathBuf) -> Result<String, Error> {
 
 /// Get the full description of a directory that includes it's tags and
 /// description.
-fn what_is_dir(path: &PathBuf) -> Result<String, Error> {
+fn what_is_dir(path: &Path) -> Result<String, Error> {
     let mut loader = Loader::new(LoaderOptions::new(true, true, FileLoadingOptions::Skip));
     let DirData {
         desc,
@@ -211,7 +211,7 @@ fn what_is_dir(path: &PathBuf) -> Result<String, Error> {
     } = {
         match get_store_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
-            None => return Err(Error::InvalidPath(path.clone())),
+            None => return Err(Error::InvalidPath(path.to_path_buf())),
         }
     };
     let desc = desc.unwrap_or("").to_string();
@@ -321,4 +321,56 @@ pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     alltags.sort();
     alltags.dedup();
     return Ok(alltags);
+}
+
+pub(crate) fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
+    let words: Vec<_> = needle
+        .trim()
+        .split(|c: char| !c.is_alphanumeric())
+        .map(|word| word.trim().to_lowercase())
+        .collect();
+    let mut walker = WalkDirectories::from(path)?;
+    let mut loader = Loader::new(LoaderOptions::new(
+        true,
+        true,
+        FileLoadingOptions::Load {
+            file_tags: true,
+            file_desc: true,
+        },
+    ));
+    let match_fn = |tags: &[&str], desc: Option<&str>| {
+        tags.iter().any(|tag| {
+            // Check if tag matches
+            let lower = tag.to_lowercase();
+            return words
+                .iter()
+                .any(|word| lower.matches(word).next().is_some());
+        }) || match desc {
+            // Check if description matches.
+            Some(desc) => {
+                let desc = desc.to_lowercase();
+                words.iter().any(|word| desc.matches(word).next().is_some())
+            }
+            None => false,
+        }
+    };
+    while let Some((_depth, dirpath, _filenames)) = walker.next() {
+        let DirData { tags, files, desc } = {
+            match get_store_path::<true>(&dirpath) {
+                Some(path) => loader.load(&path)?,
+                None => continue,
+            }
+        };
+        let dirmatch = match_fn(&tags, desc);
+        for filepath in files.iter().filter_map(|f| {
+            if dirmatch || match_fn(&f.tags, f.desc) {
+                Some(f.path)
+            } else {
+                None
+            }
+        }) {
+            println!("{}", filepath);
+        }
+    }
+    return Ok(());
 }

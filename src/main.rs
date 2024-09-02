@@ -10,6 +10,7 @@ use crate::{
     query::run_query,
 };
 use clap::{command, value_parser, Arg};
+use core::search;
 use load::get_store_path;
 use query::DenseTagTable;
 use std::path::PathBuf;
@@ -42,6 +43,13 @@ fn main() -> Result<(), Error> {
             current_dir,
             matches
                 .get_one::<String>(arg::FILTER)
+                .ok_or(Error::InvalidArgs)?,
+        );
+    } else if let Some(matches) = matches.subcommand_matches(cmd::SEARCH) {
+        return search(
+            current_dir,
+            matches
+                .get_one::<String>(arg::SEARCH_STR)
                 .ok_or(Error::InvalidArgs)?,
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
@@ -158,6 +166,17 @@ fn parse_args() -> clap::ArgMatches {
                 ),
         )
         .subcommand(
+            clap::Command::new(cmd::SEARCH)
+                .alias(cmd::SEARCH_SHORT)
+                .about(about::SEARCH)
+                .arg(
+                    Arg::new(arg::SEARCH_STR)
+                        .required(true)
+                        .help(about::SEARCH_STR)
+                        .long_help(about::SEARCH_STR_LONG),
+                ),
+        )
+        .subcommand(
             clap::Command::new(cmd::INTERACTIVE)
                 .alias("-i")
                 .about(about::INTERACTIVE),
@@ -200,6 +219,8 @@ mod cmd {
     pub const COUNT: &str = "count";
     pub const QUERY: &str = "query";
     pub const QUERY_SHORT: &str = "-q";
+    pub const SEARCH: &str = "search";
+    pub const SEARCH_SHORT: &str = "-s";
     pub const INTERACTIVE: &str = "interactive";
     pub const CHECK: &str = "check";
     pub const WHATIS: &str = "whatis";
@@ -210,8 +231,9 @@ mod cmd {
 }
 
 mod arg {
-    pub const FILTER: &str = "filter";
-    pub const PATH: &str = "path";
+    pub const FILTER: &str = "filter"; // Query command.
+    pub const PATH: &str = "path"; // --path flag to run in a different path than cwd.
+    pub const SEARCH_STR: &str = "search string";
     pub const BASH_COMPLETE_WORDS: &str = "bash-complete-words";
 }
 
@@ -227,6 +249,9 @@ tags 'foo' and 'bar'.  More complex queries can be delimited using
 parentheses. For example: '(foo & bar) | !baz' will list all files
 that either have both 'foo' and 'bar' tags, or don't have the 'baz'
 tag.";
+    pub const SEARCH: &str = "Search all tags and descriptions for the given keywords";
+    pub const SEARCH_STR: &str = "A string of keywords to search for.";
+    pub const SEARCH_STR_LONG: &str = "Any file that contains any of the keywords in this string in either it's tags or description will included in the output.";
     pub const INTERACTIVE: &str = "\
 Launch interactive mode in the working directory.
 // TODO Add more docs later after the interactive mode is implemented.";

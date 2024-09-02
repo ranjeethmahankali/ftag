@@ -201,6 +201,7 @@ impl TagMaker<usize> for TagTable {
     }
 }
 
+/// Returns the number of files and the number of tags.
 pub(crate) fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let tt = TagTable::from_dir(path)?;
     return Ok((tt.table.len(), tt.tag_index_map.len()));
