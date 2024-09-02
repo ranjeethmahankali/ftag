@@ -202,7 +202,7 @@ fn what_is_file(path: &PathBuf) -> Result<String, Error> {
 
 /// Get the full description of a directory that includes it's tags and
 /// description.
-fn what_is_dir(path: &PathBuf) -> Result<String, Error> {
+fn what_is_dir(path: &Path) -> Result<String, Error> {
     let mut loader = Loader::new(LoaderOptions::new(true, true, FileLoadingOptions::Skip));
     let DirData {
         desc,
@@ -211,7 +211,7 @@ fn what_is_dir(path: &PathBuf) -> Result<String, Error> {
     } = {
         match get_store_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
-            None => return Err(Error::InvalidPath(path.clone())),
+            None => return Err(Error::InvalidPath(path.to_path_buf())),
         }
     };
     let desc = desc.unwrap_or("").to_string();
@@ -321,4 +321,8 @@ pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     alltags.sort();
     alltags.dedup();
     return Ok(alltags);
+}
+
+pub(crate) fn search(path: &Path, needle: &str) -> Result<(), Error> {
+    todo!()
 }
