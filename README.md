@@ -51,11 +51,11 @@ or copy the directories, you don't invalidate the metadata.
 
 By design, `ftag` never modifies the `.ftag` files. `.ftag` files are meant to
 be authored by the user, and only consumed and queried by `ftag`. As an Emacs
-user myself, I wrote [this major
-mode](https://github.com/ranjeethmahankali/ftag-mode) which provides
-autocompletion, file preview etc. and makes authoring `.ftag` files a breeze (I
-haven't written plugins for any other editor but if you like `ftag`, feel free
-to contribute!). Further details of `.ftag` files are discussed later.
+user myself, I wrote [this major mode](https://github.com/ranjeethmahankali/ftag-mode)
+which provides autocompletion, file preview etc. and makes authoring `.ftag`
+files a breeze (I haven't written plugins for any other editor but if you like
+`ftag`, feel free to contribute!). Further details of `.ftag` files are
+discussed later.
 
 ### `ftag` CLI tool
 
@@ -76,6 +76,17 @@ files that satisfy the provided query string. This includes files that have
 
 ```bash
 ftag -q 'my-tag & other-tag & !exclude-tag | (tag1 & tag2)'
+```
+
+A slightly simpler version of a query is called "search". This command takes a
+search string, breaks it up into keywords and finds all files that contain any
+of these keywords either among their tags or within their description. The
+comparison is case insensitive.
+
+```bash
+ftag search 'string of my keywords'
+# OR
+ftag -s 'string of my keywords'
 ```
 
 Below command will traverse the directories and check to make sure all `.ftag`
