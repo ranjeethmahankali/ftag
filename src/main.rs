@@ -47,7 +47,7 @@ fn main() -> Result<(), Error> {
         );
     } else if let Some(matches) = matches.subcommand_matches(cmd::SEARCH) {
         return search(
-            &current_dir,
+            current_dir,
             matches
                 .get_one::<String>(arg::SEARCH_STR)
                 .ok_or(Error::InvalidArgs)?,

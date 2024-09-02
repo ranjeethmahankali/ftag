@@ -323,6 +323,54 @@ pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     return Ok(alltags);
 }
 
-pub(crate) fn search(path: &Path, needle: &str) -> Result<(), Error> {
-    todo!()
+pub(crate) fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
+    let words: Vec<_> = needle
+        .trim()
+        .split(|c: char| !c.is_alphanumeric())
+        .map(|word| word.trim().to_lowercase())
+        .collect();
+    let mut walker = WalkDirectories::from(path)?;
+    let mut loader = Loader::new(LoaderOptions::new(
+        true,
+        true,
+        FileLoadingOptions::Load {
+            file_tags: true,
+            file_desc: true,
+        },
+    ));
+    let match_fn = |tags: &[&str], desc: Option<&str>| {
+        tags.iter().any(|tag| {
+            // Check if tag matches
+            let lower = tag.to_lowercase();
+            return words
+                .iter()
+                .any(|word| lower.matches(word).next().is_some());
+        }) || match desc {
+            // Check if description matches.
+            Some(desc) => {
+                let desc = desc.to_lowercase();
+                words.iter().any(|word| desc.matches(word).next().is_some())
+            }
+            None => false,
+        }
+    };
+    while let Some((_depth, dirpath, _filenames)) = walker.next() {
+        let DirData { tags, files, desc } = {
+            match get_store_path::<true>(&dirpath) {
+                Some(path) => loader.load(&path)?,
+                None => continue,
+            }
+        };
+        let dirmatch = match_fn(&tags, desc);
+        for filepath in files.iter().filter_map(|f| {
+            if dirmatch || match_fn(&f.tags, f.desc) {
+                Some(f.path)
+            } else {
+                None
+            }
+        }) {
+            println!("{}", filepath);
+        }
+    }
+    return Ok(());
 }
