@@ -82,7 +82,7 @@ impl WalkDirectories {
     /// Move on to the next directory. Returns a tuple containing the
     /// depth of the directory, its path, and a slice containing info
     /// about the files in this directory.
-    pub(crate) fn next<'a>(&'a mut self) -> Option<(usize, &'a Path, &'a [DirEntry])> {
+    pub(crate) fn next(&mut self) -> Option<(usize, &Path, &[DirEntry])> {
         while let Some(DirEntry {
             depth,
             entry_type,
@@ -102,31 +102,29 @@ impl WalkDirectories {
                     let mut numfiles = 0;
                     let before = self.stack.len();
                     if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
-                        for entry in entries {
-                            if let Ok(child) = entry {
-                                let cname = child.file_name();
-                                if cname.to_str().unwrap_or("") == FTAG_FILE {
-                                    continue;
-                                }
-                                match child.file_type() {
-                                    Ok(ctype) => {
-                                        if ctype.is_dir() {
-                                            self.stack.push(DirEntry {
-                                                depth: depth + 1,
-                                                entry_type: DirEntryType::Dir,
-                                                name: cname,
-                                            });
-                                        } else if ctype.is_file() {
-                                            self.stack.push(DirEntry {
-                                                depth: depth + 1,
-                                                entry_type: DirEntryType::File,
-                                                name: cname,
-                                            });
-                                            numfiles += 1;
-                                        }
+                        for child in entries.flatten() {
+                            let cname = child.file_name();
+                            if cname.to_str().unwrap_or("") == FTAG_FILE {
+                                continue;
+                            }
+                            match child.file_type() {
+                                Ok(ctype) => {
+                                    if ctype.is_dir() {
+                                        self.stack.push(DirEntry {
+                                            depth: depth + 1,
+                                            entry_type: DirEntryType::Dir,
+                                            name: cname,
+                                        });
+                                    } else if ctype.is_file() {
+                                        self.stack.push(DirEntry {
+                                            depth: depth + 1,
+                                            entry_type: DirEntryType::File,
+                                            name: cname,
+                                        });
+                                        numfiles += 1;
                                     }
-                                    Err(_) => continue,
                                 }
+                                Err(_) => continue,
                             }
                         }
                     }
@@ -138,6 +136,6 @@ impl WalkDirectories {
                 }
             }
         }
-        return None;
+        None
     }
 }

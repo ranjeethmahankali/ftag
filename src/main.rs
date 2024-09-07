@@ -39,12 +39,12 @@ fn main() -> Result<(), Error> {
         return Ok(());
     }
     if let Some(matches) = matches.subcommand_matches(cmd::QUERY) {
-        return run_query(
+        run_query(
             current_dir,
             matches
                 .get_one::<String>(arg::FILTER)
                 .ok_or(Error::InvalidArgs)?,
-        );
+        )
     } else if let Some(matches) = matches.subcommand_matches(cmd::SEARCH) {
         return search(
             current_dir,
@@ -54,7 +54,7 @@ fn main() -> Result<(), Error> {
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
         return interactive::start(DenseTagTable::from_dir(current_dir)?)
-            .map_err(|err| Error::TUIError(format!("{:?}", err)));
+            .map_err(|err| Error::TUIFailure(format!("{:?}", err)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);
     } else if let Some(matches) = matches.subcommand_matches(cmd::WHATIS) {
@@ -135,7 +135,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
                     let last = if last == 0 { last } else { last + 1 };
                     (&word[..last], &word[last..])
                 };
-                for tag in tags.iter().filter(|t| t.starts_with(&right)) {
+                for tag in tags.iter().filter(|t| t.starts_with(right)) {
                     println!("{left}{}", tag);
                 }
             }

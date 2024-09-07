@@ -77,9 +77,8 @@ struct App {
 /// that was trimmed.
 fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
     let stop = usize::min(prev.len(), curr.len());
-    let mut iter = prev.chars().zip(curr.chars()).enumerate();
     let mut start = 0usize;
-    while let Some((i, (l, r))) = iter.next() {
+    for (i, (l, r)) in prev.chars().zip(curr.chars()).enumerate() {
         if !(i < stop && l == r) {
             break;
         }
@@ -87,7 +86,7 @@ fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
             start = i;
         }
     }
-    return (start, &curr[start..]);
+    (start, &curr[start..])
 }
 
 /// Count digits in the integer as written in base 10.
@@ -100,7 +99,7 @@ fn count_digits(mut num: usize) -> u8 {
         digits += 1;
         num /= 10;
     }
-    return digits;
+    digits
 }
 
 impl App {
@@ -131,11 +130,11 @@ impl App {
         };
         App::update_file_list(
             &app.filtered_indices,
-            &app.table.files(),
+            app.table.files(),
             app.file_index_width,
             &mut app.filelist,
         );
-        return app;
+        app
     }
 
     fn reset(&mut self) {
@@ -157,13 +156,13 @@ impl App {
                 "{num} is not a valid choice. Please choose an index between 0 and  {}",
                 self.filtered_indices.len()
             ))),
-            Err(_) => Err(Error::InvalidCommand(String::from(format!(
+            Err(_) => Err(Error::InvalidCommand(format!(
                 "Unable to parse '{numstr}' to an index."
-            )))),
+            ))),
         }?;
         let mut path = self.table.path().to_path_buf();
         path.push(&self.table.files()[self.filtered_indices[index]]);
-        return Ok(path);
+        Ok(path)
     }
 
     fn parse_command(&mut self) -> Result<Command, Error> {
@@ -185,8 +184,7 @@ impl App {
         } else {
             let newfilter = format!("{} {cmd}", self.filter_str);
             Ok(Command::Filter(
-                Filter::<usize>::parse(&newfilter, &self.table)
-                    .map_err(|e| Error::InvalidFilter(e))?,
+                Filter::<usize>::parse(&newfilter, &self.table).map_err(Error::InvalidFilter)?,
             ))
         }
     }
@@ -203,9 +201,8 @@ impl App {
     ) {
         dst.clear();
         dst.reserve(indices.len());
-        let mut filecounter = 0;
         let mut prevfile: &str = "";
-        for file in indices.iter().map(|i| &files[*i]) {
+        for (filecounter, file) in indices.iter().map(|i| &files[*i]).enumerate() {
             dst.push(format!(
                 "[{}] {}",
                 {
@@ -218,7 +215,6 @@ impl App {
                 }
             ));
             prevfile = file;
-            filecounter += 1;
         }
     }
 
@@ -281,12 +277,11 @@ impl App {
                     Ok(cmd) => match cmd {
                         Command::Exit | Command::Quit => self.state = Exit,
                         Command::WhatIs(path) => {
-                            self.echo = format!(
-                                "{}",
-                                what_is(&path).unwrap_or(String::from(
-                                    "Unable to fetch the description of this file."
+                            self.echo = what_is(&path)
+                                .unwrap_or(String::from(
+                                    "Unable to fetch the description of this file.",
                                 ))
-                            );
+                                .to_string();
                         }
                         Command::Filter(filter) => {
                             self.filtered_indices.clear();
@@ -294,7 +289,7 @@ impl App {
                                 (0..self.num_files()).filter(|i| filter.eval(self.table.flags(*i))),
                             );
                             self.update_lists();
-                            self.filter_str = filter.to_string(self.table.tags());
+                            self.filter_str = filter.text(self.table.tags());
                             self.scroll = 0;
                             self.scrollstate = self.scrollstate.content_length(self.taglist.len());
                         }
@@ -432,7 +427,7 @@ pub(crate) fn start(table: DenseTagTable) -> std::io::Result<()> {
     // Clean up.
     stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
-    return Ok(());
+    Ok(())
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> std::io::Result<()> {
@@ -445,20 +440,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> std::io::Re
         // Poll events to see if redraw needed.
         if event::poll(std::time::Duration::from_millis(DELAY))? {
             // If a key event occurs, handle it
-            match crossterm::event::read()? {
-                event::Event::Key(key) => {
-                    app.keyevent(key);
-                }
-                _ => {} //  Do nothing.
+            if let event::Event::Key(key) = crossterm::event::read()? {
+                app.keyevent(key);
             }
             terminal.draw(|f| render(f, app))?;
         }
-        match app.state {
-            Exit => break,
-            _ => {} // Do nothing.
+        if let Exit = app.state {
+            break;
         };
     }
-    return Ok(());
+    Ok(())
 }
 
 fn render(f: &mut Frame, app: &mut App) {

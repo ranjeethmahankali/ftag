@@ -22,7 +22,7 @@ pub(crate) struct GlobInfo {
 }
 
 pub(crate) enum Error {
-    TUIError(String),
+    TUIFailure(String),
     EditCommandFailed(String),
     UnmatchedGlobs(Vec<GlobInfo>),
     InvalidArgs,
@@ -37,12 +37,12 @@ pub(crate) enum Error {
 impl Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TUIError(message) => {
+            Self::TUIFailure(message) => {
                 write!(f, "Something went wrong in interactive mode:\n{}", message)
             }
             Self::EditCommandFailed(message) => write!(f, "Unable to edit file:\n{}", message),
             Self::UnmatchedGlobs(infos) => {
-                writeln!(f, "")?;
+                writeln!(f)?;
                 for info in infos {
                     writeln!(
                         f,
@@ -51,7 +51,7 @@ impl Debug for Error {
                         info.glob
                     )?;
                 }
-                return Ok(());
+                Ok(())
             }
             Self::InvalidArgs => write!(f, "InvalidArgs"),
             Self::InvalidWorkingDirectory => write!(f, "This is not a valid working directory."),
@@ -92,7 +92,7 @@ pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
             desc: _,
             tags: _,
         } = {
-            match get_store_path::<true>(&dirpath) {
+            match get_store_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 None => continue,
             }
@@ -123,7 +123,7 @@ pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
 fn full_description(tags: Vec<String>, desc: String) -> String {
     let tagstr = {
         let mut tags = tags.into_iter();
-        let first = tags.next().unwrap_or(String::new());
+        let first = tags.next().unwrap_or_default();
         tags.fold(first, |acc, t| format!("{}, {}", acc, t))
     };
     format!(
@@ -138,19 +138,19 @@ fn full_description(tags: Vec<String>, desc: String) -> String {
 }
 
 /// Get the description of a file or a directory.
-pub(crate) fn what_is(path: &PathBuf) -> Result<String, Error> {
+pub(crate) fn what_is(path: &Path) -> Result<String, Error> {
     if path.is_file() {
         what_is_file(path)
     } else if path.is_dir() {
         what_is_dir(path)
     } else {
-        Err(Error::InvalidPath(path.clone()))
+        Err(Error::InvalidPath(path.to_path_buf()))
     }
 }
 
 /// Get a full description of the file that includes the tags and the
 /// description of said file.
-fn what_is_file(path: &PathBuf) -> Result<String, Error> {
+fn what_is_file(path: &Path) -> Result<String, Error> {
     use glob_match::glob_match;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
@@ -163,7 +163,7 @@ fn what_is_file(path: &PathBuf) -> Result<String, Error> {
     let DirData { desc, tags, files } = {
         match get_store_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
-            None => return Err(Error::InvalidPath(path.clone())),
+            None => return Err(Error::InvalidPath(path.to_path_buf())),
         }
     };
     let mut outdesc = desc.unwrap_or("").to_string();
@@ -173,16 +173,16 @@ fn what_is_file(path: &PathBuf) -> Result<String, Error> {
     }
     let filenamestr = path
         .file_name()
-        .ok_or(Error::InvalidPath(path.clone()))?
+        .ok_or(Error::InvalidPath(path.to_path_buf()))?
         .to_str()
-        .ok_or(Error::InvalidPath(path.clone()))?;
+        .ok_or(Error::InvalidPath(path.to_path_buf()))?;
     for FileData {
         path: pattern,
         desc: fdesc,
         tags: ftags,
     } in files
     {
-        if glob_match(&pattern, filenamestr) {
+        if glob_match(pattern, filenamestr) {
             outtags.extend(
                 ftags
                     .iter()
@@ -197,7 +197,7 @@ fn what_is_file(path: &PathBuf) -> Result<String, Error> {
     // Remove duplicate tags.
     outtags.sort();
     outtags.dedup();
-    return Ok(full_description(outtags, outdesc));
+    Ok(full_description(outtags, outdesc))
 }
 
 /// Get the full description of a directory that includes it's tags and
@@ -218,9 +218,9 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
     let tags = tags
         .iter()
         .map(|t| t.to_string())
-        .chain(implicit_tags_str(get_filename_str(&path)?))
+        .chain(implicit_tags_str(get_filename_str(path)?))
         .collect::<Vec<_>>();
-    return Ok(full_description(tags, desc));
+    Ok(full_description(tags, desc))
 }
 
 /// Get the path of `filename` which is in the directory `dirpath`, relative to `root`.
@@ -255,14 +255,14 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
             desc: _,
             tags: _,
         }: DirData = {
-            match get_store_path::<true>(&dirpath) {
+            match get_store_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 // Store file doesn't exist so everything is untracked.
                 None => {
                     untracked.extend(
                         children
                             .iter()
-                            .filter_map(|f| get_relative_path(&dirpath, &f.name(), &root)),
+                            .filter_map(|f| get_relative_path(dirpath, f.name(), &root)),
                     );
                     continue;
                 }
@@ -270,14 +270,14 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
         };
         untracked.extend(children.iter().filter_map(|child| {
             let fnamestr = child.name().to_str()?;
-            if patterns.iter().any(|p| glob_match(&p.path, fnamestr)) {
+            if patterns.iter().any(|p| glob_match(p.path, fnamestr)) {
                 None
             } else {
-                get_relative_path(&dirpath, &child.name(), &root)
+                get_relative_path(dirpath, child.name(), &root)
             }
         }));
     }
-    return Ok(untracked);
+    Ok(untracked)
 }
 
 /// Recursively traverse the directories from `path` and get all tags.
@@ -298,7 +298,7 @@ pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
             mut files,
             desc: _,
         } = {
-            match get_store_path::<true>(&dirpath) {
+            match get_store_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 None => continue,
             }
@@ -320,7 +320,7 @@ pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     }
     alltags.sort();
     alltags.dedup();
-    return Ok(alltags);
+    Ok(alltags)
 }
 
 pub(crate) fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
@@ -356,7 +356,7 @@ pub(crate) fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
     };
     while let Some((_depth, dirpath, _filenames)) = walker.next() {
         let DirData { tags, files, desc } = {
-            match get_store_path::<true>(&dirpath) {
+            match get_store_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 None => continue,
             }
@@ -372,5 +372,5 @@ pub(crate) fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
             println!("{}", filepath);
         }
     }
-    return Ok(());
+    Ok(())
 }

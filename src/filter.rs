@@ -1,5 +1,5 @@
 use crate::query::safe_get_flag;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 pub(crate) enum FilterParseError {
     EmptyQuery,
@@ -78,22 +78,22 @@ impl Filter<usize> {
         }
     }
 
-    pub fn to_string(&self, tagnames: &[String]) -> String {
+    pub fn text(&self, tagnames: &[String]) -> String {
         match self {
             Tag(i) => tagnames[*i].clone(),
             And(lhs, rhs) => format!(
                 "{} & {}",
-                Self::maybe_parens(self, lhs, lhs.to_string(tagnames)),
-                Self::maybe_parens(self, rhs, rhs.to_string(tagnames))
+                Self::maybe_parens(self, lhs, lhs.text(tagnames)),
+                Self::maybe_parens(self, rhs, rhs.text(tagnames))
             ),
             Or(lhs, rhs) => format!(
                 "{} | {}",
-                Self::maybe_parens(self, lhs, lhs.to_string(tagnames)),
-                Self::maybe_parens(self, rhs, rhs.to_string(tagnames))
+                Self::maybe_parens(self, lhs, lhs.text(tagnames)),
+                Self::maybe_parens(self, rhs, rhs.text(tagnames))
             ),
             Not(filter) => format!(
                 "!{}",
-                Self::maybe_parens(self, filter, filter.to_string(tagnames))
+                Self::maybe_parens(self, filter, filter.text(tagnames))
             ),
             FalseTag => String::from("FALSE_TAG"),
             TrueTag => String::from("TRUE_TAG"),
@@ -101,23 +101,29 @@ impl Filter<usize> {
     }
 }
 
-impl<T: TagData> ToString for Filter<T> {
-    fn to_string(&self) -> String {
+impl<T: TagData> Display for Filter<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Tag(tag) => format!("{}", tag),
-            And(lhs, rhs) => format!(
+            Tag(tag) => write!(f, "{}", tag),
+            And(lhs, rhs) => write!(
+                f,
                 "{} & {}",
                 Self::maybe_parens(self, lhs, lhs.to_string()),
                 Self::maybe_parens(self, rhs, rhs.to_string())
             ),
-            Or(lhs, rhs) => format!(
+            Or(lhs, rhs) => write!(
+                f,
                 "{} | {}",
                 Self::maybe_parens(self, lhs, lhs.to_string()),
                 Self::maybe_parens(self, rhs, rhs.to_string()),
             ),
-            Not(filter) => format!("!{}", Self::maybe_parens(self, filter, filter.to_string())),
-            FalseTag => String::from("FALSE_TAG"),
-            TrueTag => String::from("TRUE_TAG"),
+            Not(filter) => write!(
+                f,
+                "!{}",
+                Self::maybe_parens(self, filter, filter.to_string())
+            ),
+            FalseTag => write!(f, "FALSE_TAG"),
+            TrueTag => write!(f, "TRUE_TAG"),
         }
     }
 }
@@ -129,13 +135,13 @@ enum Token<T: TagData> {
     Parsed(Filter<T>),
 }
 
-impl<T: TagData> ToString for Token<T> {
-    fn to_string(&self) -> String {
+impl<T: TagData> Display for Token<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Token::And => "&".into(),
-            Token::Or => "|".into(),
-            Token::Not => "!".into(),
-            Token::Parsed(p) => p.to_string(),
+            Token::And => write!(f, "&"),
+            Token::Or => write!(f, "|"),
+            Token::Not => write!(f, "!"),
+            Token::Parsed(p) => write!(f, "{}", p),
         }
     }
 }
@@ -153,8 +159,7 @@ fn parse_filter<T: TagData>(
     let mut parens: Vec<usize> = Vec::new();
     let mut begin: usize = 0;
     let mut end = 0;
-    let mut iter = input.char_indices();
-    while let Some((i, c)) = iter.next() {
+    for (i, c) in input.char_indices() {
         end = i;
         match c {
             '(' => {
@@ -214,7 +219,7 @@ fn parse_tokens<T: TagData, I: Iterator<Item = Token<T>>>(
             Token::Not | Token::Parsed(_) => return Err(FilterParseError::ExpectedBinaryOperator),
         };
     }
-    return Ok(filter);
+    Ok(filter)
 }
 
 /// Get the next filter from a list of tokens.
@@ -269,7 +274,7 @@ mod test {
 
     impl TagMaker<String> for StringMaker {
         fn create_tag(&self, input: &str) -> Filter<String> {
-            return Tag(input.to_string());
+            Tag(input.to_string())
         }
     }
 
