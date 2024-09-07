@@ -1,7 +1,7 @@
 use crate::query::safe_get_flag;
 use std::fmt::{Debug, Display};
 
-pub(crate) enum FilterParseError {
+pub enum FilterParseError {
     EmptyQuery,
     MalformedParens,
     ExpectedBinaryOperator,

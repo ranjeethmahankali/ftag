@@ -16,12 +16,12 @@ pub(crate) const FTAG_FILE: &str = ".ftag";
 
 /// The data related to a glob in an ftag file. This is meant to be used in
 /// error reporting.
-pub(crate) struct GlobInfo {
+pub struct GlobInfo {
     glob: String,
     dirpath: PathBuf, // The store file where the glob was found.
 }
 
-pub(crate) enum Error {
+pub enum Error {
     TUIFailure(String),
     EditCommandFailed(String),
     UnmatchedGlobs(Vec<GlobInfo>),
@@ -74,7 +74,7 @@ impl Debug for Error {
 /// Recursively check all directories. This will read all .ftag
 /// files, and make sure every listed glob / path matches at least one
 /// file on disk.
-pub(crate) fn check(path: PathBuf) -> Result<(), Error> {
+pub fn check(path: PathBuf) -> Result<(), Error> {
     let mut walker = WalkDirectories::from(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
@@ -138,7 +138,7 @@ fn full_description(tags: Vec<String>, desc: String) -> String {
 }
 
 /// Get the description of a file or a directory.
-pub(crate) fn what_is(path: &Path) -> Result<String, Error> {
+pub fn what_is(path: &Path) -> Result<String, Error> {
     if path.is_file() {
         what_is_file(path)
     } else if path.is_dir() {
@@ -237,7 +237,7 @@ pub(crate) fn get_relative_path(dirpath: &Path, filename: &OsStr, root: &Path) -
 
 /// Recursively traverse the directories starting from `root` and
 /// return all files that are not tracked.
-pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
+pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
     use glob_match::glob_match;
     let mut walker = WalkDirectories::from(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
@@ -281,7 +281,7 @@ pub(crate) fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 }
 
 /// Recursively traverse the directories from `path` and get all tags.
-pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
+pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     let mut alltags: Vec<String> = Vec::new();
     let mut walker = WalkDirectories::from(path)?;
     let mut loader = Loader::new(LoaderOptions::new(
@@ -323,7 +323,7 @@ pub(crate) fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     Ok(alltags)
 }
 
-pub(crate) fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
+pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
     let words: Vec<_> = needle
         .trim()
         .split(|c: char| !c.is_alphanumeric())

@@ -34,3 +34,7 @@ codegen-units = 1
 # debug = 1
 # [rust]
 # debuginfo-level = 1
+
+[[bin]]
+name = "ftag"
+path = "src/cli.rs"

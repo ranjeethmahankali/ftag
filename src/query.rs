@@ -202,12 +202,12 @@ impl TagMaker<usize> for TagTable {
 }
 
 /// Returns the number of files and the number of tags.
-pub(crate) fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
+pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let tt = TagTable::from_dir(path)?;
     Ok((tt.table.len(), tt.tag_index_map.len()))
 }
 
-pub(crate) fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
+pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
     for path in table.query(filter) {
@@ -244,7 +244,7 @@ impl BoolTable {
 /// This is similar to a `TagTable`, but the flags indicating in which
 /// file has which tags are stored in a dense 2d array rather than a
 /// sparse hash-map of vectors.
-pub(crate) struct DenseTagTable {
+pub struct DenseTagTable {
     root: PathBuf,
     flags: BoolTable,
     files: Box<[String]>,
