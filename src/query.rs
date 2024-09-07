@@ -63,7 +63,7 @@ impl InheritedTags {
             return Err(Error::DirectoryTraversalFailed);
         }
         self.depth = newdepth;
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -75,7 +75,7 @@ pub(crate) struct TagTable {
 }
 
 impl TagTable {
-    fn query<'a>(&'a self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'a>> {
+    fn query(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
         self.table.iter().filter_map(move |(path, flags)| {
             if filter.eval(flags) {
                 Some(path.display())
@@ -122,7 +122,7 @@ impl TagTable {
                 files,
                 desc: _,
             } = {
-                match get_store_path::<true>(&curpath) {
+                match get_store_path::<true>(curpath) {
                     Some(path) => loader.load(&path)?,
                     None => continue,
                 }
@@ -143,7 +143,7 @@ impl TagTable {
             gmatcher.find_matches(children, &files, false);
             for (ci, cpath) in children
                 .iter()
-                .filter_map(|ch| get_relative_path(&curpath, ch.name(), &rootdir))
+                .filter_map(|ch| get_relative_path(curpath, ch.name(), &rootdir))
                 .enumerate()
             {
                 filetags.clear();
@@ -158,14 +158,14 @@ impl TagTable {
                 }
             }
         }
-        return Ok(table);
+        Ok(table)
     }
 
     fn get_tag_index(tag: String, map: &mut HashMap<String, usize>, counter: &mut usize) -> usize {
         let size = map.len();
         let entry = *(map.entry(tag.to_string()).or_insert(size));
         *counter = map.len();
-        return entry;
+        entry
     }
 
     fn add_file(
@@ -175,7 +175,7 @@ impl TagTable {
         num_tags: &mut usize,
         inherited: &Vec<usize>,
     ) {
-        let flags = self.table.entry(path).or_insert(Vec::new());
+        let flags = self.table.entry(path).or_default();
         // Set the file's explicit tags.
         flags.reserve(flags.len() + tags.len());
         for tag in tags.drain(..) {
@@ -194,7 +194,7 @@ impl TagTable {
 impl TagMaker<usize> for TagTable {
     /// Return the index of the given string tag from the list of parsed tags.
     fn create_tag(&self, tagstr: &str) -> Filter<usize> {
-        match self.tag_index_map.get(&tagstr.to_string()) {
+        match self.tag_index_map.get(tagstr) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,
         }
@@ -204,17 +204,16 @@ impl TagMaker<usize> for TagTable {
 /// Returns the number of files and the number of tags.
 pub(crate) fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let tt = TagTable::from_dir(path)?;
-    return Ok((tt.table.len(), tt.tag_index_map.len()));
+    Ok((tt.table.len(), tt.tag_index_map.len()))
 }
 
-pub(crate) fn run_query(dirpath: PathBuf, filter: &String) -> Result<(), Error> {
+pub(crate) fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
-    let filter =
-        Filter::<usize>::parse(filter.as_str(), &table).map_err(|e| Error::InvalidFilter(e))?;
+    let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
     for path in table.query(filter) {
         println!("{}", path);
     }
-    return Ok(());
+    Ok(())
 }
 
 /// 2d array of bools.
@@ -273,7 +272,7 @@ impl DenseTagTable {
             pairs.sort_by(|(path1, _flags1), (path2, _flags2)| path1.cmp(path2));
             let (files, flags): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
             let mut dense = BoolTable::new(files.len(), tags.len());
-            for (src, i) in flags.iter().zip(0..flags.len()) {
+            for (i, src) in flags.iter().enumerate() {
                 debug_assert!(tags.len() >= src.len());
                 let dst = dense.row_mut(i);
                 let dst = &mut dst[..src.len()];
@@ -310,7 +309,7 @@ impl DenseTagTable {
 impl TagMaker<usize> for DenseTagTable {
     /// Return the index of the given string tag from the list of parsed tags.
     fn create_tag(&self, input: &str) -> Filter<usize> {
-        match self.tag_indices.get(&input.to_string()) {
+        match self.tag_indices.get(input) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,
         }

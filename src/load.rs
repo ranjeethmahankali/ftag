@@ -44,7 +44,7 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
             }
         }
     }
-    return Some(first..(first + 1));
+    Some(first..(first + 1))
 }
 
 /// Get an iterator over tags inferred from the format of the file. The input is
@@ -160,7 +160,7 @@ impl GlobMatches {
             }
             for (fi, f) in files.iter().enumerate() {
                 if let Some(fstr) = f.name().to_str() {
-                    if glob_match(&g.path, fstr) {
+                    if glob_match(g.path, fstr) {
                         row[fi] = true;
                         if short_circuit_globs {
                             break;
@@ -173,7 +173,7 @@ impl GlobMatches {
 
     /// For a given file at `file_index`, get indices of all globs
     /// that matched the file.
-    pub fn matched_globs<'a>(&'a self, file_index: usize) -> impl Iterator<Item = usize> + 'a {
+    pub fn matched_globs(&self, file_index: usize) -> impl Iterator<Item = usize> + '_ {
         (0..self.num_globs).filter(move |gi| self.row(*gi)[file_index])
     }
 
@@ -290,7 +290,7 @@ impl Loader {
     /// Load the data from a .ftag file specified by the filepath.
     pub fn load<'a>(&'a mut self, filepath: &Path) -> Result<DirData<'a>, Error> {
         self.raw_text.clear();
-        File::open(&filepath)
+        File::open(filepath)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?
             .read_to_string(&mut self.raw_text)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
@@ -337,7 +337,7 @@ impl Loader {
                         continue;
                     }
                     let (globs, _tags, desc) = file;
-                    if let Some(_) = desc {
+                    if desc.is_some() {
                         return Err(Error::CannotParseYaml(
                             filepath.to_path_buf(),
                             format!(
@@ -352,7 +352,7 @@ impl Loader {
                     if !self.options.dir_desc {
                         continue;
                     }
-                    if let Some(_) = &mut desc {
+                    if desc.is_some() {
                         return Err(Error::CannotParseYaml(
                             filepath.to_path_buf(),
                             "The directory has more than one description.".into(),
@@ -421,7 +421,7 @@ impl Loader {
                 })
             }
         }
-        return Ok(DirData { desc, tags, files });
+        Ok(DirData { desc, tags, files })
     }
 }
 
