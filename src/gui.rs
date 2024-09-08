@@ -1,5 +1,4 @@
 use clap::{command, value_parser, Arg};
-use egui::KeyboardShortcut;
 use ftag::{core::Error, filter::Filter, query::DenseTagTable};
 use std::path::PathBuf;
 
