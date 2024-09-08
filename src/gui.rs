@@ -1,8 +1,5 @@
 use clap::{command, value_parser, Arg};
-use egui::{
-    popup_above_or_below_widget, popup_below_widget, text::LayoutJob, CentralPanel,
-    FontDefinitions, Id, Rect,
-};
+use egui::KeyboardShortcut;
 use ftag::{core::Error, filter::Filter, query::DenseTagTable};
 use std::path::PathBuf;
 
@@ -24,7 +21,14 @@ fn main() -> Result<(), Error> {
         std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?
     };
     let table = DenseTagTable::from_dir(current_dir)?;
-    let options = eframe::NativeOptions::default();
+    let options = eframe::NativeOptions {
+        follow_system_theme: true,
+        viewport: egui::ViewportBuilder {
+            maximized: Some(true),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
     eframe::run_native(
         "ftagui",
         options,
@@ -51,6 +55,7 @@ struct App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.set_pixels_per_point(1.2);
+        // Tags panel.
         const SIDE_PANEL_WIDTH: f32 = 128.;
         egui::SidePanel::left("left_panel")
             .exact_width(SIDE_PANEL_WIDTH)
@@ -62,19 +67,20 @@ impl eframe::App for App {
                 });
             });
         egui::TopBottomPanel::bottom("query_panel")
-            .exact_height(38.)
+            .exact_height(80.)
             .show(ctx, |ui| {
-                let field = egui::TextEdit::singleline(&mut self.filter_str)
+                // Query field.
+                let query_field = egui::TextEdit::singleline(&mut self.filter_str)
                     .desired_width(f32::INFINITY)
                     .min_size(egui::Vec2::new(100., 24.))
                     .font(egui::FontId::monospace(14.))
                     .horizontal_align(egui::Align::Center)
+                    .vertical_align(egui::Align::Center)
                     .hint_text("query filter:");
-                let response = field.show(ui).response;
-                response.request_focus();
-                if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                let query_response = query_field.show(ui).response;
+                if query_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    // User hit return with a query.
                     self.response.clear();
-                    let popup_id = Id::new("response_popup");
                     match Filter::<usize>::parse(&self.filter_str, &self.table) {
                         Ok(filter) => {
                             self.response = format!("{:?}", filter.text(self.table.tags()));
@@ -82,44 +88,12 @@ impl eframe::App for App {
                         }
                         Err(e) => self.response = format!("{:?}", e),
                     }
-                    if !self.response.is_empty() {
-                        println!("{}", self.response); // DEBUG
-                        ui.memory_mut(|mem| mem.open_popup(popup_id));
-                    }
-                    popup_above_or_below_widget(
-                        &ui,
-                        popup_id,
-                        &response,
-                        egui::AboveOrBelow::Above,
-                        egui::PopupCloseBehavior::IgnoreClicks,
-                        |ui| {
-                            ui.monospace(&self.response);
-                        },
-                    );
                 }
+                query_response.request_focus();
+                ui.add_space(12.);
+                ui.vertical_centered(|ui| {
+                    ui.monospace(&mut self.response); // Render the response.
+                });
             });
-
-        // CentralPanel::default().show(ctx, |ui| {
-        //     ui.label("PopupCloseBehavior::CloseOnClickAway popup");
-        //     let response = ui.button("Open");
-        //     let popup_id = Id::new("popup_id");
-
-        //     if response.clicked() {
-        //         ui.memory_mut(|mem| mem.toggle_popup(popup_id));
-        //     }
-
-        //     popup_below_widget(
-        //         ui,
-        //         popup_id,
-        //         &response,
-        //         egui::PopupCloseBehavior::CloseOnClickOutside,
-        //         |ui| {
-        //             ui.set_min_width(300.0);
-        //             ui.label("This popup will be open even if you click the checkbox");
-        //         },
-        //     );
-
-        //     ui.label("PopupCloseBehavior::CloseOnClick popup");
-        // });
     }
 }
