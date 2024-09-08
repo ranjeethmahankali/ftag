@@ -31,13 +31,6 @@ lto = true # Link time optimization.
 panic = "abort" # Don't unwind stack. Should never panic.
 codegen-units = 1
 
-# Debug info for profiling
-
-# [profile.release]
-# debug = 1
-# [rust]
-# debuginfo-level = 1
-
 [[bin]]
 name = "ftag"
 path = "src/cli.rs"
