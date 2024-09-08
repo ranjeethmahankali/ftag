@@ -23,6 +23,7 @@ pub struct GlobInfo {
 
 pub enum Error {
     TUIFailure(String),
+    GUIFailure(eframe::Error),
     EditCommandFailed(String),
     UnmatchedGlobs(Vec<GlobInfo>),
     InvalidArgs,
@@ -40,6 +41,7 @@ impl Debug for Error {
             Self::TUIFailure(message) => {
                 write!(f, "Something went wrong in interactive mode:\n{}", message)
             }
+            Self::GUIFailure(e) => write!(f, "Failure in the GUI:\n{}", e),
             Self::EditCommandFailed(message) => write!(f, "Unable to edit file:\n{}", message),
             Self::UnmatchedGlobs(infos) => {
                 writeln!(f)?;

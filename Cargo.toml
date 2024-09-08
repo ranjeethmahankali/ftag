@@ -19,9 +19,12 @@ edit = "0.1"
 crossterm = "0.27.0"
 ratatui = "0.26"
 opener = "0.6"
+# Dependencies for the GUI
+egui = "0.28"
+eframe = "0.28"
+egui_extras = { version = "0.28", features = ["default", "all_loaders"] }
 
 # For smaller binary size.
-
 [profile.release]
 strip = true  # Automatically strip symbols
 lto = true # Link time optimization.
@@ -38,3 +41,7 @@ codegen-units = 1
 [[bin]]
 name = "ftag"
 path = "src/cli.rs"
+
+[[bin]]
+name = "ftagui"
+path = "src/gui.rs"
