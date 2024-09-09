@@ -36,7 +36,7 @@ pub trait TagMaker<T: TagData> {
     fn create_tag(&self, input: &str) -> Filter<T>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Filter<T: TagData> {
     Tag(T),
     And(Box<Filter<T>>, Box<Filter<T>>),

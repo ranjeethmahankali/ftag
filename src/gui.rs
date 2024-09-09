@@ -34,8 +34,10 @@ fn main() -> Result<(), Error> {
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
             Ok(Box::from(App {
-                filter_str: String::new(),
+                input_str: String::new(),
                 filter: Default::default(),
+                pre_filter_str: String::new(),
+                filter_str: String::new(),
                 table,
                 response: String::new(),
             }))
@@ -45,8 +47,10 @@ fn main() -> Result<(), Error> {
 }
 
 struct App {
-    filter_str: String,
+    input_str: String,
     filter: Filter<usize>,
+    pre_filter_str: String,
+    filter_str: String,
     table: DenseTagTable,
     response: String,
 }
@@ -65,11 +69,11 @@ impl eframe::App for App {
                     }
                 });
             });
-        egui::TopBottomPanel::bottom("query_panel")
+        egui::TopBottomPanel::bottom("bottom_panel")
             .exact_height(80.)
             .show(ctx, |ui| {
                 // Query field.
-                let query_field = egui::TextEdit::singleline(&mut self.filter_str)
+                let query_field = egui::TextEdit::singleline(&mut self.input_str)
                     .desired_width(f32::INFINITY)
                     .min_size(egui::Vec2::new(100., 24.))
                     .font(egui::FontId::monospace(14.))
@@ -80,18 +84,29 @@ impl eframe::App for App {
                 if query_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     // User hit return with a query.
                     self.response.clear();
-                    match Filter::<usize>::parse(&self.filter_str, &self.table) {
+                    self.pre_filter_str.clear();
+                    if !self.filter_str.is_empty() && self.filter != Filter::<usize>::FalseTag {
+                        self.pre_filter_str.push_str(&self.filter_str);
+                    }
+                    self.pre_filter_str.push_str(&self.input_str);
+                    match Filter::<usize>::parse(&self.pre_filter_str, &self.table) {
                         Ok(filter) => {
-                            self.response = format!("{:?}", filter.text(self.table.tags()));
                             self.filter = filter;
+                            self.filter_str = self.filter.text(&self.table.tags());
                         }
-                        Err(e) => self.response = format!("{:?}", e),
+                        Err(e) => {
+                            self.response = format!("{:?}", e);
+                        }
                     }
                 }
                 query_response.request_focus();
                 ui.add_space(12.);
                 ui.vertical_centered(|ui| {
-                    ui.monospace(&mut self.response); // Render the response.
+                    if !self.response.is_empty() {
+                        ui.monospace(&self.response); // Render the response.
+                    } else if !self.filter_str.is_empty() {
+                        ui.monospace(&self.filter_str);
+                    }
                 });
             });
     }
