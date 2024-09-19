@@ -69,14 +69,14 @@ impl eframe::App for App {
                     }
                 });
             });
+        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            ui.centered_and_justified(|ui| {
+                ui.monospace(&self.filter_str);
+            });
+        });
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-            ui.monospace(if self.response.is_empty() {
-                "testing..."
-            } else {
-                &self.response
-            }); // Render the response.
+            ui.monospace(&self.response);
             ui.separator();
-            // Query field.
             let query_field = egui::TextEdit::singleline(&mut self.input_str)
                 .desired_width(f32::INFINITY)
                 .min_size(egui::Vec2::new(100., 24.))
