@@ -70,46 +70,40 @@ impl eframe::App for App {
                 });
             });
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.monospace(if self.response.is_empty() {
-                        "testing..."
-                    } else {
-                        &self.response
-                    }); // Render the response.
-                    ui.separator();
-                    ui.monospace(&self.filter_str);
-                });
-                ui.separator();
-                // Query field.
-                let query_field = egui::TextEdit::singleline(&mut self.input_str)
-                    .desired_width(f32::INFINITY)
-                    .min_size(egui::Vec2::new(100., 24.))
-                    .font(egui::FontId::monospace(14.))
-                    .horizontal_align(egui::Align::Center)
-                    .vertical_align(egui::Align::Center)
-                    .hint_text("query filter:");
-                let query_response = query_field.show(ui).response;
-                if query_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    // User hit return with a query.
-                    self.response.clear();
-                    self.pre_filter_str.clear();
-                    if !self.filter_str.is_empty() && self.filter != Filter::<usize>::FalseTag {
-                        self.pre_filter_str.push_str(&self.filter_str);
+            ui.monospace(if self.response.is_empty() {
+                "testing..."
+            } else {
+                &self.response
+            }); // Render the response.
+            ui.separator();
+            // Query field.
+            let query_field = egui::TextEdit::singleline(&mut self.input_str)
+                .desired_width(f32::INFINITY)
+                .min_size(egui::Vec2::new(100., 24.))
+                .font(egui::FontId::monospace(14.))
+                .horizontal_align(egui::Align::Center)
+                .vertical_align(egui::Align::Center)
+                .hint_text("query filter:");
+            let query_response = query_field.show(ui).response;
+            if query_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                // User hit return with a query.
+                self.response.clear();
+                self.pre_filter_str.clear();
+                if !self.filter_str.is_empty() && self.filter != Filter::<usize>::FalseTag {
+                    self.pre_filter_str.push_str(&self.filter_str);
+                }
+                self.pre_filter_str.push_str(&self.input_str);
+                match Filter::<usize>::parse(&self.pre_filter_str, &self.table) {
+                    Ok(filter) => {
+                        self.filter = filter;
+                        self.filter_str = self.filter.text(&self.table.tags());
                     }
-                    self.pre_filter_str.push_str(&self.input_str);
-                    match Filter::<usize>::parse(&self.pre_filter_str, &self.table) {
-                        Ok(filter) => {
-                            self.filter = filter;
-                            self.filter_str = self.filter.text(&self.table.tags());
-                        }
-                        Err(e) => {
-                            self.response = format!("{:?}", e);
-                        }
+                    Err(e) => {
+                        self.response = format!("{:?}", e);
                     }
                 }
-                query_response.request_focus();
-            });
+            }
+            query_response.request_focus();
         });
     }
 }
