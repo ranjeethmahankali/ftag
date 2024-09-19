@@ -69,9 +69,18 @@ impl eframe::App for App {
                     }
                 });
             });
-        egui::TopBottomPanel::bottom("bottom_panel")
-            .exact_height(80.)
-            .show(ctx, |ui| {
+        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.monospace(if self.response.is_empty() {
+                        "testing..."
+                    } else {
+                        &self.response
+                    }); // Render the response.
+                    ui.separator();
+                    ui.monospace(&self.filter_str);
+                });
+                ui.separator();
                 // Query field.
                 let query_field = egui::TextEdit::singleline(&mut self.input_str)
                     .desired_width(f32::INFINITY)
@@ -100,14 +109,7 @@ impl eframe::App for App {
                     }
                 }
                 query_response.request_focus();
-                ui.add_space(12.);
-                ui.vertical_centered(|ui| {
-                    if !self.response.is_empty() {
-                        ui.monospace(&self.response); // Render the response.
-                    } else if !self.filter_str.is_empty() {
-                        ui.monospace(&self.filter_str);
-                    }
-                });
             });
+        });
     }
 }
