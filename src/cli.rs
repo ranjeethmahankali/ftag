@@ -1,7 +1,6 @@
 use clap::{command, value_parser, Arg};
 use ftag::{
     core::{self, get_all_tags, search, untracked_files, Error},
-    interactive,
     load::get_store_path,
     query::{count_files_tags, run_query, DenseTagTable},
 };
@@ -45,7 +44,7 @@ fn main() -> Result<(), Error> {
                 .ok_or(Error::InvalidArgs)?,
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
-        return interactive::start(DenseTagTable::from_dir(current_dir)?)
+        return ftag::tui::start(DenseTagTable::from_dir(current_dir)?)
             .map_err(|err| Error::TUIFailure(format!("{:?}", err)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);

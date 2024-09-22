@@ -77,14 +77,15 @@ impl eframe::App for App {
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.monospace(&self.response);
             ui.separator();
-            let query_field = egui::TextEdit::singleline(&mut self.input_str)
+            let query_response = egui::TextEdit::singleline(&mut self.input_str)
                 .desired_width(f32::INFINITY)
                 .min_size(egui::Vec2::new(100., 24.))
                 .font(egui::FontId::monospace(14.))
                 .horizontal_align(egui::Align::Center)
                 .vertical_align(egui::Align::Center)
-                .hint_text("query filter:");
-            let query_response = query_field.show(ui).response;
+                .hint_text("query filter:")
+                .show(ui)
+                .response;
             if query_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 // User hit return with a query.
                 self.response.clear();
