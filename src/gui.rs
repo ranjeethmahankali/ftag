@@ -64,17 +64,20 @@ impl eframe::App for App {
                     }
                 });
             });
+        // Current filter string.
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
                 ui.monospace(self.session.filter_str());
             });
         });
+        // Files.
         egui::CentralPanel::default().show(ctx, |ui| {
             // TEMPORARY: Replace with GUI rendering
             for file in self.session.filelist() {
                 ui.monospace(file);
             }
         });
+        // Input field and echo string.
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.monospace(self.session.echo());
             ui.separator();
