@@ -69,6 +69,12 @@ impl eframe::App for App {
                 ui.monospace(self.session.filter_str());
             });
         });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            // TEMPORARY: Replace with GUI rendering
+            for file in self.session.filelist() {
+                ui.monospace(file);
+            }
+        });
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.monospace(self.session.echo());
             ui.separator();
