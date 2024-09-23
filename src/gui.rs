@@ -51,6 +51,8 @@ struct App {
     session: InteractiveSession,
 }
 
+const MAX_PREVIEWS: usize = 200;
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Tags panel.
@@ -81,8 +83,11 @@ impl eframe::App for App {
                     .min_row_height(CELL_HEIGHT)
                     .striped(true)
                     .show(ui, |ui| {
-                        for (counter, path) in
-                            self.session.absolute_path_list().take(20).enumerate()
+                        for (counter, path) in self
+                            .session
+                            .absolute_path_list()
+                            .take(MAX_PREVIEWS)
+                            .enumerate()
                         {
                             ui.centered_and_justified(|ui| {
                                 match path.extension() {
