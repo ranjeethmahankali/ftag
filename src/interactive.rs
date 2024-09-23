@@ -110,12 +110,6 @@ impl InteractiveSession {
         Ok(path)
     }
 
-    pub fn absolute_filepath(&self, index: usize) -> PathBuf {
-        let mut path = self.table.path().to_path_buf();
-        path.push(&self.table.files()[self.filtered_indices[index]]);
-        path
-    }
-
     fn parse_command(&mut self) -> Result<Command, Error> {
         let cmd = self.command.trim();
         if let Some(cmd) = cmd.strip_prefix('/') {
@@ -227,6 +221,14 @@ impl InteractiveSession {
 
     pub fn filelist(&self) -> &[String] {
         &self.filelist
+    }
+
+    pub fn absolute_path_list<'a>(&'a self) -> impl Iterator<Item = PathBuf> + 'a {
+        self.filelist.iter().map(|file| {
+            let mut path = self.table.path().to_path_buf();
+            path.push(file);
+            path
+        })
     }
 
     pub fn echo(&self) -> &str {

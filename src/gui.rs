@@ -74,32 +74,34 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             const CELL_HEIGHT: f32 = 256.;
             const CELL_WIDTH: f32 = 256.;
-            let width = ui.available_width();
+            let width = f32::floor(ui.available_width() / CELL_WIDTH) as usize;
             egui::Grid::new("image_grid")
                 .min_col_width(CELL_WIDTH)
                 .min_row_height(CELL_HEIGHT)
                 .striped(true)
                 .show(ui, |ui| {
-                    for (counter, file) in (0..self.session.filelist().len())
-                        .filter_map(|i| {
-                            let path = self.session.absolute_filepath(i);
+                    for (counter, path) in self.session.absolute_path_list().take(20).enumerate() {
+                        ui.centered_and_justified(|ui| {
                             match path.extension() {
-                                Some(ext) if ext == "JPG" => Some(path),
-                                Some(ext) if ext == "jpg" => Some(path),
-                                Some(ext) if ext == "PNG" => Some(path),
-                                Some(ext) if ext == "png" => Some(path),
-                                _ => None,
-                            }
-                        })
-                        .take(4)
-                        .enumerate()
-                    {
-                        ui.add(
-                            egui::Image::new(format!("file://{}", file.display()))
-                                .show_loading_spinner(true)
-                                .rounding(2.),
-                        );
-                        if counter + 1 >= (width / CELL_WIDTH).floor() as usize {
+                                Some(ext) => match ext.to_ascii_lowercase().to_str() {
+                                    Some(ext) => match ext {
+                                        "jpg" | "png" => ui.add(
+                                            egui::Image::from_uri(format!(
+                                                "file://{}",
+                                                path.display()
+                                            ))
+                                            .rounding(10.),
+                                        ),
+                                        "pdf" => ui.monospace("document"),
+                                        "mp4" | "mov" => ui.monospace("video"),
+                                        _ => ui.monospace("file"),
+                                    },
+                                    None => ui.monospace("file"),
+                                },
+                                None => ui.monospace("file"),
+                            };
+                        });
+                        if counter % width == width - 1 {
                             ui.end_row();
                         }
                     }
