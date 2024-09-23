@@ -74,9 +74,11 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             const CELL_HEIGHT: f32 = 256.;
             const CELL_WIDTH: f32 = 256.;
+            let width = ui.available_width();
             egui::Grid::new("image_grid")
                 .min_col_width(CELL_WIDTH)
                 .min_row_height(CELL_HEIGHT)
+                .striped(true)
                 .show(ui, |ui| {
                     for (counter, file) in (0..self.session.filelist().len())
                         .filter_map(|i| {
@@ -97,7 +99,7 @@ impl eframe::App for App {
                                 .show_loading_spinner(true)
                                 .rounding(2.),
                         );
-                        if counter > 0 && counter % 2 == 0 {
+                        if counter + 1 >= (width / CELL_WIDTH).floor() as usize {
                             ui.end_row();
                         }
                     }
