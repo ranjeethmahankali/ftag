@@ -90,7 +90,8 @@ impl eframe::App for App {
                                                 "file://{}",
                                                 path.display()
                                             ))
-                                            .rounding(10.),
+                                            .rounding(10.)
+                                            .show_loading_spinner(true),
                                         ),
                                         "pdf" => ui.monospace("document"),
                                         "mp4" | "mov" => ui.monospace("video"),
@@ -144,6 +145,8 @@ impl eframe::App for App {
                     } else if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
                         self.session.autocomplete();
                     }
+                } else if query_response.changed() {
+                    self.session.stop_autocomplete();
                 }
                 query_response.request_focus();
             });
