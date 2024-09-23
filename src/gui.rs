@@ -37,6 +37,7 @@ fn main() -> Result<(), Error> {
         "ftagui",
         options,
         Box::new(|cc| {
+            cc.egui_ctx.set_pixels_per_point(1.2);
             egui_extras::install_image_loaders(&cc.egui_ctx);
             Ok(Box::from(App {
                 session: InteractiveSession::init(table),
@@ -52,7 +53,6 @@ struct App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        ctx.set_pixels_per_point(1.2);
         // Tags panel.
         const SIDE_PANEL_WIDTH: f32 = 128.;
         egui::SidePanel::left("left_panel")
