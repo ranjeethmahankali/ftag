@@ -79,36 +79,44 @@ impl eframe::App for App {
         });
         // Input field and echo string.
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-            ui.monospace(self.session.echo());
-            ui.separator();
-            let mut output = egui::TextEdit::singleline(self.session.command_mut())
-                .frame(false)
-                .desired_width(f32::INFINITY)
-                .min_size(egui::Vec2::new(100., 24.))
-                .font(egui::FontId::monospace(14.))
-                .horizontal_align(egui::Align::Center)
-                .vertical_align(egui::Align::Center)
-                .hint_text("query filter:")
-                .show(ui);
-            let query_response = output.response;
-            if query_response.lost_focus() {
-                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    // User hit return with a query.
-                    self.session.process_input();
-                    if let State::ListsUpdated = self.session.state() {
-                        self.session.set_state(State::Default);
+            ui.vertical_centered(|ui| {
+                ui.monospace(self.session.echo());
+                ui.separator();
+                let mut output = egui::TextEdit::singleline(self.session.command_mut())
+                    .frame(false)
+                    .desired_width(f32::INFINITY)
+                    .min_size(egui::Vec2::new(100., 24.))
+                    .font(egui::FontId::monospace(14.))
+                    .horizontal_align(egui::Align::Center)
+                    .vertical_align(egui::Align::Center)
+                    .hint_text("query filter:")
+                    .show(ui);
+                let query_response = output.response;
+                if query_response.lost_focus() {
+                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        // User hit return with a query.
+                        self.session.process_input();
+                        match self.session.state() {
+                            State::Default | State::Autocomplete => {} // Do nothing.
+                            State::ListsUpdated => {
+                                self.session.set_state(State::Default);
+                            }
+                            State::Exit => {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+                        }
+                        // Move the cursor to the end of the line, say, after autocomplete.
+                        output.state.cursor.set_char_range(Some(CCursorRange::two(
+                            CCursor::new(self.session.command().len()),
+                            CCursor::new(self.session.command().len()),
+                        )));
+                        output.state.store(ctx, query_response.id);
+                    } else if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
+                        self.session.autocomplete();
                     }
-                    // Move the cursor to the end of the line, say, after autocomplete.
-                    output.state.cursor.set_char_range(Some(CCursorRange::two(
-                        CCursor::new(self.session.command().len()),
-                        CCursor::new(self.session.command().len()),
-                    )));
-                    output.state.store(ctx, query_response.id);
-                } else if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
-                    self.session.autocomplete();
                 }
-            }
-            query_response.request_focus();
+                query_response.request_focus();
+            });
         });
     }
 }
