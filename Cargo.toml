@@ -22,7 +22,8 @@ opener = "0.6"
 # Dependencies for the GUI
 egui = "0.28"
 eframe = "0.28"
-egui_extras = { version = "0.28", features = ["default", "all_loaders"] }
+egui_extras = { version = "0.28", features = ["default", "all_loaders", "image"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 # For smaller binary size.
 [profile.release]

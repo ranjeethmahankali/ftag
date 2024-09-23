@@ -72,10 +72,36 @@ impl eframe::App for App {
         });
         // Files.
         egui::CentralPanel::default().show(ctx, |ui| {
-            // TEMPORARY: Replace with GUI rendering
-            for file in self.session.filelist() {
-                ui.monospace(file);
-            }
+            const CELL_HEIGHT: f32 = 256.;
+            const CELL_WIDTH: f32 = 256.;
+            egui::Grid::new("image_grid")
+                .min_col_width(CELL_WIDTH)
+                .min_row_height(CELL_HEIGHT)
+                .show(ui, |ui| {
+                    for (counter, file) in (0..self.session.filelist().len())
+                        .filter_map(|i| {
+                            let path = self.session.absolute_filepath(i);
+                            match path.extension() {
+                                Some(ext) if ext == "JPG" => Some(path),
+                                Some(ext) if ext == "jpg" => Some(path),
+                                Some(ext) if ext == "PNG" => Some(path),
+                                Some(ext) if ext == "png" => Some(path),
+                                _ => None,
+                            }
+                        })
+                        .take(4)
+                        .enumerate()
+                    {
+                        ui.add(
+                            egui::Image::new(format!("file://{}", file.display()))
+                                .show_loading_spinner(true)
+                                .rounding(2.),
+                        );
+                        if counter > 0 && counter % 2 == 0 {
+                            ui.end_row();
+                        }
+                    }
+                });
         });
         // Input field and echo string.
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
