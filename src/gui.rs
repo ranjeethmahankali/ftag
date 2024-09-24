@@ -83,25 +83,19 @@ impl App {
                     .take(ncells)
                     .enumerate()
                 {
-                    ui.centered_and_justified(|ui| {
+                    ui.vertical_centered(|ui| {
                         let response = match path.extension() {
                             Some(ext) => match ext.to_ascii_lowercase().to_str() {
                                 Some(ext) => match ext {
-                                    "png" | "jpg" | "jpeg" | "bmp" | "webp" => {
-                                        let response = ui.add(
-                                            egui::Image::from_uri(format!(
-                                                "file://{}",
-                                                path.display()
-                                            ))
+                                    "png" | "jpg" | "jpeg" | "bmp" | "webp" => ui.add(
+                                        egui::Image::from_uri(format!("file://{}", path.display()))
                                             .rounding(10.)
                                             .show_loading_spinner(true)
                                             .maintain_aspect_ratio(true)
                                             .sense(
                                                 egui::Sense::click().union(egui::Sense::hover()),
                                             ),
-                                        );
-                                        response
-                                    }
+                                    ),
                                     "pdf" => ui.monospace(format!("document:\n{}", relpath)),
                                     "mov" | "flv" | "mp4" | "3gp" => {
                                         ui.monospace(format!("video:\n{}", relpath))
