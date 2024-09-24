@@ -69,9 +69,15 @@ impl App {
             .min_row_height(CELL_HEIGHT)
             .striped(true)
             .show(ui, |ui| {
-                for (counter, path) in self
+                for (counter, (relpath, path)) in self
                     .session
-                    .absolute_path_list()
+                    .filelist()
+                    .iter()
+                    .map(|file| {
+                        let mut path = self.session.table().path().to_path_buf();
+                        path.push(file);
+                        (file, path)
+                    })
                     .skip(self.page_index * ncells)
                     .take(ncells)
                     .enumerate()
@@ -86,15 +92,15 @@ impl App {
                                             .show_loading_spinner(true)
                                             .maintain_aspect_ratio(true),
                                     ),
-                                    "pdf" => ui.monospace(format!("document: {}", path.display())),
+                                    "pdf" => ui.monospace(format!("document:\n{}", relpath)),
                                     "mov" | "flv" | "mp4" | "3gp" => {
-                                        ui.monospace(format!("video: {}", path.display()))
+                                        ui.monospace(format!("video:\n{}", relpath))
                                     }
-                                    _ => ui.monospace(format!("file: {}", path.display())),
+                                    _ => ui.monospace(format!("file:\n{}", relpath)),
                                 },
-                                None => ui.monospace("file"),
+                                None => ui.monospace(format!("file:\n{}", relpath)),
                             },
-                            None => ui.monospace("file"),
+                            None => ui.monospace(format!("file:\n{}", relpath)),
                         };
                     });
                     if counter % ncols == ncols - 1 {

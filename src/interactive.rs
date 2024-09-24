@@ -223,14 +223,6 @@ impl InteractiveSession {
         &self.filelist
     }
 
-    pub fn absolute_path_list<'a>(&'a self) -> impl Iterator<Item = PathBuf> + 'a {
-        self.filelist.iter().map(|file| {
-            let mut path = self.table.path().to_path_buf();
-            path.push(file);
-            path
-        })
-    }
-
     pub fn echo(&self) -> &str {
         &self.echo
     }
