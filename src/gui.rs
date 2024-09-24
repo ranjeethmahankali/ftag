@@ -41,6 +41,8 @@ fn main() -> Result<(), Error> {
             egui_extras::install_image_loaders(&cc.egui_ctx);
             Ok(Box::from(App {
                 session: InteractiveSession::init(table),
+                page_index: 0,
+                num_pages: 1,
             }))
         }),
     )
@@ -49,14 +51,62 @@ fn main() -> Result<(), Error> {
 
 struct App {
     session: InteractiveSession,
+    page_index: usize,
+    num_pages: usize,
 }
 
-const MAX_PREVIEWS: usize = 200;
+impl App {
+    fn render_grid_preview(&mut self, ui: &mut egui::Ui) {
+        const CELL_HEIGHT: f32 = 256.;
+        const CELL_WIDTH: f32 = 256.;
+        let ncols = usize::max(1, f32::floor(ui.available_width() / CELL_WIDTH) as usize);
+        let nrows = usize::max(1, f32::floor(ui.available_height() / CELL_HEIGHT) as usize);
+        let ncells = ncols * nrows;
+        // This takes the ceil of integer division.
+        self.num_pages = usize::max((self.session.filelist().len() + ncells - 1) / ncells, 1);
+        egui::Grid::new("image_grid")
+            .min_col_width(CELL_WIDTH)
+            .min_row_height(CELL_HEIGHT)
+            .striped(true)
+            .show(ui, |ui| {
+                for (counter, path) in self
+                    .session
+                    .absolute_path_list()
+                    .skip(self.page_index * ncells)
+                    .take(ncells)
+                    .enumerate()
+                {
+                    ui.centered_and_justified(|ui| {
+                        match path.extension() {
+                            Some(ext) => match ext.to_ascii_lowercase().to_str() {
+                                Some(ext) => match ext {
+                                    "jpg" | "png" => ui.add(
+                                        egui::Image::from_uri(format!("file://{}", path.display()))
+                                            .rounding(10.)
+                                            .show_loading_spinner(true)
+                                            .maintain_aspect_ratio(true),
+                                    ),
+                                    "pdf" => ui.monospace("document"),
+                                    "mp4" | "mov" => ui.monospace("video"),
+                                    _ => ui.monospace("file"),
+                                },
+                                None => ui.monospace("file"),
+                            },
+                            None => ui.monospace("file"),
+                        };
+                    });
+                    if counter % ncols == ncols - 1 {
+                        ui.end_row();
+                    }
+                }
+            });
+    }
+}
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Tags panel.
-        const SIDE_PANEL_WIDTH: f32 = 128.;
+        const SIDE_PANEL_WIDTH: f32 = 256.;
         egui::SidePanel::left("left_panel")
             .exact_width(SIDE_PANEL_WIDTH)
             .show(ctx, |ui| {
@@ -69,54 +119,21 @@ impl eframe::App for App {
         // Current filter string.
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
-                ui.monospace(self.session.filter_str());
+                ui.monospace(format!(
+                    "{}: {} / {}",
+                    if self.session.filter_str().is_empty() {
+                        "ALL_TAGS"
+                    } else {
+                        self.session.filter_str()
+                    },
+                    self.page_index + 1,
+                    self.num_pages
+                ));
             });
         });
         // Files.
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                const CELL_HEIGHT: f32 = 256.;
-                const CELL_WIDTH: f32 = 256.;
-                let width = usize::max(1, f32::floor(ui.available_width() / CELL_WIDTH) as usize);
-                egui::Grid::new("image_grid")
-                    .min_col_width(CELL_WIDTH)
-                    .min_row_height(CELL_HEIGHT)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for (counter, path) in self
-                            .session
-                            .absolute_path_list()
-                            .take(MAX_PREVIEWS)
-                            .enumerate()
-                        {
-                            ui.centered_and_justified(|ui| {
-                                match path.extension() {
-                                    Some(ext) => match ext.to_ascii_lowercase().to_str() {
-                                        Some(ext) => match ext {
-                                            "jpg" | "png" => ui.add(
-                                                egui::Image::from_uri(format!(
-                                                    "file://{}",
-                                                    path.display()
-                                                ))
-                                                .rounding(10.)
-                                                .show_loading_spinner(true)
-                                                .maintain_aspect_ratio(true),
-                                            ),
-                                            "pdf" => ui.monospace("document"),
-                                            "mp4" | "mov" => ui.monospace("video"),
-                                            _ => ui.monospace("file"),
-                                        },
-                                        None => ui.monospace("file"),
-                                    },
-                                    None => ui.monospace("file"),
-                                };
-                            });
-                            if counter % width == width - 1 {
-                                ui.end_row();
-                            }
-                        }
-                    });
-            });
+            self.render_grid_preview(ui);
         });
         // Input field and echo string.
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
@@ -140,6 +157,7 @@ impl eframe::App for App {
                         match self.session.state() {
                             State::Default | State::Autocomplete => {} // Do nothing.
                             State::ListsUpdated => {
+                                self.page_index = 0;
                                 self.session.set_state(State::Default);
                             }
                             State::Exit => {
@@ -157,6 +175,10 @@ impl eframe::App for App {
                     }
                 } else if query_response.changed() {
                     self.session.stop_autocomplete();
+                } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
+                    self.page_index = usize::clamp(self.page_index + 1, 0, self.num_pages - 1);
+                } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::P)) {
+                    self.page_index = usize::clamp(self.page_index - 1, 0, self.num_pages - 1);
                 }
                 query_response.request_focus();
             });
