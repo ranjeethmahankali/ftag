@@ -76,7 +76,7 @@ impl App {
                     .take(ncells)
                     .enumerate()
                 {
-                    ui.centered_and_justified(|ui| {
+                    ui.vertical_centered(|ui| {
                         match path.extension() {
                             Some(ext) => match ext.to_ascii_lowercase().to_str() {
                                 Some(ext) => match ext {
@@ -86,9 +86,11 @@ impl App {
                                             .show_loading_spinner(true)
                                             .maintain_aspect_ratio(true),
                                     ),
-                                    "pdf" => ui.monospace("document"),
-                                    "mp4" | "mov" => ui.monospace("video"),
-                                    _ => ui.monospace("file"),
+                                    "pdf" => ui.monospace(format!("document: {}", path.display())),
+                                    "mp4" | "mov" => {
+                                        ui.monospace(format!("video: {}", path.display()))
+                                    }
+                                    _ => ui.monospace(format!("file: {}", path.display())),
                                 },
                                 None => ui.monospace("file"),
                             },
@@ -178,7 +180,8 @@ impl eframe::App for App {
                 } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
                     self.page_index = usize::clamp(self.page_index + 1, 0, self.num_pages - 1);
                 } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::P)) {
-                    self.page_index = usize::clamp(self.page_index - 1, 0, self.num_pages - 1);
+                    self.page_index =
+                        usize::clamp(self.page_index.saturating_sub(1), 0, self.num_pages - 1);
                 }
                 query_response.request_focus();
             });
