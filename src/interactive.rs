@@ -227,6 +227,10 @@ impl InteractiveSession {
         &self.echo
     }
 
+    pub fn set_echo(&mut self, message: &str) {
+        self.echo = message.to_string();
+    }
+
     pub fn filter_str(&self) -> &str {
         &self.filter_str
     }

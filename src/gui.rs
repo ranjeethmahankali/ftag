@@ -57,13 +57,14 @@ struct App {
 
 impl App {
     fn render_grid_preview(&mut self, ui: &mut egui::Ui) {
-        const CELL_HEIGHT: f32 = 256.;
-        const CELL_WIDTH: f32 = 256.;
+        const CELL_HEIGHT: f32 = 200.;
+        const CELL_WIDTH: f32 = 200.;
         let ncols = usize::max(1, f32::floor(ui.available_width() / CELL_WIDTH) as usize);
         let nrows = usize::max(1, f32::floor(ui.available_height() / CELL_HEIGHT) as usize);
         let ncells = ncols * nrows;
         // This takes the ceil of integer division.
         self.num_pages = usize::max((self.session.filelist().len() + ncells - 1) / ncells, 1);
+        let mut echo = None;
         egui::Grid::new("image_grid")
             .min_col_width(CELL_WIDTH)
             .min_row_height(CELL_HEIGHT)
@@ -83,15 +84,24 @@ impl App {
                     .enumerate()
                 {
                     ui.centered_and_justified(|ui| {
-                        match path.extension() {
+                        let response = match path.extension() {
                             Some(ext) => match ext.to_ascii_lowercase().to_str() {
                                 Some(ext) => match ext {
-                                    "png" | "jpg" | "jpeg" | "bmp" | "webp" => ui.add(
-                                        egui::Image::from_uri(format!("file://{}", path.display()))
+                                    "png" | "jpg" | "jpeg" | "bmp" | "webp" => {
+                                        let response = ui.add(
+                                            egui::Image::from_uri(format!(
+                                                "file://{}",
+                                                path.display()
+                                            ))
                                             .rounding(10.)
                                             .show_loading_spinner(true)
-                                            .maintain_aspect_ratio(true),
-                                    ),
+                                            .maintain_aspect_ratio(true)
+                                            .sense(
+                                                egui::Sense::click().union(egui::Sense::hover()),
+                                            ),
+                                        );
+                                        response
+                                    }
                                     "pdf" => ui.monospace(format!("document:\n{}", relpath)),
                                     "mov" | "flv" | "mp4" | "3gp" => {
                                         ui.monospace(format!("video:\n{}", relpath))
@@ -102,10 +112,27 @@ impl App {
                             },
                             None => ui.monospace(format!("file:\n{}", relpath)),
                         };
+                        if response.double_clicked() {
+                            if let Err(_) = opener::open(&path) {
+                                echo = Some("Unable to open the file.");
+                            }
+                        }
+                        if response.hovered() {
+                            response.show_tooltip_text(
+                                ftag::core::what_is(&path)
+                                    .unwrap_or(String::from(
+                                        "Unable to fetch the description of this file.",
+                                    ))
+                                    .to_string(),
+                            );
+                        }
                     });
                     if counter % ncols == ncols - 1 {
                         ui.end_row();
                     }
+                }
+                if let Some(message) = echo {
+                    self.session.set_echo(message);
                 }
             });
     }
