@@ -82,7 +82,7 @@ impl App {
                     .take(ncells)
                     .enumerate()
                 {
-                    ui.vertical_centered(|ui| {
+                    ui.centered_and_justified(|ui| {
                         match path.extension() {
                             Some(ext) => match ext.to_ascii_lowercase().to_str() {
                                 Some(ext) => match ext {
@@ -128,7 +128,7 @@ impl eframe::App for App {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
                 ui.monospace(format!(
-                    "{}: {} / {}",
+                    "{}: [{} / {}]",
                     if self.session.filter_str().is_empty() {
                         "ALL_TAGS"
                     } else {
