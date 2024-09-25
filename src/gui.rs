@@ -133,16 +133,13 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Tags panel.
-        const SIDE_PANEL_WIDTH: f32 = 256.;
-        egui::SidePanel::left("left_panel")
-            .exact_width(SIDE_PANEL_WIDTH)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for tag in self.session.taglist() {
-                        ui.monospace(tag);
-                    }
-                });
+        egui::SidePanel::left("left_panel").show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for tag in self.session.taglist() {
+                    ui.monospace(tag);
+                }
             });
+        });
         // Current filter string.
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
