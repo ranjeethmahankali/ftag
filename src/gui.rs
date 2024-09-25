@@ -112,13 +112,11 @@ impl App {
                             }
                         }
                         if response.hovered() {
-                            response.show_tooltip_text(
-                                ftag::core::what_is(&path)
-                                    .unwrap_or(String::from(
-                                        "Unable to fetch the description of this file.",
-                                    ))
-                                    .to_string(),
-                            );
+                            response.show_tooltip_ui(|ui| {
+                                ui.monospace(ftag::core::what_is(&path).unwrap_or(String::from(
+                                    "Unable to fetch the description of this file.",
+                                )));
+                            });
                         }
                     });
                     if counter % ncols == ncols - 1 {
