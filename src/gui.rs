@@ -40,7 +40,7 @@ fn main() -> Result<(), Error> {
             let ctx = &cc.egui_ctx;
             ctx.set_pixels_per_point(1.2);
             egui_extras::install_image_loaders(ctx);
-            Ok(Box::from(App {
+            Ok(Box::from(GuiApp {
                 session: InteractiveSession::init(table),
                 page_index: 0,
                 num_pages: 1,
@@ -50,13 +50,13 @@ fn main() -> Result<(), Error> {
     .map_err(Error::GUIFailure)
 }
 
-struct App {
+struct GuiApp {
     session: InteractiveSession,
     page_index: usize,
     num_pages: usize,
 }
 
-impl App {
+impl GuiApp {
     fn render_text_preview(ui: &mut egui::Ui, text: String) -> egui::Response {
         ui.add(
             egui::Label::new(
@@ -161,7 +161,7 @@ impl App {
     }
 }
 
-impl eframe::App for App {
+impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Tags panel.
         egui::SidePanel::left("left_panel").show(ctx, |ui| {
@@ -216,7 +216,7 @@ impl eframe::App for App {
                     .font(egui::FontId::monospace(14.))
                     .horizontal_align(egui::Align::Center)
                     .vertical_align(egui::Align::Center)
-                    .hint_text("query filter:")
+                    .hint_text("command:")
                     .show(ui);
                 let query_response = output.response;
                 if query_response.lost_focus() {
