@@ -194,8 +194,7 @@ impl GuiApp {
                         );
                         if response.double_clicked() && opener::open(&path).is_err() {
                             echo = Some("Unable to open the file.");
-                        }
-                        if response.hovered() {
+                        } else if response.hovered() {
                             response.show_tooltip_ui(|ui| {
                                 ui.monospace(ftag::core::what_is(&path).unwrap_or(String::from(
                                     "Unable to fetch the description of this file.",
