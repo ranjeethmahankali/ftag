@@ -159,6 +159,65 @@ impl GuiApp {
                 }
             });
     }
+
+    fn invert_color(color: &egui::Color32) -> egui::Color32 {
+        egui::Color32::from_rgb(
+            u8::MAX - color.r(),
+            u8::MAX - color.g(),
+            u8::MAX - color.b(),
+        )
+    }
+
+    fn parse_suggestion_string(&self) -> Option<(&str, &str, &str)> {
+        let (left, rest) = self.session.echo().split_once('[')?;
+        let (middle, right) = rest.split_once(']')?;
+        Some((left, middle, right))
+    }
+
+    fn render_echo(&self, ui: &mut egui::Ui) {
+        match {
+            if let State::Autocomplete = self.session.state() {
+                self.parse_suggestion_string()
+            } else {
+                None
+            }
+        } {
+            Some((left, selection, right)) => {
+                let left = egui::Label::new(
+                    egui::widget_text::RichText::new(left).text_style(egui::TextStyle::Monospace),
+                )
+                .selectable(false)
+                .wrap_mode(egui::TextWrapMode::Truncate);
+                let selection = egui::Label::new(
+                    egui::widget_text::RichText::new(selection)
+                        .text_style(egui::TextStyle::Monospace)
+                        .color(Self::invert_color(&ui.visuals().text_color()))
+                        .strong()
+                        .background_color(Self::invert_color(&ui.visuals().faint_bg_color)),
+                )
+                .selectable(false)
+                .wrap_mode(egui::TextWrapMode::Truncate);
+                let right = egui::Label::new(
+                    egui::widget_text::RichText::new(right).text_style(egui::TextStyle::Monospace),
+                )
+                .selectable(false)
+                .wrap_mode(egui::TextWrapMode::Truncate);
+                ui.add(left);
+                ui.add(selection);
+                ui.add(right);
+            }
+            None => {
+                ui.add(
+                    egui::Label::new(
+                        egui::widget_text::RichText::new(self.session.echo())
+                            .text_style(egui::TextStyle::Monospace),
+                    )
+                    .selectable(false)
+                    .wrap_mode(egui::TextWrapMode::Truncate),
+                );
+            }
+        }
+    }
 }
 
 impl eframe::App for GuiApp {
@@ -201,14 +260,9 @@ impl eframe::App for GuiApp {
         // Input field and echo string.
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add(
-                    egui::Label::new(
-                        egui::widget_text::RichText::new(self.session.echo())
-                            .text_style(egui::TextStyle::Monospace),
-                    )
-                    .selectable(false)
-                    .wrap_mode(egui::TextWrapMode::Truncate),
-                );
+                ui.horizontal(|ui| {
+                    self.render_echo(ui);
+                });
                 ui.separator();
                 let mut output = egui::TextEdit::singleline(self.session.command_mut())
                     .frame(false)
