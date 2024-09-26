@@ -167,29 +167,47 @@ impl eframe::App for App {
         egui::SidePanel::left("left_panel").show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for tag in self.session.taglist() {
-                    ui.monospace(tag);
+                    ui.add(
+                        egui::Label::new(
+                            egui::widget_text::RichText::new(tag)
+                                .text_style(egui::TextStyle::Monospace),
+                        )
+                        .selectable(false),
+                    );
                 }
             });
         });
         // Current filter string.
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
-                ui.monospace(format!(
-                    "{}: [{} / {}]",
-                    if self.session.filter_str().is_empty() {
-                        "ALL_TAGS"
-                    } else {
-                        self.session.filter_str()
-                    },
-                    self.page_index + 1,
-                    self.num_pages
-                ));
+                ui.add(
+                    egui::Label::new(
+                        egui::widget_text::RichText::new(format!(
+                            "{}: [{} / {}]",
+                            if self.session.filter_str().is_empty() {
+                                "ALL_TAGS"
+                            } else {
+                                self.session.filter_str()
+                            },
+                            self.page_index + 1,
+                            self.num_pages
+                        ))
+                        .text_style(egui::TextStyle::Monospace),
+                    )
+                    .selectable(false),
+                );
             });
         });
         // Input field and echo string.
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.monospace(self.session.echo());
+                ui.add(
+                    egui::Label::new(
+                        egui::widget_text::RichText::new(self.session.echo())
+                            .text_style(egui::TextStyle::Monospace),
+                    )
+                    .selectable(false),
+                );
                 ui.separator();
                 let mut output = egui::TextEdit::singleline(self.session.command_mut())
                     .frame(false)
