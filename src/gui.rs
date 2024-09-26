@@ -192,10 +192,8 @@ impl GuiApp {
                             },
                             ui,
                         );
-                        if response.double_clicked() {
-                            if let Err(_) = opener::open(&path) {
-                                echo = Some("Unable to open the file.");
-                            }
+                        if response.double_clicked() && opener::open(&path).is_err() {
+                            echo = Some("Unable to open the file.");
                         }
                         if response.hovered() {
                             response.show_tooltip_ui(|ui| {
@@ -230,13 +228,12 @@ impl GuiApp {
     }
 
     fn render_echo(&self, ui: &mut egui::Ui) {
-        match {
-            if let State::Autocomplete = self.session.state() {
-                self.parse_suggestion_string()
-            } else {
-                None
-            }
-        } {
+        let tryparse = if let State::Autocomplete = self.session.state() {
+            self.parse_suggestion_string()
+        } else {
+            None
+        };
+        match tryparse {
             Some((left, selection, right)) => {
                 let left = egui::Label::new(
                     egui::widget_text::RichText::new(left).text_style(egui::TextStyle::Monospace),
