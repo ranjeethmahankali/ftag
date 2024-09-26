@@ -56,13 +56,6 @@ struct GuiApp {
     num_pages: usize,
 }
 
-enum FileType {
-    Image,
-    PdfDocument,
-    Video,
-    Other,
-}
-
 const DESIRED_ROW_HEIGHT: f32 = 200.;
 const DESIRED_COL_WIDTH: f32 = 200.;
 const ICON_MAX_HEIGHT: f32 = DESIRED_ROW_HEIGHT * 0.5;
@@ -71,12 +64,25 @@ const ROW_SPACING: f32 = 5.;
 const COL_SPACING: f32 = 5.;
 
 impl GuiApp {
-    fn render_file_preview(
-        relpath: &str,
-        abspath: &Path,
-        ftype: FileType,
-        ui: &mut egui::Ui,
-    ) -> egui::Response {
+    fn render_file_preview(relpath: &str, abspath: &Path, ui: &mut egui::Ui) -> egui::Response {
+        enum FileType {
+            Image,
+            PdfDocument,
+            Video,
+            Other,
+        }
+        let ftype = match abspath.extension() {
+            Some(ext) => match ext.to_ascii_lowercase().to_str() {
+                Some(ext) => match ext {
+                    "png" | "jpg" | "jpeg" | "bmp" | "webp" => FileType::Image,
+                    "pdf" => FileType::PdfDocument,
+                    "mov" | "flv" | "mp4" | "3gp" => FileType::Video,
+                    _ => FileType::Other,
+                },
+                None => FileType::Other,
+            },
+            None => FileType::Other,
+        };
         match ftype {
             FileType::Image => ui.add(
                 egui::Image::from_uri(format!("file://{}", abspath.display()))
@@ -175,23 +181,7 @@ impl GuiApp {
                     .enumerate()
                 {
                     ui.vertical_centered(|ui| {
-                        let response = Self::render_file_preview(
-                            relpath,
-                            &path,
-                            match path.extension() {
-                                Some(ext) => match ext.to_ascii_lowercase().to_str() {
-                                    Some(ext) => match ext {
-                                        "png" | "jpg" | "jpeg" | "bmp" | "webp" => FileType::Image,
-                                        "pdf" => FileType::PdfDocument,
-                                        "mov" | "flv" | "mp4" | "3gp" => FileType::Video,
-                                        _ => FileType::Other,
-                                    },
-                                    None => FileType::Other,
-                                },
-                                None => FileType::Other,
-                            },
-                            ui,
-                        );
+                        let response = Self::render_file_preview(relpath, &path, ui);
                         if response.double_clicked() && opener::open(&path).is_err() {
                             echo = Some("Unable to open the file.");
                         } else if response.hovered() {
