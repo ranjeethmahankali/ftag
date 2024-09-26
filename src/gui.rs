@@ -5,7 +5,7 @@ use ftag::{
     interactive::{InteractiveSession, State},
     query::DenseTagTable,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Error> {
     let matches = command!()
@@ -56,6 +56,13 @@ struct GuiApp {
     num_pages: usize,
 }
 
+enum FileType {
+    Image,
+    PdfDocument,
+    Video,
+    Other,
+}
+
 impl GuiApp {
     fn render_text_preview(ui: &mut egui::Ui, text: String) -> egui::Response {
         ui.add(
@@ -65,6 +72,28 @@ impl GuiApp {
             .sense(egui::Sense::click().union(egui::Sense::hover()))
             .selectable(false),
         )
+    }
+
+    fn render_file_preview(
+        relpath: &str,
+        abspath: &Path,
+        ftype: FileType,
+        ui: &mut egui::Ui,
+    ) -> egui::Response {
+        match ftype {
+            FileType::Image => ui.add(
+                egui::Image::from_uri(format!("file://{}", abspath.display()))
+                    .rounding(10.)
+                    .show_loading_spinner(true)
+                    .maintain_aspect_ratio(true)
+                    .sense(egui::Sense::click().union(egui::Sense::hover())),
+            ),
+            FileType::PdfDocument => {
+                Self::render_text_preview(ui, format!("document:\n{}", relpath))
+            }
+            FileType::Video => Self::render_text_preview(ui, format!("video:\n{}", relpath)),
+            FileType::Other => Self::render_text_preview(ui, format!("file:\n{}", relpath)),
+        }
     }
 
     fn render_grid_preview(&mut self, ui: &mut egui::Ui) {
@@ -107,36 +136,23 @@ impl GuiApp {
                     .enumerate()
                 {
                     ui.vertical_centered(|ui| {
-                        let response = match path.extension() {
-                            Some(ext) => match ext.to_ascii_lowercase().to_str() {
-                                Some(ext) => match ext {
-                                    "png" | "jpg" | "jpeg" | "bmp" | "webp" => ui.add(
-                                        egui::Image::from_uri(format!("file://{}", path.display()))
-                                            .rounding(10.)
-                                            .show_loading_spinner(true)
-                                            .maintain_aspect_ratio(true)
-                                            .sense(
-                                                egui::Sense::click().union(egui::Sense::hover()),
-                                            ),
-                                    ),
-                                    "pdf" => Self::render_text_preview(
-                                        ui,
-                                        format!("document:\n{}", relpath),
-                                    ),
-                                    "mov" | "flv" | "mp4" | "3gp" => Self::render_text_preview(
-                                        ui,
-                                        format!("video:\n{}", relpath),
-                                    ),
-                                    _ => {
-                                        Self::render_text_preview(ui, format!("file:\n{}", relpath))
-                                    }
+                        let response = Self::render_file_preview(
+                            relpath,
+                            &path,
+                            match path.extension() {
+                                Some(ext) => match ext.to_ascii_lowercase().to_str() {
+                                    Some(ext) => match ext {
+                                        "png" | "jpg" | "jpeg" | "bmp" | "webp" => FileType::Image,
+                                        "pdf" => FileType::PdfDocument,
+                                        "mov" | "flv" | "mp4" | "3gp" => FileType::Video,
+                                        _ => FileType::Other,
+                                    },
+                                    None => FileType::Other,
                                 },
-                                None => {
-                                    Self::render_text_preview(ui, format!("file:\n{}", relpath))
-                                }
+                                None => FileType::Other,
                             },
-                            None => Self::render_text_preview(ui, format!("file:\n{}", relpath)),
-                        };
+                            ui,
+                        );
                         if response.double_clicked() {
                             if let Err(_) = opener::open(&path) {
                                 echo = Some("Unable to open the file.");
