@@ -63,17 +63,14 @@ enum FileType {
     Other,
 }
 
-impl GuiApp {
-    fn render_text_preview(ui: &mut egui::Ui, text: String) -> egui::Response {
-        ui.add(
-            egui::Label::new(
-                egui::widget_text::RichText::new(text).text_style(egui::TextStyle::Monospace),
-            )
-            .sense(egui::Sense::click().union(egui::Sense::hover()))
-            .selectable(false),
-        )
-    }
+const DESIRED_ROW_HEIGHT: f32 = 200.;
+const DESIRED_COL_WIDTH: f32 = 200.;
+const ICON_MAX_HEIGHT: f32 = DESIRED_ROW_HEIGHT * 0.5;
+const ICON_MAX_WIDTH: f32 = DESIRED_COL_WIDTH * 0.5;
+const ROW_SPACING: f32 = 5.;
+const COL_SPACING: f32 = 5.;
 
+impl GuiApp {
     fn render_file_preview(
         relpath: &str,
         abspath: &Path,
@@ -89,18 +86,60 @@ impl GuiApp {
                     .sense(egui::Sense::click().union(egui::Sense::hover())),
             ),
             FileType::PdfDocument => {
-                Self::render_text_preview(ui, format!("document:\n{}", relpath))
+                let response = ui.add(
+                    egui::Image::from(egui::include_image!("assets/icon_pdf.svg"))
+                        .show_loading_spinner(true)
+                        .maintain_aspect_ratio(true)
+                        .sense(egui::Sense::click().union(egui::Sense::hover()))
+                        .max_height(ICON_MAX_HEIGHT)
+                        .max_width(ICON_MAX_WIDTH),
+                );
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(relpath).text_style(egui::TextStyle::Monospace),
+                    )
+                    .selectable(false),
+                );
+                response
             }
-            FileType::Video => Self::render_text_preview(ui, format!("video:\n{}", relpath)),
-            FileType::Other => Self::render_text_preview(ui, format!("file:\n{}", relpath)),
+            FileType::Video => {
+                let response = ui.add(
+                    egui::Image::from(egui::include_image!("assets/icon_video.svg"))
+                        .show_loading_spinner(true)
+                        .maintain_aspect_ratio(true)
+                        .sense(egui::Sense::click().union(egui::Sense::hover()))
+                        .max_height(ICON_MAX_HEIGHT)
+                        .max_width(ICON_MAX_WIDTH),
+                );
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(relpath).text_style(egui::TextStyle::Monospace),
+                    )
+                    .selectable(false),
+                );
+                response
+            }
+            FileType::Other => {
+                let response = ui.add(
+                    egui::Image::from(egui::include_image!("assets/icon_file.svg"))
+                        .show_loading_spinner(true)
+                        .maintain_aspect_ratio(true)
+                        .sense(egui::Sense::click().union(egui::Sense::hover()))
+                        .max_height(ICON_MAX_HEIGHT)
+                        .max_width(ICON_MAX_WIDTH),
+                );
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(relpath).text_style(egui::TextStyle::Monospace),
+                    )
+                    .selectable(false),
+                );
+                response
+            }
         }
     }
 
     fn render_grid_preview(&mut self, ui: &mut egui::Ui) {
-        const DESIRED_ROW_HEIGHT: f32 = 200.;
-        const DESIRED_COL_WIDTH: f32 = 200.;
-        const ROW_SPACING: f32 = 5.;
-        const COL_SPACING: f32 = 5.;
         let (ncols, ncells, row_height, col_width) = {
             let ncols = f32::ceil(ui.available_width() / (DESIRED_COL_WIDTH + COL_SPACING));
             let nrows = f32::ceil(ui.available_height() / (DESIRED_ROW_HEIGHT + ROW_SPACING));
