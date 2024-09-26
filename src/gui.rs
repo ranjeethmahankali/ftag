@@ -264,7 +264,7 @@ impl GuiApp {
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Tags panel.
-        egui::SidePanel::left("left_panel").show(ctx, |ui| {
+        egui::SidePanel::left("tags_panel").show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for tag in self.session.taglist() {
                     ui.add(
