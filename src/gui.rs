@@ -206,7 +206,8 @@ impl eframe::App for GuiApp {
                         egui::widget_text::RichText::new(self.session.echo())
                             .text_style(egui::TextStyle::Monospace),
                     )
-                    .selectable(false),
+                    .selectable(false)
+                    .wrap_mode(egui::TextWrapMode::Truncate),
                 );
                 ui.separator();
                 let mut output = egui::TextEdit::singleline(self.session.command_mut())
