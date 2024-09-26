@@ -68,18 +68,29 @@ impl App {
     }
 
     fn render_grid_preview(&mut self, ui: &mut egui::Ui) {
-        const CELL_HEIGHT: f32 = 200.;
-        const CELL_WIDTH: f32 = 200.;
-        let ncols = usize::max(1, f32::floor(ui.available_width() / CELL_WIDTH) as usize);
-        let nrows = usize::max(1, f32::floor(ui.available_height() / CELL_HEIGHT) as usize);
+        const ROW_HEIGHT: f32 = 200.;
+        const COL_WIDTH: f32 = 200.;
+        const ROW_SPACING: f32 = 5.;
+        const COL_SPACING: f32 = 5.;
+        let (ncols, nrows) = (
+            usize::max(
+                1,
+                f32::floor(ui.available_width() / (COL_WIDTH + COL_SPACING)) as usize,
+            ),
+            usize::max(
+                1,
+                f32::floor(ui.available_height() / (ROW_HEIGHT + ROW_SPACING)) as usize,
+            ),
+        );
         let ncells = ncols * nrows;
         // This takes the ceil of integer division.
         self.num_pages = usize::max((self.session.filelist().len() + ncells - 1) / ncells, 1);
         let mut echo = None;
         egui::Grid::new("image_grid")
-            .min_col_width(CELL_WIDTH)
-            .min_row_height(CELL_HEIGHT)
+            .min_col_width(COL_WIDTH)
+            .min_row_height(ROW_HEIGHT)
             .striped(true)
+            .spacing(egui::Vec2::new(COL_SPACING, ROW_SPACING))
             .show(ui, |ui| {
                 for (counter, (relpath, path)) in self
                     .session
