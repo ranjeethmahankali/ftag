@@ -68,27 +68,28 @@ impl App {
     }
 
     fn render_grid_preview(&mut self, ui: &mut egui::Ui) {
-        const ROW_HEIGHT: f32 = 200.;
-        const COL_WIDTH: f32 = 200.;
+        const DESIRED_ROW_HEIGHT: f32 = 200.;
+        const DESIRED_COL_WIDTH: f32 = 200.;
         const ROW_SPACING: f32 = 5.;
         const COL_SPACING: f32 = 5.;
-        let (ncols, nrows) = (
-            usize::max(
-                1,
-                f32::floor(ui.available_width() / (COL_WIDTH + COL_SPACING)) as usize,
-            ),
-            usize::max(
-                1,
-                f32::floor(ui.available_height() / (ROW_HEIGHT + ROW_SPACING)) as usize,
-            ),
-        );
-        let ncells = ncols * nrows;
+        let (ncols, ncells, row_height, col_width) = {
+            let ncols = f32::ceil(ui.available_width() / (DESIRED_COL_WIDTH + COL_SPACING));
+            let nrows = f32::ceil(ui.available_height() / (DESIRED_ROW_HEIGHT + ROW_SPACING));
+            let row_height = (ui.available_height() / nrows) - ROW_SPACING;
+            let col_width = (ui.available_width() / ncols) - COL_SPACING;
+            (
+                ncols as usize,
+                ncols as usize * nrows as usize,
+                row_height,
+                col_width,
+            )
+        };
         // This takes the ceil of integer division.
         self.num_pages = usize::max((self.session.filelist().len() + ncells - 1) / ncells, 1);
         let mut echo = None;
         egui::Grid::new("image_grid")
-            .min_col_width(COL_WIDTH)
-            .min_row_height(ROW_HEIGHT)
+            .min_row_height(row_height)
+            .max_col_width(col_width)
             .striped(true)
             .spacing(egui::Vec2::new(COL_SPACING, ROW_SPACING))
             .show(ui, |ui| {
@@ -185,10 +186,6 @@ impl eframe::App for App {
                 ));
             });
         });
-        // Files.
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.render_grid_preview(ui);
-        });
         // Input field and echo string.
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.vertical_centered(|ui| {
@@ -237,6 +234,10 @@ impl eframe::App for App {
                 }
                 query_response.request_focus();
             });
+        });
+        // Files previews.
+        egui::CentralPanel::default().show(ctx, |ui| {
+            self.render_grid_preview(ui);
         });
     }
 }
