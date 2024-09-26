@@ -37,8 +37,9 @@ fn main() -> Result<(), Error> {
         "ftagui",
         options,
         Box::new(|cc| {
-            cc.egui_ctx.set_pixels_per_point(1.2);
-            egui_extras::install_image_loaders(&cc.egui_ctx);
+            let ctx = &cc.egui_ctx;
+            ctx.set_pixels_per_point(1.2);
+            egui_extras::install_image_loaders(ctx);
             Ok(Box::from(App {
                 session: InteractiveSession::init(table),
                 page_index: 0,
@@ -56,6 +57,16 @@ struct App {
 }
 
 impl App {
+    fn render_text_preview(ui: &mut egui::Ui, text: String) -> egui::Response {
+        ui.add(
+            egui::Label::new(
+                egui::widget_text::RichText::new(text).text_style(egui::TextStyle::Monospace),
+            )
+            .sense(egui::Sense::click().union(egui::Sense::hover()))
+            .selectable(false),
+        )
+    }
+
     fn render_grid_preview(&mut self, ui: &mut egui::Ui) {
         const CELL_HEIGHT: f32 = 200.;
         const CELL_WIDTH: f32 = 200.;
@@ -96,15 +107,23 @@ impl App {
                                                 egui::Sense::click().union(egui::Sense::hover()),
                                             ),
                                     ),
-                                    "pdf" => ui.monospace(format!("document:\n{}", relpath)),
-                                    "mov" | "flv" | "mp4" | "3gp" => {
-                                        ui.monospace(format!("video:\n{}", relpath))
+                                    "pdf" => Self::render_text_preview(
+                                        ui,
+                                        format!("document:\n{}", relpath),
+                                    ),
+                                    "mov" | "flv" | "mp4" | "3gp" => Self::render_text_preview(
+                                        ui,
+                                        format!("video:\n{}", relpath),
+                                    ),
+                                    _ => {
+                                        Self::render_text_preview(ui, format!("file:\n{}", relpath))
                                     }
-                                    _ => ui.monospace(format!("file:\n{}", relpath)),
                                 },
-                                None => ui.monospace(format!("file:\n{}", relpath)),
+                                None => {
+                                    Self::render_text_preview(ui, format!("file:\n{}", relpath))
+                                }
                             },
-                            None => ui.monospace(format!("file:\n{}", relpath)),
+                            None => Self::render_text_preview(ui, format!("file:\n{}", relpath)),
                         };
                         if response.double_clicked() {
                             if let Err(_) = opener::open(&path) {
