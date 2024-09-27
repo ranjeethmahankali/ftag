@@ -187,7 +187,7 @@ impl GlobMatches {
 /// be a filepath, in which case the store file will be it's sibling,
 /// or a directory path, in which case the store file will be it's
 /// child.
-pub(crate) fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
+pub fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     let mut out = if path.exists() {
         if path.is_dir() {
             PathBuf::from(path)

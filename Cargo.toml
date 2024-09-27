@@ -19,18 +19,22 @@ edit = "0.1"
 crossterm = "0.27.0"
 ratatui = "0.26"
 opener = "0.6"
+# Dependencies for the GUI
+egui = "0.28"
+eframe = "0.28"
+egui_extras = { version = "0.28", default-features = false, features = ["all_loaders", "image"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[[bin]]
+name = "ftag"
+path = "src/cli.rs"
+
+[[bin]]
+name = "ftagui"
+path = "src/gui.rs"
 
 # For smaller binary size.
-
 [profile.release]
 strip = true  # Automatically strip symbols
-lto = true # Link time optimization.
 panic = "abort" # Don't unwind stack. Should never panic.
 codegen-units = 1
-
-# Debug info for profiling
-
-# [profile.release]
-# debug = 1
-# [rust]
-# debuginfo-level = 1

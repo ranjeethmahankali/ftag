@@ -16,13 +16,7 @@ pub(crate) enum DirEntryType {
 /// the end.
 impl PartialOrd for DirEntryType {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        use std::cmp::Ordering::*;
-        match (self, other) {
-            (DirEntryType::File, DirEntryType::File) => Some(Equal),
-            (DirEntryType::File, DirEntryType::Dir) => Some(Greater),
-            (DirEntryType::Dir, DirEntryType::File) => Some(Less),
-            (DirEntryType::Dir, DirEntryType::Dir) => Some(Equal),
-        }
+        Some(self.cmp(other))
     }
 }
 

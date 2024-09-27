@@ -1,18 +1,9 @@
-mod core;
-mod filter;
-mod interactive;
-mod load;
-mod query;
-mod walk;
-
-use crate::{
-    core::{get_all_tags, untracked_files, Error},
-    query::run_query,
-};
 use clap::{command, value_parser, Arg};
-use core::search;
-use load::get_store_path;
-use query::DenseTagTable;
+use ftag::{
+    core::{self, get_all_tags, search, untracked_files, Error},
+    load::get_store_path,
+    query::{count_files_tags, run_query, DenseTagTable},
+};
 use std::path::PathBuf;
 
 fn main() -> Result<(), Error> {
@@ -34,7 +25,7 @@ fn main() -> Result<(), Error> {
         return Ok(());
     }
     if let Some(_matches) = matches.subcommand_matches(cmd::COUNT) {
-        let (nfiles, ntags) = query::count_files_tags(current_dir)?;
+        let (nfiles, ntags) = count_files_tags(current_dir)?;
         println!("{} files; {} tags", nfiles, ntags);
         return Ok(());
     }
@@ -53,7 +44,7 @@ fn main() -> Result<(), Error> {
                 .ok_or(Error::InvalidArgs)?,
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
-        return interactive::start(DenseTagTable::from_dir(current_dir)?)
+        return ftag::tui::start(DenseTagTable::from_dir(current_dir)?)
             .map_err(|err| Error::TUIFailure(format!("{:?}", err)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);

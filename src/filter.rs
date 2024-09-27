@@ -1,7 +1,7 @@
 use crate::query::safe_get_flag;
 use std::fmt::{Debug, Display};
 
-pub(crate) enum FilterParseError {
+pub enum FilterParseError {
     EmptyQuery,
     MalformedParens,
     ExpectedBinaryOperator,
@@ -24,7 +24,7 @@ impl Debug for FilterParseError {
 /// Data representing a tag. Tags are usually strings, so this can be
 /// a string. But sometimes it can be more efficient to represent tags
 /// as indices into a list / table of strings.
-pub(crate) trait TagData: std::fmt::Display + Clone + Default {}
+pub trait TagData: std::fmt::Display + Clone + Default {}
 
 impl TagData for usize {}
 
@@ -32,12 +32,12 @@ impl TagData for usize {}
 /// other things such as indices. A class that implements this trait
 /// should know how to convert a user supplied tag string into a
 /// filter that wraps `TagData`.
-pub(crate) trait TagMaker<T: TagData> {
+pub trait TagMaker<T: TagData> {
     fn create_tag(&self, input: &str) -> Filter<T>;
 }
 
-#[derive(Debug)]
-pub(crate) enum Filter<T: TagData> {
+#[derive(Debug, PartialEq, Eq)]
+pub enum Filter<T: TagData> {
     Tag(T),
     And(Box<Filter<T>>, Box<Filter<T>>),
     Or(Box<Filter<T>>, Box<Filter<T>>),
@@ -95,8 +95,8 @@ impl Filter<usize> {
                 "!{}",
                 Self::maybe_parens(self, filter, filter.text(tagnames))
             ),
-            FalseTag => String::from("FALSE_TAG"),
-            TrueTag => String::from("TRUE_TAG"),
+            FalseTag => String::from("NOT_A_TAG"),
+            TrueTag => String::from("ALL_TAGS"),
         }
     }
 }
