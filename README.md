@@ -247,7 +247,7 @@ description will be applied to all the files listed or files that match any of
 the globs listed. When the `path` header contains multiple files / globs, they
 must be listed one per line.
 
-### `.ftagui`: GUI application
+### `ftagui`: GUI application
 
 Interactive mode is useful for incrementally refining the filtering criteria and
 searching through a collection of files. But it is not very convenient for
