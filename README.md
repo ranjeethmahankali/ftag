@@ -187,7 +187,8 @@ example, if you enter the filter `tag1 & tag2`, and hit return, that filter is
 applied and a smaller list of files is shown. If you then type `| tag3` and hit
 return, it will be appended to the existing filter resulting in `(tag1 & tag2) |
 tag3`. This is useful when incrementally tightening the filter to find the file
-you want.
+you want. At any point, pressing the up and down arrow keys lets you scroll
+through the list of active tags.
 
 ### `.ftag` Files
 
@@ -246,10 +247,27 @@ description will be applied to all the files listed or files that match any of
 the globs listed. When the `path` header contains multiple files / globs, they
 must be listed one per line.
 
-### Graph mode
+### `.ftagui`: GUI application
 
-In theory, the tags can be used to render a zettelkasten style graph, where the
-files are represented as nodes and any two files that share a tag are connected
-by an edge. This in combination with filtering, can be a powerful, visual way of
-searching through a large collection of files. This is not implemented yet. At
-this stage, this is just an idea in the making.
+Interactive mode is useful for incrementally refining the filtering criteria and
+searching through a collection of files. But it is not very convenient for
+photos. For documents, it might be enough to see the file path in the
+interactive mode. But often photos don't have descriptive names, and it is not
+convenient to have to give photos descriptive names. It is much more convenient
+to just look at the photos as you search through them. `ftagui` is a GUI
+application designed to solve this problem. The UI layout and the interactions
+in `ftagui` are designed to be very similar to the interactive TUI mode of
+`ftag`, with a few small differences.
+
+- You can scroll through the list of tags on the left side.
+- You'll see the previews of all the files in the center of the screen.
+- The primary mode of interaction is through a text field at the bottom in which
+  you can enter your commands. These commands are the same as those in the
+  interactive mode.
+- The file previews are paginated.
+- The current query filter and the page number are shown at the top.
+- You can press `Ctrl + n` to go to the next page, and `Ctrl + p` to go to the
+  previous page.
+- Hovering the mouse on an image will show you the tags and the description of
+  the image in a tooltip.
+- Double clicking the image will open it in the default application.

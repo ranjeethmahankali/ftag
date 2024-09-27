@@ -1,6 +1,6 @@
 [package]
 name = "ftag"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Ranjeeth Mahankali <ranjeethmahankali@gmail.com>"]
 description = "CLI tool for tagging and searching files. See README.md for more info."
