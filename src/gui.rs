@@ -164,22 +164,18 @@ impl GuiApp {
         if response.hovered() {
             if let Some(pos) = response.interact_pointer_pos() {
                 println!("{:?}; {:?}", pos, from_screen * pos);
-            } else {
-                println!("No position");
             }
         }
-        // dbg!(to_screen * egui::Pos2::new(500., 500.));
-        painter.extend(
-            [(0., 0.), (1., 0.), (0., 1.), (1., 1.)]
-                .iter()
-                .map(|(x, y)| {
-                    egui::Shape::circle_filled(
-                        to_screen * egui::Pos2::new(*x, *y),
-                        10.,
-                        egui::Color32::YELLOW,
-                    )
-                }),
-        );
+        painter.extend((0..300).flat_map(|xi| {
+            let x = (xi as f32) / 300.;
+            (0..300).map(move |yi| {
+                egui::Shape::circle_filled(
+                    to_screen * egui::Pos2::new(x, (yi as f32) / 300.),
+                    1.,
+                    egui::Color32::YELLOW,
+                )
+            })
+        }));
     }
 
     fn render_grid_preview(&mut self, ui: &mut egui::Ui) {
