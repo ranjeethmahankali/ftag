@@ -44,16 +44,23 @@ fn main() -> Result<(), Error> {
                 session: InteractiveSession::init(table),
                 page_index: 0,
                 num_pages: 1,
+                mode: DisplayMode::Grid,
             }))
         }),
     )
     .map_err(Error::GUIFailure)
 }
 
+enum DisplayMode {
+    Grid,
+    Graph,
+}
+
 struct GuiApp {
     session: InteractiveSession,
     page_index: usize,
     num_pages: usize,
+    mode: DisplayMode,
 }
 
 const DESIRED_ROW_HEIGHT: f32 = 200.;
@@ -143,6 +150,36 @@ impl GuiApp {
                 response
             }
         }
+    }
+
+    fn render_graph_preview(&mut self, ui: &mut egui::Ui) {
+        let (response, painter) =
+            ui.allocate_painter(ui.available_size_before_wrap(), egui::Sense::hover());
+        let rect = response.rect.square_proportions();
+        let to_screen = egui::emath::RectTransform::from_to(
+            egui::Rect::from_min_size(egui::Pos2::ZERO, rect),
+            response.rect,
+        );
+        let from_screen = to_screen.inverse();
+        if response.hovered() {
+            if let Some(pos) = response.interact_pointer_pos() {
+                println!("{:?}; {:?}", pos, from_screen * pos);
+            } else {
+                println!("No position");
+            }
+        }
+        // dbg!(to_screen * egui::Pos2::new(500., 500.));
+        painter.extend(
+            [(0., 0.), (1., 0.), (0., 1.), (1., 1.)]
+                .iter()
+                .map(|(x, y)| {
+                    egui::Shape::circle_filled(
+                        to_screen * egui::Pos2::new(*x, *y),
+                        10.,
+                        egui::Color32::YELLOW,
+                    )
+                }),
+        );
     }
 
     fn render_grid_preview(&mut self, ui: &mut egui::Ui) {
@@ -264,94 +301,112 @@ impl GuiApp {
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Tags panel.
-        egui::SidePanel::left("tags_panel").show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for tag in self.session.taglist() {
+        egui::SidePanel::left("tags_panel")
+            .resizable(false)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for tag in self.session.taglist() {
+                        ui.add(
+                            egui::Label::new(
+                                egui::widget_text::RichText::new(tag)
+                                    .text_style(egui::TextStyle::Monospace),
+                            )
+                            .selectable(false),
+                        );
+                    }
+                });
+            });
+        // Current filter string.
+        egui::TopBottomPanel::top("top_panel")
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.centered_and_justified(|ui| {
                     ui.add(
                         egui::Label::new(
-                            egui::widget_text::RichText::new(tag)
-                                .text_style(egui::TextStyle::Monospace),
+                            egui::widget_text::RichText::new(format!(
+                                "{}: [{} / {}]",
+                                if self.session.filter_str().is_empty() {
+                                    "ALL_TAGS"
+                                } else {
+                                    self.session.filter_str()
+                                },
+                                self.page_index + 1,
+                                self.num_pages
+                            ))
+                            .text_style(egui::TextStyle::Monospace),
                         )
                         .selectable(false),
                     );
-                }
-            });
-        });
-        // Current filter string.
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.centered_and_justified(|ui| {
-                ui.add(
-                    egui::Label::new(
-                        egui::widget_text::RichText::new(format!(
-                            "{}: [{} / {}]",
-                            if self.session.filter_str().is_empty() {
-                                "ALL_TAGS"
-                            } else {
-                                self.session.filter_str()
-                            },
-                            self.page_index + 1,
-                            self.num_pages
-                        ))
-                        .text_style(egui::TextStyle::Monospace),
-                    )
-                    .selectable(false),
-                );
-            });
-        });
-        // Input field and echo string.
-        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.horizontal(|ui| {
-                    self.render_echo(ui);
                 });
-                ui.separator();
-                let mut output = egui::TextEdit::singleline(self.session.command_mut())
-                    .frame(false)
-                    .desired_width(f32::INFINITY)
-                    .min_size(egui::Vec2::new(100., 24.))
-                    .font(egui::FontId::monospace(14.))
-                    .horizontal_align(egui::Align::Center)
-                    .vertical_align(egui::Align::Center)
-                    .hint_text("command:")
-                    .show(ui);
-                let query_response = output.response;
-                if query_response.lost_focus() {
-                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        // User hit return with a query.
-                        self.session.process_input();
-                        match self.session.state() {
-                            State::Default | State::Autocomplete => {} // Do nothing.
-                            State::ListsUpdated => {
-                                self.page_index = 0;
-                                self.session.set_state(State::Default);
+            });
+        // Input field and echo string.
+        egui::TopBottomPanel::bottom("bottom_panel")
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.horizontal(|ui| {
+                        self.render_echo(ui);
+                    });
+                    ui.separator();
+                    let mut output = egui::TextEdit::singleline(self.session.command_mut())
+                        .frame(false)
+                        .desired_width(f32::INFINITY)
+                        .min_size(egui::Vec2::new(100., 24.))
+                        .font(egui::FontId::monospace(14.))
+                        .horizontal_align(egui::Align::Center)
+                        .vertical_align(egui::Align::Center)
+                        .hint_text("command:")
+                        .show(ui);
+                    let query_response = output.response;
+                    if query_response.lost_focus() {
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            // User hit return with a query.
+                            self.session.process_input();
+                            match self.session.state() {
+                                State::Default | State::Autocomplete => {} // Do nothing.
+                                State::ListsUpdated => {
+                                    self.page_index = 0;
+                                    self.session.set_state(State::Default);
+                                }
+                                State::Exit => {
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                                }
                             }
-                            State::Exit => {
-                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            // Move the cursor to the end of the line, say, after autocomplete.
+                            output.state.cursor.set_char_range(Some(CCursorRange::two(
+                                CCursor::new(self.session.command().len()),
+                                CCursor::new(self.session.command().len()),
+                            )));
+                            output.state.store(ctx, query_response.id);
+                        } else if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
+                            self.session.autocomplete();
+                        }
+                    } else if query_response.changed() {
+                        self.session.stop_autocomplete();
+                    } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
+                        self.page_index = usize::clamp(self.page_index + 1, 0, self.num_pages - 1);
+                    } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::P)) {
+                        self.page_index =
+                            usize::clamp(self.page_index.saturating_sub(1), 0, self.num_pages - 1);
+                    } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::G)) {
+                        self.mode = match self.mode {
+                            DisplayMode::Grid => {
+                                self.session.set_echo("Switched to graph mode");
+                                DisplayMode::Graph
+                            }
+                            DisplayMode::Graph => {
+                                self.session.set_echo("Switched to grid mode");
+                                DisplayMode::Grid
                             }
                         }
-                        // Move the cursor to the end of the line, say, after autocomplete.
-                        output.state.cursor.set_char_range(Some(CCursorRange::two(
-                            CCursor::new(self.session.command().len()),
-                            CCursor::new(self.session.command().len()),
-                        )));
-                        output.state.store(ctx, query_response.id);
-                    } else if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
-                        self.session.autocomplete();
                     }
-                } else if query_response.changed() {
-                    self.session.stop_autocomplete();
-                } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
-                    self.page_index = usize::clamp(self.page_index + 1, 0, self.num_pages - 1);
-                } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::P)) {
-                    self.page_index =
-                        usize::clamp(self.page_index.saturating_sub(1), 0, self.num_pages - 1);
-                }
-                query_response.request_focus();
+                    query_response.request_focus();
+                });
             });
-        });
         // Files previews.
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.render_grid_preview(ui);
+        egui::CentralPanel::default().show(ctx, |ui| match self.mode {
+            DisplayMode::Grid => self.render_grid_preview(ui),
+            DisplayMode::Graph => self.render_graph_preview(ui),
         });
     }
 }
