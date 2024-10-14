@@ -27,10 +27,7 @@ fn main() -> Result<(), Error> {
     let table = DenseTagTable::from_dir(current_dir)?;
     let options = eframe::NativeOptions {
         follow_system_theme: true,
-        viewport: egui::ViewportBuilder {
-            maximized: Some(true),
-            ..Default::default()
-        },
+        viewport: egui::ViewportBuilder::default().with_maximized(true),
         ..Default::default()
     };
     eframe::run_native(
