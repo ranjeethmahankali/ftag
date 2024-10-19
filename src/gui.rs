@@ -27,10 +27,7 @@ fn main() -> Result<(), Error> {
     let table = DenseTagTable::from_dir(current_dir)?;
     let options = eframe::NativeOptions {
         follow_system_theme: true,
-        viewport: egui::ViewportBuilder {
-            maximized: Some(true),
-            ..Default::default()
-        },
+        viewport: egui::ViewportBuilder::default().with_maximized(true),
         ..Default::default()
     };
     eframe::run_native(
@@ -278,17 +275,18 @@ impl eframe::App for GuiApp {
             });
         });
         // Current filter string.
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.centered_and_justified(|ui| {
                 ui.add(
                     egui::Label::new(
                         egui::widget_text::RichText::new(format!(
-                            "{}: [{} / {}]",
+                            "{}: {} results, page {} of {}",
                             if self.session.filter_str().is_empty() {
                                 "ALL_TAGS"
                             } else {
                                 self.session.filter_str()
                             },
+                            self.session.filelist().len(),
                             self.page_index + 1,
                             self.num_pages
                         ))
