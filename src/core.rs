@@ -344,9 +344,9 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         tags.iter().any(|tag| {
             // Check if tag matches
             let lower = tag.to_lowercase();
-            return words
+            words
                 .iter()
-                .any(|word| lower.matches(word).next().is_some());
+                .any(|word| lower.matches(word).next().is_some())
         }) || match desc {
             // Check if description matches.
             Some(desc) => {

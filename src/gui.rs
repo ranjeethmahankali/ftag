@@ -156,7 +156,7 @@ impl GuiApp {
             )
         };
         // This takes the ceil of integer division.
-        self.num_pages = usize::max((self.session.filelist().len() + ncells - 1) / ncells, 1);
+        self.num_pages = usize::max(self.session.filelist().len().div_ceil(ncells), 1);
         let mut echo = None;
         egui::Grid::new("image_grid")
             .min_row_height(row_height)
