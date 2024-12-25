@@ -294,7 +294,7 @@ impl DenseTagTable {
     }
 
     pub fn flags(&self, row: usize) -> &[bool] {
-        return self.flags.row(row);
+        self.flags.row(row)
     }
 
     pub fn tags(&self) -> &[String] {

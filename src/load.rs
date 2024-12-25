@@ -54,7 +54,7 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + '_ {
         (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
         (&[".png", ".jpg", ".jpeg", ".bmp", ".webp"], "image"),
     ];
-    return EXT_TAG_MAP.iter().filter_map(|(exts, tag)| {
+    EXT_TAG_MAP.iter().filter_map(|(exts, tag)| {
         if exts
             .iter()
             .any(|ext| input[input.len() - ext.len()..].eq_ignore_ascii_case(ext))
@@ -63,7 +63,7 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + '_ {
         } else {
             None
         }
-    });
+    })
 }
 
 /// Get an iterator over all the implicit tags that can be inferred
