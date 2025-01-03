@@ -267,13 +267,18 @@ impl InteractiveSession {
                 }
                 self.command.clear();
             }
-            State::Autocomplete => {
-                self.command.truncate(self.last_word_start());
-                self.command
-                    .push_str(&self.suggestions[self.suggestion_index]);
-                self.state = State::Default;
-                self.echo.clear();
-            }
+            State::Autocomplete => match self.suggestions.get(self.suggestion_index) {
+                Some(accepted) => {
+                    self.command.truncate(self.last_word_start());
+                    self.command.push_str(accepted);
+                    self.state = State::Default;
+                    self.echo.clear();
+                }
+                None => {
+                    self.state = State::Default;
+                    self.echo.clear();
+                }
+            },
             State::Exit => {} // Do nothing.
         }
     }
@@ -315,16 +320,24 @@ impl InteractiveSession {
                             }
                         }));
                 }
-                self.suggestion_index = 0;
-                self.show_suggestions();
-                State::Autocomplete
+                if self.suggestions.is_empty() {
+                    State::Default
+                } else {
+                    self.suggestion_index = 0;
+                    self.show_suggestions();
+                    State::Autocomplete
+                }
             }
-            State::Autocomplete if !self.suggestions.is_empty() => {
-                self.suggestion_index = (self.suggestion_index + 1) % self.suggestions.len();
-                self.show_suggestions();
-                State::Autocomplete
+            State::Autocomplete => {
+                if self.suggestions.is_empty() {
+                    self.suggestion_index = 0;
+                    State::Default
+                } else {
+                    self.suggestion_index = (self.suggestion_index + 1) % self.suggestions.len();
+                    self.show_suggestions();
+                    State::Autocomplete
+                }
             }
-            State::Autocomplete => State::Autocomplete,
             State::Exit => State::Exit, // Do nothing.
         };
         self.state = next_state;
