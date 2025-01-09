@@ -227,6 +227,18 @@ pub(crate) struct DirData<'a> {
     pub files: Vec<FileData<'a>>,
 }
 
+pub(crate) enum FTagUnit<'a> {
+    File {
+        globs: Vec<&'a str>,
+        tags: Vec<&'a str>,
+        desc: Option<&'a str>,
+    },
+    Dir {
+        tags: Vec<&'a str>,
+        desc: Option<&'a str>,
+    },
+}
+
 /// Options for loading the file data from an ftag file.
 pub(crate) enum FileLoadingOptions {
     /// Skip loading the file data altogether.
@@ -287,6 +299,149 @@ impl Loader {
         }
     }
 
+    pub fn write_cleaned<'a>(&'a mut self, filepath: &Path) -> Result<(), Error> {
+        todo!()
+    }
+
+    fn visit_units<'a, V: FnMut(&FTagUnit) -> ()>(
+        &'a mut self,
+        filepath: &Path,
+        mut visitor: V,
+    ) -> Result<(), Error> {
+        self.raw_text.clear();
+        File::open(filepath)
+            .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?
+            .read_to_string(&mut self.raw_text)
+            .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
+        let mut tags: Vec<&str> = Vec::new();
+        let mut desc: Option<&str> = None;
+        // We store the data of the file we're currently parsing as:
+        // (list of globs, list of tags, optional description).
+        let mut current: Option<FTagUnit> = None;
+        let mut input = self.raw_text.trim();
+        if !input.starts_with('[') {
+            return Err(Error::CannotParseFtagFile(
+                filepath.to_path_buf(),
+                "File does not begin with a header.".into(),
+            ));
+        }
+        while let Some(start) = input.find('[') {
+            // Walk the text one header at a time.
+            let start = start + 1;
+            let end = input.find(']').ok_or(Error::CannotParseFtagFile(
+                filepath.to_path_buf(),
+                "Header doesn't terminate".into(),
+            ))?;
+            let header = &input[start..end];
+            let start = end + 1;
+            input = &input[start..];
+            let content = match input.find("\n[") {
+                Some(end) => {
+                    let c = &input[..end];
+                    input = &input[end..];
+                    c
+                }
+                None => {
+                    let c = input;
+                    input = "";
+                    c
+                }
+            }
+            .trim();
+            input = input.trim();
+            if header == "desc" {
+                if let Some(file) = &mut current {
+                    if !self.include_file_desc() {
+                        continue;
+                    }
+                    let FTagUnit {
+                        globs,
+                        tags: _,
+                        desc,
+                    } = file;
+                    if desc.is_some() {
+                        return Err(Error::CannotParseFtagFile(
+                            filepath.to_path_buf(),
+                            format!(
+                                "Following globs have more than one description:\n{}.",
+                                globs.join("\n")
+                            ),
+                        ));
+                    } else {
+                        *desc = Some(content);
+                    }
+                } else {
+                    if !self.options.dir_desc {
+                        continue;
+                    }
+                    if desc.is_some() {
+                        return Err(Error::CannotParseFtagFile(
+                            filepath.to_path_buf(),
+                            "The directory has more than one description.".into(),
+                        ));
+                    } else {
+                        desc = Some(content);
+                    }
+                }
+            } else if header == "tags" {
+                if let Some(file) = &mut current {
+                    if !self.include_file_tags() {
+                        continue;
+                    }
+                    let FTagUnit {
+                        globs,
+                        tags,
+                        desc: _,
+                    } = file;
+                    if tags.is_empty() {
+                        tags.extend(content.split_whitespace().map(|w| w.trim()));
+                    } else {
+                        return Err(Error::CannotParseFtagFile(
+                            filepath.to_path_buf(),
+                            format!(
+                                "The following globs have more than one 'tags' header:\n{}.",
+                                globs.join("\n")
+                            ),
+                        ));
+                    }
+                } else {
+                    if !self.options.dir_tags {
+                        continue;
+                    }
+                    if tags.is_empty() {
+                        tags.extend(content.split_whitespace().map(|w| w.trim()));
+                    } else {
+                        return Err(Error::CannotParseFtagFile(
+                            filepath.to_path_buf(),
+                            "The directory has more than one 'tags' header.".into(),
+                        ));
+                    }
+                }
+            } else if header == "path" {
+                if let FileLoadingOptions::Skip = self.options.file_options {
+                    break; // Stop parsing the file.
+                }
+                let next = FTagUnit {
+                    globs: content.lines().collect(),
+                    tags: Vec::new(),
+                    desc: None,
+                };
+                if let Some(current) = std::mem::replace(&mut current, Some(next)) {
+                    visitor(&current);
+                }
+            } else {
+                return Err(Error::CannotParseFtagFile(
+                    filepath.to_path_buf(),
+                    format!("Unrecognized header: {header}"),
+                ));
+            }
+        }
+        if let Some(current) = current {
+            visitor(&current);
+        }
+        Ok(())
+    }
+
     /// Load the data from a .ftag file specified by the filepath.
     pub fn load<'a>(&'a mut self, filepath: &Path) -> Result<DirData<'a>, Error> {
         self.raw_text.clear();
@@ -299,7 +454,7 @@ impl Loader {
         let mut files: Vec<FileData<'a>> = Vec::new();
         // We store the data of the file we're currently parsing as:
         // (list of globs, list of tags, optional description).
-        let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
+        let mut curfile: Option<FTagUnit> = None;
         let mut input = self.raw_text.trim();
         if !input.starts_with('[') {
             return Err(Error::CannotParseFtagFile(
@@ -336,7 +491,11 @@ impl Loader {
                     if !self.include_file_desc() {
                         continue;
                     }
-                    let (globs, _tags, desc) = file;
+                    let FTagUnit {
+                        globs,
+                        tags: _,
+                        desc,
+                    } = file;
                     if desc.is_some() {
                         return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
@@ -366,7 +525,11 @@ impl Loader {
                     if !self.include_file_tags() {
                         continue;
                     }
-                    let (globs, tags, _desc) = file;
+                    let FTagUnit {
+                        globs,
+                        tags,
+                        desc: _,
+                    } = file;
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
@@ -395,8 +558,14 @@ impl Loader {
                 if let FileLoadingOptions::Skip = self.options.file_options {
                     break; // Stop parsing the file.
                 }
-                let newfile = (content.lines().collect(), Vec::new(), None);
-                if let Some((globs, tags, desc)) = std::mem::replace(&mut curfile, Some(newfile)) {
+                let newfile = FTagUnit {
+                    globs: content.lines().collect(),
+                    tags: Vec::new(),
+                    desc: None,
+                };
+                if let Some(FTagUnit { globs, tags, desc }) =
+                    std::mem::replace(&mut curfile, Some(newfile))
+                {
                     for g in globs {
                         files.push(FileData {
                             desc,
@@ -412,7 +581,7 @@ impl Loader {
                 ));
             }
         }
-        if let Some((globs, tags, desc)) = curfile {
+        if let Some(FTagUnit { globs, tags, desc }) = curfile {
             for g in globs {
                 files.push(FileData {
                     desc,
