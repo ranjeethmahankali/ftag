@@ -302,7 +302,7 @@ impl Loader {
         let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
         let mut input = self.raw_text.trim();
         if !input.starts_with('[') {
-            return Err(Error::CannotParseYaml(
+            return Err(Error::CannotParseFtagFile(
                 filepath.to_path_buf(),
                 "File does not begin with a header.".into(),
             ));
@@ -310,7 +310,7 @@ impl Loader {
         while let Some(start) = input.find('[') {
             // Walk the text one header at a time.
             let start = start + 1;
-            let end = input.find(']').ok_or(Error::CannotParseYaml(
+            let end = input.find(']').ok_or(Error::CannotParseFtagFile(
                 filepath.to_path_buf(),
                 "Header doesn't terminate".into(),
             ))?;
@@ -338,7 +338,7 @@ impl Loader {
                     }
                     let (globs, _tags, desc) = file;
                     if desc.is_some() {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             format!(
                                 "Following globs have more than one description:\n{}.",
@@ -353,7 +353,7 @@ impl Loader {
                         continue;
                     }
                     if desc.is_some() {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             "The directory has more than one description.".into(),
                         ));
@@ -370,7 +370,7 @@ impl Loader {
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             format!(
                                 "The following globs have more than one 'tags' header:\n{}.",
@@ -385,7 +385,7 @@ impl Loader {
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             "The directory has more than one 'tags' header.".into(),
                         ));
@@ -406,7 +406,7 @@ impl Loader {
                     }
                 }
             } else {
-                return Err(Error::CannotParseYaml(
+                return Err(Error::CannotParseFtagFile(
                     filepath.to_path_buf(),
                     format!("Unrecognized header: {header}"),
                 ));

@@ -30,7 +30,7 @@ pub enum Error {
     InvalidWorkingDirectory,
     InvalidPath(PathBuf),
     CannotReadStoreFile(PathBuf),
-    CannotParseYaml(PathBuf, String),
+    CannotParseFtagFile(PathBuf, String),
     InvalidFilter(FilterParseError),
     DirectoryTraversalFailed,
 }
@@ -61,7 +61,7 @@ impl Debug for Error {
             Self::CannotReadStoreFile(path) => {
                 write!(f, "Unable to read file: '{}'", path.display())
             }
-            Self::CannotParseYaml(path, message) => {
+            Self::CannotParseFtagFile(path, message) => {
                 writeln!(f, "While parsing file '{}'", path.display())?;
                 write!(f, "{}", message)
             }
