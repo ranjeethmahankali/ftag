@@ -9,7 +9,6 @@ use crate::{
 use std::{
     ffi::OsStr,
     fmt::Debug,
-    io,
     path::{Path, PathBuf},
 };
 
