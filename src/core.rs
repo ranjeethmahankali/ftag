@@ -142,11 +142,11 @@ fn write_globs<T: AsRef<str>>(globs: &[T], w: &mut impl io::Write) -> Result<(),
     if globs.is_empty() {
         return Ok(());
     }
-    writeln!(w, "[path]")?;
+    writeln!(w, "\n[path]")?;
     for glob in globs.iter().map(|g| g.as_ref()) {
         writeln!(w, "{}", glob)?;
     }
-    writeln!(w, "")
+    Ok(())
 }
 
 fn write_tags<T: AsRef<str>>(tags: &[T], w: &mut impl io::Write) -> Result<(), io::Error> {
@@ -154,7 +154,8 @@ fn write_tags<T: AsRef<str>>(tags: &[T], w: &mut impl io::Write) -> Result<(), i
         return Ok(());
     }
     writeln!(w, "[tags]")?;
-    tags.iter()
+    if tags
+        .iter()
         .try_fold(0usize, |len, tag| -> Result<usize, io::Error> {
             let tag = tag.as_ref();
             Ok(if len > 80 {
@@ -164,13 +165,17 @@ fn write_tags<T: AsRef<str>>(tags: &[T], w: &mut impl io::Write) -> Result<(), i
                 write!(w, "{} ", tag)?;
                 len + tag.len() + 1
             })
-        })?;
-    writeln!(w, "")
+        })?
+        > 0
+    {
+        writeln!(w, "")?;
+    }
+    Ok(())
 }
 
 fn write_desc<T: AsRef<str>>(desc: &Option<T>, w: &mut impl io::Write) -> Result<(), io::Error> {
     if let Some(desc) = desc {
-        writeln!(w, "[desc]\n{}\n", desc.as_ref())
+        writeln!(w, "[desc]\n{}", desc.as_ref())
     } else {
         Ok(())
     }
@@ -180,11 +185,11 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
     let mut walker = WalkDirectories::from(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
-        false,
-        false,
+        true,
+        true,
         FileLoadingOptions::Load {
-            file_tags: false,
-            file_desc: false,
+            file_tags: true,
+            file_desc: true,
         },
     ));
     let mut valid: Vec<FileDataOwned> = Vec::new();
@@ -235,7 +240,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         write_tags(&tags, &mut writer).map_err(|_| Error::CannotWriteFile(path.clone()))?;
         write_desc(&desc, &mut writer).map_err(|_| Error::CannotWriteFile(path.clone()))?;
         // Write out the file data in groups that share the same tags and description.
-        valid
+        if let Some(last) = valid
             .drain(..)
             .try_fold(
                 None,
@@ -267,7 +272,16 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
                     })
                 },
             )
-            .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+            .map_err(|_| Error::CannotWriteFile(path.clone()))?
+        {
+            // This is the last entry.
+            write_globs(&last.globs, &mut writer)
+                .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+            write_tags(&last.tags, &mut writer)
+                .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+            write_desc(&last.desc, &mut writer)
+                .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+        }
     }
     Ok(())
 }
