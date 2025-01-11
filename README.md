@@ -140,6 +140,17 @@ working directory recursively, use this command:
 ftag count
 ```
 
+Over time, the data stored in the `.ftag` files can go out of sync from the
+actual files on the disk, due to moving, renaming, or deleting files. The
+`clean` command removes any file paths / globs that don't match files present on
+disk, and also merges entries that share the same tags and description into a
+single entry. As a safety measure, this command also creates a backup file
+`.ftagbak` before making changes to the `.ftag` file.
+
+```bash
+ftag clean
+```
+
 Most `ftag` subcommands recursively traverse the directory from the current
 working directory and produce the output that you asked for. If you wish to
 produce to same output from a different path instead of the current working
