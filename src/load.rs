@@ -1,5 +1,6 @@
 use glob_match::glob_match;
 use std::{
+    fmt::Display,
     fs::File,
     io::Read,
     ops::Range,
@@ -213,7 +214,7 @@ pub(crate) struct Loader {
     options: LoaderOptions,
 }
 
-/// Data in an ftag file, corresponding to one file / glob.
+/// Data in an ftaXOg file, corresponding to one file / glob.
 pub(crate) struct FileData<'a> {
     pub desc: Option<&'a str>,
     pub path: &'a str,
@@ -246,6 +247,55 @@ impl<'a> FTagUnit<'a> {
                 globs.is_empty() && tags.is_empty() && desc.is_none()
             }
             FTagUnit::Dir { tags, desc } => tags.is_empty() && desc.is_none(),
+        }
+    }
+}
+
+impl<'a> Display for FTagUnit<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FTagUnit::File { globs, tags, desc } => {
+                writeln!(f, "[path]")?;
+                for &g in globs {
+                    writeln!(f, "{}", g)?;
+                }
+                if !tags.is_empty() {
+                    writeln!(f, "[tags]")?;
+                    tags.iter().try_fold(0usize, |len, &t| {
+                        Ok(if len > 80 {
+                            writeln!(f, "{}", t)?;
+                            0usize
+                        } else {
+                            write!(f, "{} ", t)?;
+                            len + t.len() + 1
+                        })
+                    })?;
+                }
+                if let Some(desc) = desc {
+                    writeln!(f, "[desc]")?;
+                    writeln!(f, "{}", desc)?;
+                }
+                writeln!(f, "")
+            }
+            FTagUnit::Dir { tags, desc } => {
+                if !tags.is_empty() {
+                    writeln!(f, "[tags]")?;
+                    tags.iter().try_fold(0usize, |len, &t| {
+                        Ok(if len > 80 {
+                            writeln!(f, "{}", t)?;
+                            0usize
+                        } else {
+                            write!(f, "{} ", t)?;
+                            len + t.len() + 1
+                        })
+                    })?;
+                }
+                if let Some(desc) = desc {
+                    writeln!(f, "[desc]")?;
+                    writeln!(f, "{}", desc)?;
+                }
+                writeln!(f, "")
+            }
         }
     }
 }
@@ -310,16 +360,13 @@ impl Loader {
         }
     }
 
-    // pub fn write_cleaned<'a>(&'a mut self, filepath: &Path) -> Result<(), Error> {
-    //     todo!()
-    // }
-
-    fn visit_units<'a, V: FnMut(FTagUnit<'a>) -> ()>(
+    pub fn visit_units<'a, V: FnMut(FTagUnit<'a>) -> (), P: AsRef<Path>>(
         &'a mut self,
-        filepath: &Path,
+        filepath: P,
         mut visitor: V,
     ) -> Result<(), Error> {
         self.raw_text.clear();
+        let filepath = filepath.as_ref();
         File::open(filepath)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?
             .read_to_string(&mut self.raw_text)
@@ -447,7 +494,7 @@ impl Loader {
     }
 
     /// Load the data from a .ftag file specified by the filepath.
-    pub fn load<'a>(&'a mut self, filepath: &Path) -> Result<DirData<'a>, Error> {
+    pub fn load<'a, P: AsRef<Path>>(&'a mut self, filepath: P) -> Result<DirData<'a>, Error> {
         let mut tags: Vec<&'a str> = Vec::new();
         let mut desc: Option<&'a str> = None;
         let mut files: Vec<FileData<'a>> = Vec::new();
@@ -490,5 +537,23 @@ mod test {
             let actual: Vec<_> = implicit_tags_str(input).collect();
             assert_eq!(actual, expected);
         }
+    }
+
+    #[test]
+    fn t_temp() {
+        let mut loader = Loader::new(LoaderOptions {
+            dir_tags: true,
+            dir_desc: true,
+            file_options: FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: true,
+            },
+        });
+        loader
+            .visit_units(
+                "/home/rnjth94/archived/pictures/1992_laxman_nirmala_trip/.ftag",
+                |unit| println!("{}", unit),
+            )
+            .unwrap();
     }
 }

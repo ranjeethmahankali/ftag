@@ -121,6 +121,28 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
     }
 }
 
+pub fn write_cleaned(path: PathBuf) -> Result<(), Error> {
+    let mut walker = WalkDirectories::from(path.clone())?;
+    let mut matcher = GlobMatches::new();
+    let mut loader = Loader::new(LoaderOptions::new(
+        false,
+        false,
+        FileLoadingOptions::Load {
+            file_tags: false,
+            file_desc: false,
+        },
+    ));
+    while let Some((_depth, dirpath, children)) = walker.next() {
+        match get_store_path::<true>(dirpath) {
+            Some(path) => {
+                // matcher.find_matches(children, &files, short_circuit_globs);
+            }
+            None => continue,
+        }
+    }
+    Ok(())
+}
+
 /// Get a description string from the tags and description of a file.
 fn full_description(tags: Vec<String>, desc: String) -> String {
     let tagstr = {
