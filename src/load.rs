@@ -207,6 +207,7 @@ pub fn get_ftag_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Get the path of the backup ftag file corresponding to `path`.
 pub fn get_ftag_backup_path(path: &Path) -> PathBuf {
     let mut dirpath = if path.is_dir() {
         PathBuf::from(path)
