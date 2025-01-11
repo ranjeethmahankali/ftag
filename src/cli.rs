@@ -1,7 +1,7 @@
 use clap::{command, value_parser, Arg};
 use ftag::{
     core::{self, get_all_tags, search, untracked_files, Error},
-    load::get_store_path,
+    load::get_ftag_path,
     query::{count_files_tags, run_query, DenseTagTable},
 };
 use std::path::PathBuf;
@@ -63,9 +63,11 @@ fn main() -> Result<(), Error> {
         let path = matches
             .get_one::<PathBuf>(arg::PATH)
             .unwrap_or(&current_dir);
-        edit::edit_file(get_store_path::<false>(path).ok_or(Error::InvalidPath(path.clone()))?)
+        edit::edit_file(get_ftag_path::<false>(path).ok_or(Error::InvalidPath(path.clone()))?)
             .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))?;
         return Ok(());
+    } else if let Some(_matches) = matches.subcommand_matches(cmd::CLEAN) {
+        core::clean(current_dir)
     } else if let Some(_matches) = matches.subcommand_matches(cmd::UNTRACKED) {
         for path in untracked_files(current_dir)? {
             println!("{}", path.display());
@@ -92,7 +94,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
     if words[0] != "ftag" {
         return;
     }
-    const PREV_WORDS: [&str; 10] = [
+    const PREV_WORDS: [&str; 11] = [
         "query",
         "-q",
         "interactive",
@@ -101,6 +103,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
         "edit",
         "untracked",
         "tags",
+        "clean",
         "--path",
         "-p",
     ];
@@ -197,6 +200,7 @@ fn parse_args() -> clap::ArgMatches {
                     .default_value("."),
             ),
         )
+        .subcommand(clap::Command::new(cmd::CLEAN).about(about::CLEAN))
         .subcommand(clap::Command::new(cmd::UNTRACKED).about(about::UNTRACKED))
         .subcommand(clap::Command::new(cmd::TAGS).about(about::TAGS))
         .subcommand(
@@ -216,6 +220,7 @@ mod cmd {
     pub const CHECK: &str = "check";
     pub const WHATIS: &str = "whatis";
     pub const EDIT: &str = "edit";
+    pub const CLEAN: &str = "clean";
     pub const UNTRACKED: &str = "untracked";
     pub const TAGS: &str = "tags";
     pub const BASH_COMPLETE: &str = "--bash-complete";
@@ -254,6 +259,7 @@ Launch interactive mode in the working directory.
 If the environment variable EDITOR is set, it will be used to open the file. If it is not set, ftag can try to guess your default editor, but this is not guaranteed to work. Setting the EDITOR environment variable is recommended.";
     pub const EDIT_PATH: &str = "Path to the directory whose .ftag file you wish to edit. If no path is specified, the current working
 directory is used as default.";
+    pub const CLEAN: &str = "This commands cleans all the tag data. This includes deleting globs that don't match to any files on the disk, and merging globs that share the same tags and description into the same entry.";
     pub const UNTRACKED: &str =
         "List all files that are not tracked by ftag, recursively from the current directory.";
     pub const TAGS: &str = "List all tags found by traversing the directories recursively from the current directory. The output list of tags will not contain duplicates.";

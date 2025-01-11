@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    core::{Error, FTAG_FILE},
+    core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
     walk::DirEntry,
 };
 
@@ -187,7 +187,7 @@ impl GlobMatches {
 /// be a filepath, in which case the store file will be it's sibling,
 /// or a directory path, in which case the store file will be it's
 /// child.
-pub fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
+pub fn get_ftag_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     let mut out = if path.exists() {
         if path.is_dir() {
             PathBuf::from(path)
@@ -207,6 +207,19 @@ pub fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Get the path of the backup ftag file corresponding to `path`.
+pub fn get_ftag_backup_path(path: &Path) -> PathBuf {
+    let mut dirpath = if path.is_dir() {
+        PathBuf::from(path)
+    } else {
+        let mut out = PathBuf::from(path);
+        out.pop();
+        out
+    };
+    dirpath.push(FTAG_BACKUP_FILE);
+    dirpath
+}
+
 /// Loads and parses an ftag file. Reuse this to avoid allocations.
 pub(crate) struct Loader {
     raw_text: String,
@@ -214,6 +227,7 @@ pub(crate) struct Loader {
 }
 
 /// Data in an ftag file, corresponding to one file / glob.
+#[derive(Clone)]
 pub(crate) struct FileData<'a> {
     pub desc: Option<&'a str>,
     pub path: &'a str,
@@ -302,7 +316,7 @@ impl Loader {
         let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
         let mut input = self.raw_text.trim();
         if !input.starts_with('[') {
-            return Err(Error::CannotParseYaml(
+            return Err(Error::CannotParseFtagFile(
                 filepath.to_path_buf(),
                 "File does not begin with a header.".into(),
             ));
@@ -310,7 +324,7 @@ impl Loader {
         while let Some(start) = input.find('[') {
             // Walk the text one header at a time.
             let start = start + 1;
-            let end = input.find(']').ok_or(Error::CannotParseYaml(
+            let end = input.find(']').ok_or(Error::CannotParseFtagFile(
                 filepath.to_path_buf(),
                 "Header doesn't terminate".into(),
             ))?;
@@ -338,7 +352,7 @@ impl Loader {
                     }
                     let (globs, _tags, desc) = file;
                     if desc.is_some() {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             format!(
                                 "Following globs have more than one description:\n{}.",
@@ -353,7 +367,7 @@ impl Loader {
                         continue;
                     }
                     if desc.is_some() {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             "The directory has more than one description.".into(),
                         ));
@@ -370,7 +384,7 @@ impl Loader {
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             format!(
                                 "The following globs have more than one 'tags' header:\n{}.",
@@ -385,7 +399,7 @@ impl Loader {
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             "The directory has more than one 'tags' header.".into(),
                         ));
@@ -406,7 +420,7 @@ impl Loader {
                     }
                 }
             } else {
-                return Err(Error::CannotParseYaml(
+                return Err(Error::CannotParseFtagFile(
                     filepath.to_path_buf(),
                     format!("Unrecognized header: {header}"),
                 ));

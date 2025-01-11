@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::core::{Error, FTAG_FILE};
+use crate::core::{Error, FTAG_BACKUP_FILE, FTAG_FILE};
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub(crate) enum DirEntryType {
@@ -98,7 +98,8 @@ impl WalkDirectories {
                     if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
                         for child in entries.flatten() {
                             let cname = child.file_name();
-                            if cname.to_str().unwrap_or("") == FTAG_FILE {
+                            let cnamestr = cname.to_str().unwrap_or("");
+                            if cnamestr == FTAG_FILE || cnamestr == FTAG_BACKUP_FILE {
                                 continue;
                             }
                             match child.file_type() {
