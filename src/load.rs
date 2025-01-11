@@ -1,6 +1,5 @@
 use glob_match::glob_match;
 use std::{
-    fmt::Display,
     fs::File,
     io::Read,
     ops::Range,
@@ -214,7 +213,8 @@ pub(crate) struct Loader {
     options: LoaderOptions,
 }
 
-/// Data in an ftaXOg file, corresponding to one file / glob.
+/// Data in an ftag file, corresponding to one file / glob.
+#[derive(Clone)]
 pub(crate) struct FileData<'a> {
     pub desc: Option<&'a str>,
     pub path: &'a str,
@@ -226,78 +226,6 @@ pub(crate) struct DirData<'a> {
     pub desc: Option<&'a str>,
     pub tags: Vec<&'a str>,
     pub files: Vec<FileData<'a>>,
-}
-
-pub(crate) enum FTagUnit<'a> {
-    File {
-        globs: Vec<&'a str>,
-        tags: Vec<&'a str>,
-        desc: Option<&'a str>,
-    },
-    Dir {
-        tags: Vec<&'a str>,
-        desc: Option<&'a str>,
-    },
-}
-
-impl<'a> FTagUnit<'a> {
-    fn is_empty(&self) -> bool {
-        match self {
-            FTagUnit::File { globs, tags, desc } => {
-                globs.is_empty() && tags.is_empty() && desc.is_none()
-            }
-            FTagUnit::Dir { tags, desc } => tags.is_empty() && desc.is_none(),
-        }
-    }
-}
-
-impl<'a> Display for FTagUnit<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FTagUnit::File { globs, tags, desc } => {
-                writeln!(f, "[path]")?;
-                for &g in globs {
-                    writeln!(f, "{}", g)?;
-                }
-                if !tags.is_empty() {
-                    writeln!(f, "[tags]")?;
-                    tags.iter().try_fold(0usize, |len, &t| {
-                        Ok(if len > 80 {
-                            writeln!(f, "{}", t)?;
-                            0usize
-                        } else {
-                            write!(f, "{} ", t)?;
-                            len + t.len() + 1
-                        })
-                    })?;
-                }
-                if let Some(desc) = desc {
-                    writeln!(f, "[desc]")?;
-                    writeln!(f, "{}", desc)?;
-                }
-                writeln!(f, "")
-            }
-            FTagUnit::Dir { tags, desc } => {
-                if !tags.is_empty() {
-                    writeln!(f, "[tags]")?;
-                    tags.iter().try_fold(0usize, |len, &t| {
-                        Ok(if len > 80 {
-                            writeln!(f, "{}", t)?;
-                            0usize
-                        } else {
-                            write!(f, "{} ", t)?;
-                            len + t.len() + 1
-                        })
-                    })?;
-                }
-                if let Some(desc) = desc {
-                    writeln!(f, "[desc]")?;
-                    writeln!(f, "{}", desc)?;
-                }
-                writeln!(f, "")
-            }
-        }
-    }
 }
 
 /// Options for loading the file data from an ftag file.
@@ -360,21 +288,19 @@ impl Loader {
         }
     }
 
-    pub fn visit_units<'a, V: FnMut(FTagUnit<'a>) -> (), P: AsRef<Path>>(
-        &'a mut self,
-        filepath: P,
-        mut visitor: V,
-    ) -> Result<(), Error> {
+    /// Load the data from a .ftag file specified by the filepath.
+    pub fn load<'a>(&'a mut self, filepath: &Path) -> Result<DirData<'a>, Error> {
         self.raw_text.clear();
-        let filepath = filepath.as_ref();
         File::open(filepath)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?
             .read_to_string(&mut self.raw_text)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
-        let mut current = FTagUnit::Dir {
-            tags: Vec::new(),
-            desc: None,
-        };
+        let mut tags: Vec<&str> = Vec::new();
+        let mut desc: Option<&str> = None;
+        let mut files: Vec<FileData<'a>> = Vec::new();
+        // We store the data of the file we're currently parsing as:
+        // (list of globs, list of tags, optional description).
+        let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
         let mut input = self.raw_text.trim();
         if !input.starts_with('[') {
             return Err(Error::CannotParseFtagFile(
@@ -406,115 +332,96 @@ impl Loader {
             }
             .trim();
             input = input.trim();
-            match header {
-                "desc" => match &mut current {
-                    FTagUnit::File {
-                        globs,
-                        tags: _,
-                        desc,
-                    } if self.include_file_desc() => {
-                        if desc.is_some() {
-                            return Err(Error::CannotParseFtagFile(
-                                filepath.to_path_buf(),
-                                format!(
-                                    "Following globs have more than one description:\n{}.",
-                                    globs.join("\n")
-                                ),
-                            ));
-                        } else {
-                            *desc = Some(content);
-                        }
+            if header == "desc" {
+                if let Some(file) = &mut curfile {
+                    if !self.include_file_desc() {
+                        continue;
                     }
-                    FTagUnit::Dir { tags: _, desc } if self.options.dir_desc => match desc {
-                        Some(_) => {
-                            return Err(Error::CannotParseFtagFile(
-                                filepath.to_path_buf(),
-                                "The directory has more than one description.".into(),
-                            ))
-                        }
-                        None => *desc = Some(content),
-                    },
-                    _ => continue,
-                },
-                "tags" => match &mut current {
-                    FTagUnit::File {
-                        globs,
-                        tags,
-                        desc: _,
-                    } if self.include_file_tags() => {
-                        if tags.is_empty() {
-                            tags.extend(content.split_whitespace().map(|w| w.trim()));
-                        } else {
-                            return Err(Error::CannotParseFtagFile(
-                                filepath.to_path_buf(),
-                                format!(
-                                    "The following globs have more than one 'tags' header:\n{}.",
-                                    globs.join("\n")
-                                ),
-                            ));
-                        }
+                    let (globs, _tags, desc) = file;
+                    if desc.is_some() {
+                        return Err(Error::CannotParseFtagFile(
+                            filepath.to_path_buf(),
+                            format!(
+                                "Following globs have more than one description:\n{}.",
+                                globs.join("\n")
+                            ),
+                        ));
+                    } else {
+                        *desc = Some(content);
                     }
-                    FTagUnit::Dir { tags, desc: _ } if self.options.dir_tags => {
-                        if tags.is_empty() {
-                            tags.extend(content.split_whitespace().map(|w| w.trim()));
-                        } else {
-                            return Err(Error::CannotParseFtagFile(
-                                filepath.to_path_buf(),
-                                "The directory has more than one 'tags' header.".into(),
-                            ));
-                        }
+                } else {
+                    if !self.options.dir_desc {
+                        continue;
                     }
-                    _ => continue,
-                },
-                "path" => {
-                    if let FileLoadingOptions::Skip = self.options.file_options {
-                        break; // Stop parsing the file.
+                    if desc.is_some() {
+                        return Err(Error::CannotParseFtagFile(
+                            filepath.to_path_buf(),
+                            "The directory has more than one description.".into(),
+                        ));
+                    } else {
+                        desc = Some(content);
                     }
-                    visitor(std::mem::replace(
-                        &mut current,
-                        FTagUnit::File {
-                            globs: content.lines().collect(),
-                            tags: Vec::new(),
-                            desc: None,
-                        },
-                    ));
                 }
-                _ => {
-                    return Err(Error::CannotParseFtagFile(
-                        filepath.to_path_buf(),
-                        format!("Unrecognized header: {header}"),
-                    ))
+            } else if header == "tags" {
+                if let Some(file) = &mut curfile {
+                    if !self.include_file_tags() {
+                        continue;
+                    }
+                    let (globs, tags, _desc) = file;
+                    if tags.is_empty() {
+                        tags.extend(content.split_whitespace().map(|w| w.trim()));
+                    } else {
+                        return Err(Error::CannotParseFtagFile(
+                            filepath.to_path_buf(),
+                            format!(
+                                "The following globs have more than one 'tags' header:\n{}.",
+                                globs.join("\n")
+                            ),
+                        ));
+                    }
+                } else {
+                    if !self.options.dir_tags {
+                        continue;
+                    }
+                    if tags.is_empty() {
+                        tags.extend(content.split_whitespace().map(|w| w.trim()));
+                    } else {
+                        return Err(Error::CannotParseFtagFile(
+                            filepath.to_path_buf(),
+                            "The directory has more than one 'tags' header.".into(),
+                        ));
+                    }
                 }
+            } else if header == "path" {
+                if let FileLoadingOptions::Skip = self.options.file_options {
+                    break; // Stop parsing the file.
+                }
+                let newfile = (content.lines().collect(), Vec::new(), None);
+                if let Some((globs, tags, desc)) = std::mem::replace(&mut curfile, Some(newfile)) {
+                    for g in globs {
+                        files.push(FileData {
+                            desc,
+                            path: g,
+                            tags: tags.clone(),
+                        })
+                    }
+                }
+            } else {
+                return Err(Error::CannotParseFtagFile(
+                    filepath.to_path_buf(),
+                    format!("Unrecognized header: {header}"),
+                ));
             }
         }
-        if !current.is_empty() {
-            visitor(current);
-        }
-        Ok(())
-    }
-
-    /// Load the data from a .ftag file specified by the filepath.
-    pub fn load<'a, P: AsRef<Path>>(&'a mut self, filepath: P) -> Result<DirData<'a>, Error> {
-        let mut tags: Vec<&'a str> = Vec::new();
-        let mut desc: Option<&'a str> = None;
-        let mut files: Vec<FileData<'a>> = Vec::new();
-        self.visit_units(filepath, |unit: FTagUnit<'a>| match unit {
-            FTagUnit::File {
-                mut globs,
-                tags,
-                desc,
-            } => {
-                files.extend(globs.drain(..).map(|g| FileData {
-                    desc: desc.clone(),
+        if let Some((globs, tags, desc)) = curfile {
+            for g in globs {
+                files.push(FileData {
+                    desc,
                     path: g,
                     tags: tags.clone(),
-                }));
+                })
             }
-            FTagUnit::Dir { tags: t, desc: d } => {
-                tags = t;
-                desc = d;
-            }
-        })?;
+        }
         Ok(DirData { desc, tags, files })
     }
 }
@@ -537,23 +444,5 @@ mod test {
             let actual: Vec<_> = implicit_tags_str(input).collect();
             assert_eq!(actual, expected);
         }
-    }
-
-    #[test]
-    fn t_temp() {
-        let mut loader = Loader::new(LoaderOptions {
-            dir_tags: true,
-            dir_desc: true,
-            file_options: FileLoadingOptions::Load {
-                file_tags: true,
-                file_desc: true,
-            },
-        });
-        loader
-            .visit_units(
-                "/home/rnjth94/archived/pictures/1992_laxman_nirmala_trip/.ftag",
-                |unit| println!("{}", unit),
-            )
-            .unwrap();
     }
 }

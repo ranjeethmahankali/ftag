@@ -132,13 +132,39 @@ pub fn write_cleaned(path: PathBuf) -> Result<(), Error> {
             file_desc: false,
         },
     ));
+    struct FileDataOwned {
+        glob: String,
+        tags: Vec<String>,
+        desc: Option<String>,
+    }
+    let mut valid: Vec<FileDataOwned> = Vec::new();
     while let Some((_depth, dirpath, children)) = walker.next() {
-        match get_store_path::<true>(dirpath) {
-            Some(path) => {
-                // matcher.find_matches(children, &files, short_circuit_globs);
+        let DirData {
+            files,
+            desc: _,
+            tags: _,
+        } = {
+            match get_store_path::<true>(dirpath) {
+                Some(path) => loader.load(&path)?,
+                None => continue,
             }
-            None => continue,
-        }
+        };
+        matcher.find_matches(children, &files, true);
+        valid.clear();
+        valid.extend(files.iter().enumerate().filter_map(|(i, f)| {
+            if matcher.is_glob_matched(i) {
+                let mut tags: Vec<String> = f.tags.iter().map(|t| t.to_string()).collect();
+                tags.sort();
+                Some(FileDataOwned {
+                    glob: f.path.to_string(),
+                    tags,
+                    desc: f.desc.map(|d| d.to_string()),
+                })
+            } else {
+                None
+            }
+        }));
+        todo!("Combine valid file infos that share the same tags and description");
     }
     Ok(())
 }
