@@ -1,18 +1,21 @@
 use crate::{
     filter::FilterParseError,
     load::{
-        get_filename_str, get_store_path, implicit_tags_str, DirData, FileData, FileLoadingOptions,
-        GlobMatches, Loader, LoaderOptions,
+        get_filename_str, get_ftag_backup_path, get_ftag_path, implicit_tags_str, DirData,
+        FileData, FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
     },
     walk::WalkDirectories,
 };
 use std::{
     ffi::OsStr,
     fmt::Debug,
+    fs::OpenOptions,
+    io,
     path::{Path, PathBuf},
 };
 
 pub(crate) const FTAG_FILE: &str = ".ftag";
+pub(crate) const FTAG_BACKUP_FILE: &str = ".ftagbak";
 
 /// The data related to a glob in an ftag file. This is meant to be used in
 /// error reporting.
@@ -31,6 +34,7 @@ pub enum Error {
     InvalidPath(PathBuf),
     CannotReadStoreFile(PathBuf),
     CannotParseFtagFile(PathBuf, String),
+    CannotWriteFile(PathBuf),
     InvalidFilter(FilterParseError),
     DirectoryTraversalFailed,
 }
@@ -65,6 +69,7 @@ impl Debug for Error {
                 writeln!(f, "While parsing file '{}'", path.display())?;
                 write!(f, "{}", message)
             }
+            Self::CannotWriteFile(path) => writeln!(f, "Cannot write to file {}", path.display()),
             Self::InvalidFilter(err) => write!(f, "Unable to parse filter:\n{:?}", err),
             Self::DirectoryTraversalFailed => {
                 write!(f, "Something went wrong when traversing directories.")
@@ -94,7 +99,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
             desc: _,
             tags: _,
         } = {
-            match get_store_path::<true>(dirpath) {
+            match get_ftag_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 None => continue,
             }
@@ -121,7 +126,57 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
     }
 }
 
-pub fn write_cleaned(path: PathBuf) -> Result<(), Error> {
+struct FileDataOwned {
+    glob: String,
+    tags: Vec<String>,
+    desc: Option<String>,
+}
+
+struct FileDataMultiple {
+    globs: Vec<String>,
+    tags: Vec<String>,
+    desc: Option<String>,
+}
+
+fn write_globs<T: AsRef<str>>(globs: &[T], w: &mut impl io::Write) -> Result<(), io::Error> {
+    if globs.is_empty() {
+        return Ok(());
+    }
+    writeln!(w, "[path]")?;
+    for glob in globs.iter().map(|g| g.as_ref()) {
+        writeln!(w, "{}", glob)?;
+    }
+    writeln!(w, "")
+}
+
+fn write_tags<T: AsRef<str>>(tags: &[T], w: &mut impl io::Write) -> Result<(), io::Error> {
+    if tags.is_empty() {
+        return Ok(());
+    }
+    writeln!(w, "[tags]")?;
+    tags.iter()
+        .try_fold(0usize, |len, tag| -> Result<usize, io::Error> {
+            let tag = tag.as_ref();
+            Ok(if len > 80 {
+                writeln!(w, "{}", tag)?;
+                0usize
+            } else {
+                write!(w, "{} ", tag)?;
+                len + tag.len() + 1
+            })
+        })?;
+    writeln!(w, "")
+}
+
+fn write_desc<T: AsRef<str>>(desc: &Option<T>, w: &mut impl io::Write) -> Result<(), io::Error> {
+    if let Some(desc) = desc {
+        writeln!(w, "[desc]\n{}\n", desc.as_ref())
+    } else {
+        Ok(())
+    }
+}
+
+pub fn clean(path: PathBuf) -> Result<(), Error> {
     let mut walker = WalkDirectories::from(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
@@ -132,20 +187,14 @@ pub fn write_cleaned(path: PathBuf) -> Result<(), Error> {
             file_desc: false,
         },
     ));
-    struct FileDataOwned {
-        glob: String,
-        tags: Vec<String>,
-        desc: Option<String>,
-    }
     let mut valid: Vec<FileDataOwned> = Vec::new();
     while let Some((_depth, dirpath, children)) = walker.next() {
-        let DirData {
-            files,
-            desc: _,
-            tags: _,
-        } = {
-            match get_store_path::<true>(dirpath) {
-                Some(path) => loader.load(&path)?,
+        let (path, DirData { files, desc, tags }) = {
+            match get_ftag_path::<true>(dirpath) {
+                Some(path) => {
+                    let dirdata = loader.load(&path)?;
+                    (path, dirdata)
+                }
                 None => continue,
             }
         };
@@ -155,6 +204,7 @@ pub fn write_cleaned(path: PathBuf) -> Result<(), Error> {
             if matcher.is_glob_matched(i) {
                 let mut tags: Vec<String> = f.tags.iter().map(|t| t.to_string()).collect();
                 tags.sort();
+                tags.dedup();
                 Some(FileDataOwned {
                     glob: f.path.to_string(),
                     tags,
@@ -164,7 +214,60 @@ pub fn write_cleaned(path: PathBuf) -> Result<(), Error> {
                 None
             }
         }));
-        todo!("Combine valid file infos that share the same tags and description");
+        // This should group files that share the same tags and desc
+        valid.sort_by(|a, b| match a.tags.cmp(&b.tags) {
+            std::cmp::Ordering::Less => std::cmp::Ordering::Less,
+            std::cmp::Ordering::Equal => a.desc.cmp(&b.desc),
+            std::cmp::Ordering::Greater => std::cmp::Ordering::Greater,
+        });
+        // Backup existing data.
+        std::fs::copy(&path, get_ftag_backup_path(&path))
+            .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+        let mut writer = io::BufWriter::new(
+            OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .create(true)
+                .open(&path)
+                .map_err(|_| Error::CannotWriteFile(path.clone()))?,
+        );
+        // Write directory data.
+        write_tags(&tags, &mut writer).map_err(|_| Error::CannotWriteFile(path.clone()))?;
+        write_desc(&desc, &mut writer).map_err(|_| Error::CannotWriteFile(path.clone()))?;
+        // Write out the file data in groups that share the same tags and description.
+        valid
+            .drain(..)
+            .try_fold(
+                None,
+                |current: Option<FileDataMultiple>,
+                 file|
+                 -> Result<Option<FileDataMultiple>, io::Error> {
+                    Ok(match current {
+                        Some(mut current)
+                            if current.tags == file.tags && current.desc == file.desc =>
+                        {
+                            current.globs.push(file.glob);
+                            Some(current)
+                        }
+                        Some(current) => {
+                            write_globs(&current.globs, &mut writer)?;
+                            write_tags(&current.tags, &mut writer)?;
+                            write_desc(&current.desc, &mut writer)?;
+                            Some(FileDataMultiple {
+                                globs: vec![file.glob],
+                                tags: file.tags,
+                                desc: file.desc,
+                            })
+                        }
+                        None => Some(FileDataMultiple {
+                            globs: vec![file.glob],
+                            tags: file.tags,
+                            desc: file.desc,
+                        }),
+                    })
+                },
+            )
+            .map_err(|_| Error::CannotWriteFile(path.clone()))?;
     }
     Ok(())
 }
@@ -211,7 +314,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
         },
     ));
     let DirData { desc, tags, files } = {
-        match get_store_path::<true>(path) {
+        match get_ftag_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
             None => return Err(Error::InvalidPath(path.to_path_buf())),
         }
@@ -259,7 +362,7 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
         tags,
         files: _,
     } = {
-        match get_store_path::<true>(path) {
+        match get_ftag_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
             None => return Err(Error::InvalidPath(path.to_path_buf())),
         }
@@ -305,7 +408,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
             desc: _,
             tags: _,
         }: DirData = {
-            match get_store_path::<true>(dirpath) {
+            match get_ftag_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 // Store file doesn't exist so everything is untracked.
                 None => {
@@ -348,7 +451,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
             mut files,
             desc: _,
         } = {
-            match get_store_path::<true>(dirpath) {
+            match get_ftag_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 None => continue,
             }
@@ -406,7 +509,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
     };
     while let Some((_depth, dirpath, _filenames)) = walker.next() {
         let DirData { tags, files, desc } = {
-            match get_store_path::<true>(dirpath) {
+            match get_ftag_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 None => continue,
             }

@@ -1,7 +1,7 @@
 use clap::{command, value_parser, Arg};
 use ftag::{
     core::{self, get_all_tags, search, untracked_files, Error},
-    load::get_store_path,
+    load::get_ftag_path,
     query::{count_files_tags, run_query, DenseTagTable},
 };
 use std::path::PathBuf;
@@ -63,7 +63,7 @@ fn main() -> Result<(), Error> {
         let path = matches
             .get_one::<PathBuf>(arg::PATH)
             .unwrap_or(&current_dir);
-        edit::edit_file(get_store_path::<false>(path).ok_or(Error::InvalidPath(path.clone()))?)
+        edit::edit_file(get_ftag_path::<false>(path).ok_or(Error::InvalidPath(path.clone()))?)
             .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))?;
         return Ok(());
     } else if let Some(_matches) = matches.subcommand_matches(cmd::UNTRACKED) {

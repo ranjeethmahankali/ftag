@@ -2,7 +2,7 @@ use crate::{
     core::{get_relative_path, Error},
     filter::{Filter, TagMaker},
     load::{
-        get_filename_str, get_store_path, implicit_tags_str, DirData, FileLoadingOptions,
+        get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
         GlobMatches, Loader, LoaderOptions,
     },
     walk::WalkDirectories,
@@ -122,7 +122,7 @@ impl TagTable {
                 files,
                 desc: _,
             } = {
-                match get_store_path::<true>(curpath) {
+                match get_ftag_path::<true>(curpath) {
                     Some(path) => loader.load(&path)?,
                     None => continue,
                 }

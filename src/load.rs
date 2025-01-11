@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    core::{Error, FTAG_FILE},
+    core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
     walk::DirEntry,
 };
 
@@ -187,7 +187,7 @@ impl GlobMatches {
 /// be a filepath, in which case the store file will be it's sibling,
 /// or a directory path, in which case the store file will be it's
 /// child.
-pub fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
+pub fn get_ftag_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     let mut out = if path.exists() {
         if path.is_dir() {
             PathBuf::from(path)
@@ -205,6 +205,18 @@ pub fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     } else {
         Some(out)
     }
+}
+
+pub fn get_ftag_backup_path(path: &Path) -> PathBuf {
+    let mut dirpath = if path.is_dir() {
+        PathBuf::from(path)
+    } else {
+        let mut out = PathBuf::from(path);
+        out.pop();
+        out
+    };
+    dirpath.push(FTAG_BACKUP_FILE);
+    dirpath
 }
 
 /// Loads and parses an ftag file. Reuse this to avoid allocations.
