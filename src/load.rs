@@ -92,7 +92,6 @@ pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
 /// reused for multiple folders to avoid reallocations.
 pub(crate) struct GlobMatches {
     table: Vec<bool>, //The major index represents the files matched by a single glob.
-    glob_matches: Vec<Option<usize>>, // Direct 1 to 1 map from glob to file.
     num_files: usize,
     num_globs: usize,
 }
@@ -101,7 +100,6 @@ impl GlobMatches {
     pub fn new() -> GlobMatches {
         GlobMatches {
             table: Vec::new(),
-            glob_matches: Vec::new(),
             num_files: 0,
             num_globs: 0,
         }
@@ -116,12 +114,9 @@ impl GlobMatches {
 
     /// Get the row and perfect match as mutable reference for the given glob
     /// index.
-    fn row_and_match(&mut self, gi: usize) -> (&mut [bool], &mut Option<usize>) {
+    fn row_mut(&mut self, gi: usize) -> &mut [bool] {
         let start = gi * self.num_files;
-        (
-            &mut self.table[start..(start + self.num_files)],
-            &mut self.glob_matches[gi],
-        )
+        &mut self.table[start..(start + self.num_files)]
     }
 
     /// Populate this struct with matches from a new set of `files` and
@@ -139,24 +134,18 @@ impl GlobMatches {
         self.num_globs = globs.len();
         self.table.clear();
         self.table.resize(files.len() * globs.len(), false);
-        self.glob_matches.clear();
-        self.glob_matches.resize(globs.len(), None);
-        // Find perfect matches.
-        for (gi, g) in globs.iter().enumerate() {
-            let (row, gmatch) = self.row_and_match(gi);
+        'outer: for (gi, g) in globs.iter().enumerate() {
+            let row = self.row_mut(gi);
+            // Find perfect matches.
             for (fi, f) in files.iter().enumerate() {
                 if let Some(fstr) = f.name().to_str() {
                     if g.path == fstr {
                         row[fi] = true;
-                        *gmatch = Some(fi);
-                        break;
+                        // If a glob matches a file directly, then we don't need to
+                        // search any further for this glob, so we move out to the next glob.
+                        continue 'outer;
                     }
                 }
-            }
-            if gmatch.is_some() {
-                // If a glob matches a file directly, then we don't need to
-                // search any further.
-                continue;
             }
             for (fi, f) in files.iter().enumerate() {
                 if let Some(fstr) = f.name().to_str() {
