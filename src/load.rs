@@ -1,5 +1,6 @@
 use fast_glob::glob_match;
 use std::{
+    ffi::OsStr,
     fs::File,
     io::Read,
     ops::Range,
@@ -134,26 +135,22 @@ impl GlobMatches {
         self.num_globs = globs.len();
         self.table.clear();
         self.table.resize(files.len() * globs.len(), false);
-        'outer: for (gi, g) in globs.iter().enumerate() {
+        'globs: for (gi, g) in globs.iter().enumerate() {
             let row = self.row_mut(gi);
             // Find perfect matches.
             for (fi, f) in files.iter().enumerate() {
-                if let Some(fstr) = f.name().to_str() {
-                    if g.path == fstr {
-                        row[fi] = true;
-                        // If a glob matches a file directly, then we don't need to
-                        // search any further for this glob, so we move out to the next glob.
-                        continue 'outer;
-                    }
+                if OsStr::new(g.path) == f.name() {
+                    row[fi] = true;
+                    // If a glob matches a file directly, then we don't need to
+                    // search any further for this glob, so we move out to the next glob.
+                    continue 'globs;
                 }
             }
             for (fi, f) in files.iter().enumerate() {
-                if let Some(fstr) = f.name().to_str() {
-                    if glob_match(g.path, fstr) {
-                        row[fi] = true;
-                        if short_circuit_globs {
-                            break;
-                        }
+                if glob_match(g.path.as_bytes(), f.name().as_encoded_bytes()) {
+                    row[fi] = true;
+                    if short_circuit_globs {
+                        break;
                     }
                 }
             }
