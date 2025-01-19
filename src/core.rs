@@ -318,7 +318,7 @@ pub fn what_is(path: &Path) -> Result<String, Error> {
 /// Get a full description of the file that includes the tags and the
 /// description of said file.
 fn what_is_file(path: &Path) -> Result<String, Error> {
-    use glob_match::glob_match;
+    use fast_glob::glob_match;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
         true,
@@ -405,7 +405,7 @@ pub(crate) fn get_relative_path(dirpath: &Path, filename: &OsStr, root: &Path) -
 /// Recursively traverse the directories starting from `root` and
 /// return all files that are not tracked.
 pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
-    use glob_match::glob_match;
+    use fast_glob::glob_match;
     let mut walker = WalkDirectories::from(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
     let mut loader = Loader::new(LoaderOptions::new(

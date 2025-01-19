@@ -1,5 +1,6 @@
-use glob_match::glob_match;
+use fast_glob::glob_match;
 use std::{
+    ffi::OsStr,
     fs::File,
     io::Read,
     ops::Range,
@@ -92,7 +93,6 @@ pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
 /// reused for multiple folders to avoid reallocations.
 pub(crate) struct GlobMatches {
     table: Vec<bool>, //The major index represents the files matched by a single glob.
-    glob_matches: Vec<Option<usize>>, // Direct 1 to 1 map from glob to file.
     num_files: usize,
     num_globs: usize,
 }
@@ -101,7 +101,6 @@ impl GlobMatches {
     pub fn new() -> GlobMatches {
         GlobMatches {
             table: Vec::new(),
-            glob_matches: Vec::new(),
             num_files: 0,
             num_globs: 0,
         }
@@ -116,12 +115,9 @@ impl GlobMatches {
 
     /// Get the row and perfect match as mutable reference for the given glob
     /// index.
-    fn row_and_match(&mut self, gi: usize) -> (&mut [bool], &mut Option<usize>) {
+    fn row_mut(&mut self, gi: usize) -> &mut [bool] {
         let start = gi * self.num_files;
-        (
-            &mut self.table[start..(start + self.num_files)],
-            &mut self.glob_matches[gi],
-        )
+        &mut self.table[start..(start + self.num_files)]
     }
 
     /// Populate this struct with matches from a new set of `files` and
@@ -139,32 +135,28 @@ impl GlobMatches {
         self.num_globs = globs.len();
         self.table.clear();
         self.table.resize(files.len() * globs.len(), false);
-        self.glob_matches.clear();
-        self.glob_matches.resize(globs.len(), None);
-        // Find perfect matches.
-        for (gi, g) in globs.iter().enumerate() {
-            let (row, gmatch) = self.row_and_match(gi);
+        'globs: for (gi, g) in globs.iter().enumerate() {
+            let row = self.row_mut(gi);
+            /* A glob can either directly be a filename or a glob that matches
+             * one or more files. Checking for glob matches is MUCH more
+             * expensive than direct comparison. So for this glob, first we look
+             * for a direct match with a filename. If we find a match, we don't
+             * check the remaining files, and move on to the next glob. If and
+             * ONLY IF we don't find a diret match with any of the files, we try
+             * to match it as a glob. I have tested with and without this
+             * optimization, and it makes a significant difference.
+             */
             for (fi, f) in files.iter().enumerate() {
-                if let Some(fstr) = f.name().to_str() {
-                    if g.path == fstr {
-                        row[fi] = true;
-                        *gmatch = Some(fi);
-                        break;
-                    }
+                if OsStr::new(g.path) == f.name() {
+                    row[fi] = true;
+                    continue 'globs;
                 }
             }
-            if gmatch.is_some() {
-                // If a glob matches a file directly, then we don't need to
-                // search any further.
-                continue;
-            }
             for (fi, f) in files.iter().enumerate() {
-                if let Some(fstr) = f.name().to_str() {
-                    if glob_match(g.path, fstr) {
-                        row[fi] = true;
-                        if short_circuit_globs {
-                            break;
-                        }
+                if glob_match(g.path.as_bytes(), f.name().as_encoded_bytes()) {
+                    row[fi] = true;
+                    if short_circuit_globs {
+                        break;
                     }
                 }
             }

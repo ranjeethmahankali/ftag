@@ -1,6 +1,6 @@
 [package]
 name = "ftag"
-version = "0.4.0"
+version = "0.4.2"
 edition = "2021"
 authors = ["Ranjeeth Mahankali <ranjeethmahankali@gmail.com>"]
 description = "CLI tool for tagging and searching files. See README.md for more info."
@@ -14,7 +14,7 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.4", features = ["cargo"] }
-glob-match = "0.2"
+fast-glob = "0.4.3"
 edit = "0.1"
 crossterm = "0.27.0"
 ratatui = "0.26"
@@ -35,6 +35,11 @@ path = "src/gui.rs"
 
 # For smaller binary size.
 [profile.release]
-strip = true  # Automatically strip symbols
+strip = true # Automatically strip symbols
 panic = "abort" # Don't unwind stack. Should never panic.
 codegen-units = 1
+
+[profile.release-with-debug]
+inherits = "release"
+strip = false # Automatically strip symbols
+debug = true
