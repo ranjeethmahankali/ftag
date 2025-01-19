@@ -14,7 +14,7 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.4", features = ["cargo"] }
-glob-match = "0.2"
+fast-glob = "0.4.3"
 edit = "0.1"
 crossterm = "0.27.0"
 ratatui = "0.26"

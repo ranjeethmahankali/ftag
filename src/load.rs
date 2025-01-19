@@ -1,4 +1,4 @@
-use glob_match::glob_match;
+use fast_glob::glob_match;
 use std::{
     fs::File,
     io::Read,
