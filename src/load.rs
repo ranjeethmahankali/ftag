@@ -137,12 +137,18 @@ impl GlobMatches {
         self.table.resize(files.len() * globs.len(), false);
         'globs: for (gi, g) in globs.iter().enumerate() {
             let row = self.row_mut(gi);
-            // Find perfect matches.
+            /* A glob can either directly be a filename or a glob that matches
+             * one or more files. Checking for glob matches is MUCH more
+             * expensive than direct comparison. So for this glob, first we look
+             * for a direct match with a filename. If we find a match, we don't
+             * check the remaining files, and move on to the next glob. If and
+             * ONLY IF we don't find a diret match with any of the files, we try
+             * to match it as a glob. I have tested with and without this
+             * optimization, and it makes a significant difference.
+             */
             for (fi, f) in files.iter().enumerate() {
                 if OsStr::new(g.path) == f.name() {
                     row[fi] = true;
-                    // If a glob matches a file directly, then we don't need to
-                    // search any further for this glob, so we move out to the next glob.
                     continue 'globs;
                 }
             }
