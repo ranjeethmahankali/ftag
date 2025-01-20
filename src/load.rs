@@ -50,21 +50,15 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
 
 /// Get an iterator over tags inferred from the format of the file. The input is
 /// expected to be the path / name of the file.
-fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + '_ {
+fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
         (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
-        (&[".png", ".jpg", ".jpeg", ".bmp", ".webp"], "image"),
+        (&[".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif"], "image"),
     ];
     EXT_TAG_MAP.iter().filter_map(|(exts, tag)| {
         if exts
             .iter()
-            .any(|ext| {
-                if input.len() > ext.len() {
-                    input[input.len() - ext.len()..].eq_ignore_ascii_case(ext)
-                } else {
-                    false
-                }
-            })
+            .any(|ext| input[input.len().saturating_sub(ext.len())..].eq_ignore_ascii_case(ext))
         {
             Some(tag.to_string())
         } else {
@@ -453,6 +447,16 @@ mod test {
         for input in inputs {
             let actual: Vec<_> = implicit_tags_str(input).collect();
             assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn t_infer_format_tags() {
+        let inputs = &["test.gif", "ex", "test2.png", "myvid.mov"];
+        let expected: &[&[&str]] = &[&["image"], &[], &["image"], &["video"]];
+        for (input, expected) in inputs.iter().zip(expected.iter()) {
+            let actual: Vec<_> = infer_format_tag(input).collect();
+            assert_eq!(&actual, expected);
         }
     }
 }

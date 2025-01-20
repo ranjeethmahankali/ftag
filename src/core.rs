@@ -168,7 +168,7 @@ fn write_tags<T: AsRef<str>>(tags: &[T], w: &mut impl io::Write) -> Result<(), i
         })?
         > 0
     {
-        writeln!(w, "")?;
+        writeln!(w)?;
     }
     Ok(())
 }
