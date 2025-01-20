@@ -59,7 +59,7 @@ impl Debug for Error {
                 }
                 Ok(())
             }
-            Self::InvalidArgs => write!(f, "InvalidArgs"),
+            Self::InvalidArgs => write!(f, "Invalid command line arguments"),
             Self::InvalidWorkingDirectory => write!(f, "This is not a valid working directory."),
             Self::InvalidPath(path) => write!(f, "'{}' is not a valid path.", path.display()),
             Self::CannotReadStoreFile(path) => {
