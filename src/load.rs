@@ -50,7 +50,7 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
 
 /// Get an iterator over tags inferred from the format of the file. The input is
 /// expected to be the path / name of the file.
-fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + '_ {
+fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
         (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
         (&[".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif"], "image"),
