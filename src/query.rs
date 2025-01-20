@@ -86,13 +86,12 @@ impl TagTable {
     }
 
     fn query_sorted(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
-        let filtered = self.table
+        let mut results: Vec<_> = self.table
             .iter()
-            .filter(move |(_, flags)| filter.eval(flags));
-
-        let mut collected = Vec::from_iter(filtered);
-        collected.sort();
-        collected.into_iter().map(move |(path, _)| {
+            .filter(move |(_, flags)| filter.eval(flags))
+            .collect();
+        results.sort();
+        results.into_iter().map(|(path, _)| {
             path.display()
         })
     }
