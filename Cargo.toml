@@ -38,6 +38,7 @@ path = "src/gui.rs"
 strip = true # Automatically strip symbols
 panic = "abort" # Don't unwind stack. Should never panic.
 codegen-units = 1
+lto = true
 
 [profile.release-with-debug]
 inherits = "release"
