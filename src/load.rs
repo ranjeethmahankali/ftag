@@ -53,7 +53,7 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
 fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + '_ {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
         (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
-        (&[".png", ".jpg", ".jpeg", ".bmp", ".webp"], "image"),
+        (&[".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif"], "image"),
     ];
     EXT_TAG_MAP.iter().filter_map(|(exts, tag)| {
         if exts
@@ -447,6 +447,16 @@ mod test {
         for input in inputs {
             let actual: Vec<_> = implicit_tags_str(input).collect();
             assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn t_infer_format_tags() {
+        let inputs = vec!["test.gif", "ex", "test2.png", "myvid.mov"];
+        let expected = vec![vec!["image"], vec![], vec!["image"], vec!["video"]];
+        for (input, expected) in inputs.iter().zip(expected.iter()) {
+            let actual: Vec<_> = infer_format_tag(input).collect();
+            assert_eq!(&actual, expected);
         }
     }
 }
