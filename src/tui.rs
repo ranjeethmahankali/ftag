@@ -152,14 +152,14 @@ fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
 
 fn render(f: &mut Frame, app: &mut TuiApp) {
     const TAGWIDTH_PERCENT: u16 = 20;
-    app.frameheight = f.size().height as usize;
+    app.frameheight = f.area().height as usize;
     let hlayout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![
             Constraint::Percentage(TAGWIDTH_PERCENT),
             Constraint::Percentage(100 - TAGWIDTH_PERCENT),
         ])
-        .split(f.size());
+        .split(f.area());
     let rblocks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
