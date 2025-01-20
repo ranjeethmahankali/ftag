@@ -452,8 +452,8 @@ mod test {
 
     #[test]
     fn t_infer_format_tags() {
-        let inputs = vec!["test.gif", "ex", "test2.png", "myvid.mov"];
-        let expected = vec![vec!["image"], vec![], vec!["image"], vec!["video"]];
+        let inputs = &["test.gif", "ex", "test2.png", "myvid.mov"];
+        let expected: &[&[&str]] = &[&["image"], &[], &["image"], &["video"]];
         for (input, expected) in inputs.iter().zip(expected.iter()) {
             let actual: Vec<_> = infer_format_tag(input).collect();
             assert_eq!(&actual, expected);
