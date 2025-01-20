@@ -146,11 +146,10 @@ impl GlobMatches {
              * to match it as a glob. I have tested with and without this
              * optimization, and it makes a significant difference.
              */
-            for (fi, f) in files.iter().enumerate() {
-                if OsStr::new(g.path) == f.name() {
-                    row[fi] = true;
-                    continue 'globs;
-                }
+            let gpath = OsStr::new(g.path);
+            if let Ok(fi) = files.binary_search_by(move |f| f.name().cmp(gpath)) {
+                row[fi] = true;
+                continue 'globs;
             }
             for (fi, f) in files.iter().enumerate() {
                 if glob_match(g.path.as_bytes(), f.name().as_encoded_bytes()) {
