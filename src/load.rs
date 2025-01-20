@@ -1,5 +1,6 @@
-use glob_match::glob_match;
+use fast_glob::glob_match;
 use std::{
+    ffi::OsStr,
     fs::File,
     io::Read,
     ops::Range,
@@ -7,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    core::{Error, FTAG_FILE},
+    core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
     walk::DirEntry,
 };
 
@@ -57,7 +58,13 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + '_ {
     EXT_TAG_MAP.iter().filter_map(|(exts, tag)| {
         if exts
             .iter()
-            .any(|ext| input[input.len() - ext.len()..].eq_ignore_ascii_case(ext))
+            .any(|ext| {
+                if input.len() > ext.len() {
+                    input[input.len() - ext.len()..].eq_ignore_ascii_case(ext)
+                } else {
+                    false
+                }
+            })
         {
             Some(tag.to_string())
         } else {
@@ -92,7 +99,6 @@ pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
 /// reused for multiple folders to avoid reallocations.
 pub(crate) struct GlobMatches {
     table: Vec<bool>, //The major index represents the files matched by a single glob.
-    glob_matches: Vec<Option<usize>>, // Direct 1 to 1 map from glob to file.
     num_files: usize,
     num_globs: usize,
 }
@@ -101,7 +107,6 @@ impl GlobMatches {
     pub fn new() -> GlobMatches {
         GlobMatches {
             table: Vec::new(),
-            glob_matches: Vec::new(),
             num_files: 0,
             num_globs: 0,
         }
@@ -116,12 +121,9 @@ impl GlobMatches {
 
     /// Get the row and perfect match as mutable reference for the given glob
     /// index.
-    fn row_and_match(&mut self, gi: usize) -> (&mut [bool], &mut Option<usize>) {
+    fn row_mut(&mut self, gi: usize) -> &mut [bool] {
         let start = gi * self.num_files;
-        (
-            &mut self.table[start..(start + self.num_files)],
-            &mut self.glob_matches[gi],
-        )
+        &mut self.table[start..(start + self.num_files)]
     }
 
     /// Populate this struct with matches from a new set of `files` and
@@ -139,32 +141,27 @@ impl GlobMatches {
         self.num_globs = globs.len();
         self.table.clear();
         self.table.resize(files.len() * globs.len(), false);
-        self.glob_matches.clear();
-        self.glob_matches.resize(globs.len(), None);
-        // Find perfect matches.
-        for (gi, g) in globs.iter().enumerate() {
-            let (row, gmatch) = self.row_and_match(gi);
+        'globs: for (gi, g) in globs.iter().enumerate() {
+            let row = self.row_mut(gi);
+            /* A glob can either directly be a filename or a glob that matches
+             * one or more files. Checking for glob matches is MUCH more
+             * expensive than direct comparison. So for this glob, first we look
+             * for a direct match with a filename. If we find a match, we don't
+             * check the remaining files, and move on to the next glob. If and
+             * ONLY IF we don't find a diret match with any of the files, we try
+             * to match it as a glob. I have tested with and without this
+             * optimization, and it makes a significant difference.
+             */
+            let gpath = OsStr::new(g.path);
+            if let Ok(fi) = files.binary_search_by(move |f| f.name().cmp(gpath)) {
+                row[fi] = true;
+                continue 'globs;
+            }
             for (fi, f) in files.iter().enumerate() {
-                if let Some(fstr) = f.name().to_str() {
-                    if g.path == fstr {
-                        row[fi] = true;
-                        *gmatch = Some(fi);
+                if glob_match(g.path.as_bytes(), f.name().as_encoded_bytes()) {
+                    row[fi] = true;
+                    if short_circuit_globs {
                         break;
-                    }
-                }
-            }
-            if gmatch.is_some() {
-                // If a glob matches a file directly, then we don't need to
-                // search any further.
-                continue;
-            }
-            for (fi, f) in files.iter().enumerate() {
-                if let Some(fstr) = f.name().to_str() {
-                    if glob_match(g.path, fstr) {
-                        row[fi] = true;
-                        if short_circuit_globs {
-                            break;
-                        }
                     }
                 }
             }
@@ -187,7 +184,7 @@ impl GlobMatches {
 /// be a filepath, in which case the store file will be it's sibling,
 /// or a directory path, in which case the store file will be it's
 /// child.
-pub fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
+pub fn get_ftag_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     let mut out = if path.exists() {
         if path.is_dir() {
             PathBuf::from(path)
@@ -207,6 +204,19 @@ pub fn get_store_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Get the path of the backup ftag file corresponding to `path`.
+pub fn get_ftag_backup_path(path: &Path) -> PathBuf {
+    let mut dirpath = if path.is_dir() {
+        PathBuf::from(path)
+    } else {
+        let mut out = PathBuf::from(path);
+        out.pop();
+        out
+    };
+    dirpath.push(FTAG_BACKUP_FILE);
+    dirpath
+}
+
 /// Loads and parses an ftag file. Reuse this to avoid allocations.
 pub(crate) struct Loader {
     raw_text: String,
@@ -214,6 +224,7 @@ pub(crate) struct Loader {
 }
 
 /// Data in an ftag file, corresponding to one file / glob.
+#[derive(Clone)]
 pub(crate) struct FileData<'a> {
     pub desc: Option<&'a str>,
     pub path: &'a str,
@@ -302,7 +313,7 @@ impl Loader {
         let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
         let mut input = self.raw_text.trim();
         if !input.starts_with('[') {
-            return Err(Error::CannotParseYaml(
+            return Err(Error::CannotParseFtagFile(
                 filepath.to_path_buf(),
                 "File does not begin with a header.".into(),
             ));
@@ -310,7 +321,7 @@ impl Loader {
         while let Some(start) = input.find('[') {
             // Walk the text one header at a time.
             let start = start + 1;
-            let end = input.find(']').ok_or(Error::CannotParseYaml(
+            let end = input.find(']').ok_or(Error::CannotParseFtagFile(
                 filepath.to_path_buf(),
                 "Header doesn't terminate".into(),
             ))?;
@@ -338,7 +349,7 @@ impl Loader {
                     }
                     let (globs, _tags, desc) = file;
                     if desc.is_some() {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             format!(
                                 "Following globs have more than one description:\n{}.",
@@ -353,7 +364,7 @@ impl Loader {
                         continue;
                     }
                     if desc.is_some() {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             "The directory has more than one description.".into(),
                         ));
@@ -370,7 +381,7 @@ impl Loader {
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             format!(
                                 "The following globs have more than one 'tags' header:\n{}.",
@@ -385,7 +396,7 @@ impl Loader {
                     if tags.is_empty() {
                         tags.extend(content.split_whitespace().map(|w| w.trim()));
                     } else {
-                        return Err(Error::CannotParseYaml(
+                        return Err(Error::CannotParseFtagFile(
                             filepath.to_path_buf(),
                             "The directory has more than one 'tags' header.".into(),
                         ));
@@ -406,7 +417,7 @@ impl Loader {
                     }
                 }
             } else {
-                return Err(Error::CannotParseYaml(
+                return Err(Error::CannotParseFtagFile(
                     filepath.to_path_buf(),
                     format!("Unrecognized header: {header}"),
                 ));

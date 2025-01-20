@@ -2,7 +2,7 @@ use crate::{
     core::{get_relative_path, Error},
     filter::{Filter, TagMaker},
     load::{
-        get_filename_str, get_store_path, implicit_tags_str, DirData, FileLoadingOptions,
+        get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
         GlobMatches, Loader, LoaderOptions,
     },
     walk::WalkDirectories,
@@ -100,9 +100,6 @@ impl TagTable {
     /// Create a new tag table by recursively traversing directories
     /// from `dirpath`.
     pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, Error> {
-        // These structs are locally defined because their only
-        // purpose is to use with serde_yaml to extract relevant
-        // information from the YAML files.
         let mut table = TagTable {
             root: dirpath,
             tag_index_map: HashMap::new(),
@@ -114,7 +111,6 @@ impl TagTable {
             offsets: Vec::new(),
             depth: 0,
         };
-        let rootdir = table.root.clone(); // We'll need this copy later.
         let mut walker = WalkDirectories::from(table.root.clone())?;
         let mut gmatcher = GlobMatches::new();
         let mut filetags: Vec<String> = Vec::new();
@@ -128,13 +124,12 @@ impl TagTable {
         ));
         while let Some((depth, curpath, children)) = walker.next() {
             inherited.update(depth)?;
-            // Deserialize yaml without copy.
             let DirData {
                 tags,
                 files,
                 desc: _,
             } = {
-                match get_store_path::<true>(curpath) {
+                match get_ftag_path::<true>(curpath) {
                     Some(path) => loader.load(&path)?,
                     None => continue,
                 }
@@ -153,20 +148,18 @@ impl TagTable {
             }
             // Process all files in the directory.
             gmatcher.find_matches(children, &files, false);
-            for (ci, cpath) in children
-                .iter()
-                .filter_map(|ch| get_relative_path(curpath, ch.name(), &rootdir))
-                .enumerate()
-            {
-                filetags.clear();
-                let mut found: bool = false;
-                for fi in gmatcher.matched_globs(ci) {
-                    found = true;
-                    filetags.extend(files[fi].tags.iter().map(|t| t.to_string()));
-                    filetags.extend(implicit_tags_str(get_filename_str(&cpath)?));
-                }
-                if found {
-                    table.add_file(cpath, &mut filetags, &mut num_tags, &inherited.tag_indices);
+            for (ci, cpath) in children.iter().enumerate() {
+                if let Some(cpath) = get_relative_path(curpath, cpath.name(), &table.root) {
+                    filetags.clear();
+                    let mut found: bool = false;
+                    for fi in gmatcher.matched_globs(ci) {
+                        found = true;
+                        filetags.extend(files[fi].tags.iter().map(|t| t.to_string()));
+                        filetags.extend(implicit_tags_str(get_filename_str(&cpath)?));
+                    }
+                    if found {
+                        table.add_file(cpath, &mut filetags, &mut num_tags, &inherited.tag_indices);
+                    }
                 }
             }
         }
