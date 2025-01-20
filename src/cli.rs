@@ -1,4 +1,4 @@
-use clap::{command, value_parser, Arg};
+use clap::{command, value_parser, Arg, ArgAction};
 use ftag::{
     core::{self, get_all_tags, search, untracked_files, Error},
     load::get_ftag_path,
@@ -165,7 +165,7 @@ fn parse_args() -> clap::ArgMatches {
                     Arg::new(arg::SORTED)
                         .long("sorted")
                         .short('s')
-                        .num_args(0)
+                        .action(ArgAction::SetTrue)
                         .help(about::QUERY_SORTED)
                         .long_help(about::QUERY_SORTED_LONG),
                 ),
