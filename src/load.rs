@@ -57,7 +57,13 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + '_ {
     EXT_TAG_MAP.iter().filter_map(|(exts, tag)| {
         if exts
             .iter()
-            .any(|ext| str::ends_with(input, ext))
+            .any(|ext| {
+                if input.len() > ext.len() {
+                    input[input.len() - ext.len()..].eq_ignore_ascii_case(ext)
+                } else {
+                    false
+                }
+            })
         {
             Some(tag.to_string())
         } else {
