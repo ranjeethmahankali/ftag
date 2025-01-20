@@ -11,27 +11,6 @@ pub(crate) enum DirEntryType {
     Dir,
 }
 
-/// Implementing sort means that among the entries of a directory, the
-/// nested directories will be at the start and the files will be at
-/// the end.
-impl PartialOrd for DirEntryType {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for DirEntryType {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use std::cmp::Ordering::*;
-        match (self, other) {
-            (DirEntryType::File, DirEntryType::File) => Equal,
-            (DirEntryType::File, DirEntryType::Dir) => Greater,
-            (DirEntryType::Dir, DirEntryType::File) => Less,
-            (DirEntryType::Dir, DirEntryType::Dir) => Equal,
-        }
-    }
-}
-
 /// Entry found during recursive traversal. `depth` 1 corresponds to
 /// the root of the recursive traversal, and subsequent depths
 /// indicate the level of nesting.
@@ -125,7 +104,12 @@ impl WalkDirectories {
                     }
                     self.num_children = self.stack.len() - before;
                     let children = &mut self.stack[before..];
-                    children.sort_by_key(|d| d.entry_type);
+                    children.sort_by(|a, b| match (a.entry_type, b.entry_type) {
+                        (DirEntryType::File, DirEntryType::File) => a.name.cmp(&b.name),
+                        (DirEntryType::File, DirEntryType::Dir) => std::cmp::Ordering::Greater,
+                        (DirEntryType::Dir, DirEntryType::File) => std::cmp::Ordering::Less,
+                        (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
+                    });
                     let children = &self.stack[(self.stack.len() - numfiles)..];
                     return Some((depth, &self.cur_path, children));
                 }
