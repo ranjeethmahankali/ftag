@@ -2,7 +2,7 @@ use clap::{command, value_parser, Arg};
 use ftag::{
     core::{self, get_all_tags, search, untracked_files, Error},
     load::get_store_path,
-    query::{count_files_tags, run_query, DenseTagTable},
+    query::{count_files_tags, run_query, run_query_sorted, DenseTagTable},
 };
 use std::path::PathBuf;
 
@@ -30,12 +30,15 @@ fn main() -> Result<(), Error> {
         return Ok(());
     }
     if let Some(matches) = matches.subcommand_matches(cmd::QUERY) {
-        run_query(
-            current_dir,
-            matches
-                .get_one::<String>(arg::FILTER)
-                .ok_or(Error::InvalidArgs)?,
-        )
+        let filter = matches
+            .get_one::<String>(arg::FILTER)
+            .ok_or(Error::InvalidArgs)?;
+
+        if let Some(true) = matches.get_one(arg::SORTED) {
+            run_query_sorted(current_dir, filter)
+        } else {
+            run_query(current_dir, filter)
+        }
     } else if let Some(matches) = matches.subcommand_matches(cmd::SEARCH) {
         return search(
             current_dir,
@@ -154,6 +157,14 @@ fn parse_args() -> clap::ArgMatches {
                         .required(true)
                         .help(about::QUERY_FILTER)
                         .long_help(about::QUERY_FILTER_LONG),
+                )
+                .arg(
+                    Arg::new(arg::SORTED)
+                        .long("sorted")
+                        .short('s')
+                        .num_args(0)
+                        .help(about::QUERY_SORTED)
+                        .long_help(about::QUERY_SORTED_LONG),
                 ),
         )
         .subcommand(
@@ -226,6 +237,7 @@ mod arg {
     pub const PATH: &str = "path"; // --path flag to run in a different path than cwd.
     pub const SEARCH_STR: &str = "search string";
     pub const BASH_COMPLETE_WORDS: &str = "bash-complete-words";
+    pub const SORTED: &str = "sorted"; // --sorted flag for query command to sort results
 }
 
 mod about {
@@ -240,6 +252,8 @@ tags 'foo' and 'bar'.  More complex queries can be delimited using
 parentheses. For example: '(foo & bar) | !baz' will list all files
 that either have both 'foo' and 'bar' tags, or don't have the 'baz'
 tag.";
+    pub const QUERY_SORTED: &str = "Sort query results before outputting.";
+    pub const QUERY_SORTED_LONG: &str = "After applying the filter, sort all results alphabetically by filename before outputting them.";
     pub const SEARCH: &str = "Search all tags and descriptions for the given keywords";
     pub const SEARCH_STR: &str = "A string of keywords to search for.";
     pub const SEARCH_STR_LONG: &str = "Any file that contains any of the keywords in this string in either it's tags or description will included in the output.";
