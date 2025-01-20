@@ -85,6 +85,16 @@ impl TagTable {
         })
     }
 
+    fn query_sorted(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
+        let mut results: Vec<_> = self
+            .table
+            .iter()
+            .filter(move |(_, flags)| filter.eval(flags))
+            .collect();
+        results.sort();
+        results.into_iter().map(|(path, _)| path.display())
+    }
+
     /// Create a new tag table by recursively traversing directories
     /// from `dirpath`.
     pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, Error> {
@@ -204,6 +214,15 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
     for path in table.query(filter) {
+        println!("{}", path);
+    }
+    Ok(())
+}
+
+pub fn run_query_sorted(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
+    let table = TagTable::from_dir(dirpath)?;
+    let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
+    for path in table.query_sorted(filter) {
         println!("{}", path);
     }
     Ok(())
