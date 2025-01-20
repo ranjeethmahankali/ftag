@@ -86,14 +86,13 @@ impl TagTable {
     }
 
     fn query_sorted(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
-        let mut results: Vec<_> = self.table
+        let mut results: Vec<_> = self
+            .table
             .iter()
             .filter(move |(_, flags)| filter.eval(flags))
             .collect();
         results.sort();
-        results.into_iter().map(|(path, _)| {
-            path.display()
-        })
+        results.into_iter().map(|(path, _)| path.display())
     }
 
     /// Create a new tag table by recursively traversing directories
