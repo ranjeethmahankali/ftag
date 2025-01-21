@@ -77,8 +77,9 @@ impl WalkDirectories {
                     if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
                         for child in entries.flatten() {
                             let cname = child.file_name();
-                            let cnamestr = cname.to_str().unwrap_or("");
-                            if cnamestr == FTAG_FILE || cnamestr == FTAG_BACKUP_FILE {
+                            if cname == OsStr::new(FTAG_FILE)
+                                || cname == OsStr::new(FTAG_BACKUP_FILE)
+                            {
                                 continue;
                             }
                             match child.file_type() {
