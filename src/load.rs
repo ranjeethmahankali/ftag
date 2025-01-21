@@ -1,3 +1,7 @@
+use crate::{
+    core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
+    walk::DirEntry,
+};
 use aho_corasick::{AhoCorasick, Match};
 use fast_glob::glob_match;
 use std::{
@@ -7,11 +11,6 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
     sync::LazyLock,
-};
-
-use crate::{
-    core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
-    walk::DirEntry,
 };
 
 /// Try to infer a range of years from the name of a document or file.
