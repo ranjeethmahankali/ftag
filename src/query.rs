@@ -146,8 +146,8 @@ impl TagTable {
             }
             // Process all files in the directory.
             gmatcher.find_matches(children, &files, false);
-            for (ci, cpath) in children.iter().enumerate() {
-                if let Some(cpath) = get_relative_path(curpath, cpath.name(), &table.root) {
+            for (ci, child) in children.iter().enumerate() {
+                if let Some(cpath) = get_relative_path(curpath, child.name(), &table.root) {
                     filetags.clear();
                     let mut found: bool = false;
                     for fi in gmatcher.matched_globs(ci) {
