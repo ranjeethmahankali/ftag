@@ -30,6 +30,7 @@ impl DirEntry {
 /// about the contents of the directory. The traversal is depth first.
 pub(crate) struct WalkDirectories {
     cur_path: PathBuf,
+    rel_path: PathBuf,
     stack: Vec<DirEntry>,
     cur_depth: usize,
     num_children: usize,
@@ -42,6 +43,7 @@ impl WalkDirectories {
         }
         Ok(WalkDirectories {
             cur_path: dirpath,
+            rel_path: PathBuf::new(),
             stack: vec![DirEntry {
                 depth: 1,
                 entry_type: DirEntryType::Dir,
@@ -52,10 +54,10 @@ impl WalkDirectories {
         })
     }
 
-    /// Move on to the next directory. Returns a tuple containing the
-    /// depth of the directory, its path, and a slice containing info
-    /// about the files in this directory.
-    pub(crate) fn next(&mut self) -> Option<(usize, &Path, &[DirEntry])> {
+    /// Move on to the next directory. Returns a tuple containing the depth of
+    /// the directory, its absolute path, its path relative to the root of the
+    /// walk, and a slice containing info about the files in this directory.
+    pub(crate) fn next(&mut self) -> Option<(usize, &Path, &Path, &[DirEntry])> {
         while let Some(DirEntry {
             depth,
             entry_type,
@@ -67,9 +69,11 @@ impl WalkDirectories {
                 DirEntryType::Dir => {
                     while self.cur_depth > depth - 1 {
                         self.cur_path.pop();
+                        self.rel_path.pop();
                         self.cur_depth -= 1;
                     }
-                    self.cur_path.push(name);
+                    self.cur_path.push(name.clone());
+                    self.rel_path.push(name);
                     self.cur_depth += 1;
                     // Push all children.
                     let mut numfiles = 0;
@@ -77,8 +81,9 @@ impl WalkDirectories {
                     if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
                         for child in entries.flatten() {
                             let cname = child.file_name();
-                            let cnamestr = cname.to_str().unwrap_or("");
-                            if cnamestr == FTAG_FILE || cnamestr == FTAG_BACKUP_FILE {
+                            if cname == OsStr::new(FTAG_FILE)
+                                || cname == OsStr::new(FTAG_BACKUP_FILE)
+                            {
                                 continue;
                             }
                             match child.file_type() {
@@ -111,7 +116,7 @@ impl WalkDirectories {
                         (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
                     });
                     let children = &self.stack[(self.stack.len() - numfiles)..];
-                    return Some((depth, &self.cur_path, children));
+                    return Some((depth, &self.cur_path, &self.rel_path, children));
                 }
             }
         }

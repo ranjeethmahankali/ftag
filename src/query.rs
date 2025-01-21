@@ -1,5 +1,5 @@
 use crate::{
-    core::{get_relative_path, Error},
+    core::Error,
     filter::{Filter, TagMaker},
     load::{
         get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
@@ -120,7 +120,7 @@ impl TagTable {
                 file_desc: false,
             },
         ));
-        while let Some((depth, curpath, children)) = walker.next() {
+        while let Some((depth, curpath, relpath, children)) = walker.next() {
             inherited.update(depth)?;
             let DirData {
                 tags,
@@ -146,18 +146,30 @@ impl TagTable {
             }
             // Process all files in the directory.
             gmatcher.find_matches(children, &files, false);
-            for (ci, cpath) in children.iter().enumerate() {
-                if let Some(cpath) = get_relative_path(curpath, cpath.name(), &table.root) {
-                    filetags.clear();
-                    let mut found: bool = false;
-                    for fi in gmatcher.matched_globs(ci) {
-                        found = true;
-                        filetags.extend(files[fi].tags.iter().map(|t| t.to_string()));
-                        filetags.extend(implicit_tags_str(get_filename_str(&cpath)?));
-                    }
-                    if found {
-                        table.add_file(cpath, &mut filetags, &mut num_tags, &inherited.tag_indices);
-                    }
+            for (ci, child) in children.iter().enumerate() {
+                filetags.clear();
+                let mut found: bool = false;
+                for fi in gmatcher.matched_globs(ci) {
+                    found = true;
+                    filetags.extend(files[fi].tags.iter().map(|t| t.to_string()));
+                    filetags.extend(implicit_tags_str(
+                        child
+                            .name()
+                            .to_str()
+                            .ok_or(Error::InvalidPath(child.name().into()))?,
+                    ));
+                }
+                if found {
+                    table.add_file(
+                        {
+                            let mut relpath = relpath.to_path_buf();
+                            relpath.push(child.name());
+                            relpath
+                        },
+                        &mut filetags,
+                        &mut num_tags,
+                        &inherited.tag_indices,
+                    );
                 }
             }
         }
