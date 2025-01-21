@@ -54,9 +54,9 @@ impl WalkDirectories {
         })
     }
 
-    /// Move on to the next directory. Returns a tuple containing the
-    /// depth of the directory, its path, and a slice containing info
-    /// about the files in this directory.
+    /// Move on to the next directory. Returns a tuple containing the depth of
+    /// the directory, its absolute path, its path relative to the root of the
+    /// walk, and a slice containing info about the files in this directory.
     pub(crate) fn next(&mut self) -> Option<(usize, &Path, &Path, &[DirEntry])> {
         while let Some(DirEntry {
             depth,
