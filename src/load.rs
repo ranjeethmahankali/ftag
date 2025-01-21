@@ -299,12 +299,6 @@ impl Loader {
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?
             .read_to_string(&mut self.raw_text)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
-        let mut tags: Vec<&str> = Vec::new();
-        let mut desc: Option<&str> = None;
-        let mut files: Vec<FileData<'a>> = Vec::new();
-        // We store the data of the file we're currently parsing as:
-        // (list of globs, list of tags, optional description).
-        let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
         let mut input = self.raw_text.trim();
         if !input.starts_with('[') {
             return Err(Error::CannotParseFtagFile(
@@ -312,6 +306,12 @@ impl Loader {
                 "File does not begin with a header.".into(),
             ));
         }
+        let mut tags: Vec<&str> = Vec::new();
+        let mut desc: Option<&str> = None;
+        let mut files: Vec<FileData<'a>> = Vec::new();
+        // We store the data of the file we're currently parsing as:
+        // (list of globs, list of tags, optional description).
+        let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
         while let Some(start) = input.find('[') {
             // Walk the text one header at a time.
             let start = start + 1;
