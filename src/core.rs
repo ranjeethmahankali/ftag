@@ -7,7 +7,6 @@ use crate::{
     walk::WalkDirectories,
 };
 use std::{
-    ffi::OsStr,
     fmt::Debug,
     fs::OpenOptions,
     io,
@@ -93,7 +92,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
         },
     ));
     let mut missing: Vec<GlobInfo> = Vec::new();
-    while let Some((_depth, dirpath, children)) = walker.next() {
+    while let Some((_depth, dirpath, relpath, children)) = walker.next() {
         let DirData {
             files,
             desc: _,
@@ -109,10 +108,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
             if !matcher.is_glob_matched(i) {
                 Some(GlobInfo {
                     glob: f.path.to_string(),
-                    dirpath: match dirpath.strip_prefix(&path) {
-                        Ok(dpath) => dpath.to_path_buf(),
-                        Err(_) => dirpath.to_path_buf(),
-                    },
+                    dirpath: relpath.to_path_buf(),
                 })
             } else {
                 None
@@ -193,7 +189,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         },
     ));
     let mut valid: Vec<FileDataOwned> = Vec::new();
-    while let Some((_depth, dirpath, children)) = walker.next() {
+    while let Some((_depth, dirpath, _relpath, children)) = walker.next() {
         let (path, DirData { files, desc, tags }) = {
             match get_ftag_path::<true>(dirpath) {
                 Some(path) => {
@@ -390,18 +386,6 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
     Ok(full_description(tags, desc))
 }
 
-/// Get the path of `filename` which is in the directory `dirpath`, relative to `root`.
-pub(crate) fn get_relative_path(dirpath: &Path, filename: &OsStr, root: &Path) -> Option<PathBuf> {
-    match dirpath.strip_prefix(root) {
-        Ok(path) => {
-            let mut path = PathBuf::from(path);
-            path.push(filename);
-            Some(path)
-        }
-        Err(_) => None,
-    }
-}
-
 /// Recursively traverse the directories starting from `root` and
 /// return all files that are not tracked.
 pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
@@ -416,7 +400,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
             file_desc: false,
         },
     ));
-    while let Some((_depth, dirpath, children)) = walker.next() {
+    while let Some((_depth, dirpath, relpath, children)) = walker.next() {
         let DirData {
             files: patterns,
             desc: _,
@@ -426,11 +410,11 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
                 Some(path) => loader.load(&path)?,
                 // Store file doesn't exist so everything is untracked.
                 None => {
-                    untracked.extend(
-                        children
-                            .iter()
-                            .filter_map(|f| get_relative_path(dirpath, f.name(), &root)),
-                    );
+                    untracked.extend(children.iter().map(|ch| {
+                        let mut relpath = relpath.to_path_buf();
+                        relpath.push(ch.name());
+                        relpath
+                    }));
                     continue;
                 }
             }
@@ -440,7 +424,9 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
             if patterns.iter().any(|p| glob_match(p.path, fnamestr)) {
                 None
             } else {
-                get_relative_path(dirpath, child.name(), &root)
+                let mut relpath = relpath.to_path_buf();
+                relpath.push(child.name());
+                Some(relpath)
             }
         }));
     }
@@ -459,7 +445,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
             file_desc: false,
         },
     ));
-    while let Some((_depth, dirpath, _filenames)) = walker.next() {
+    while let Some((_depth, dirpath, _relpath, _filenames)) = walker.next() {
         let DirData {
             mut tags,
             mut files,
@@ -521,7 +507,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
             None => false,
         }
     };
-    while let Some((_depth, dirpath, _filenames)) = walker.next() {
+    while let Some((_depth, dirpath, _relpath, _filenames)) = walker.next() {
         let DirData { tags, files, desc } = {
             match get_ftag_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
