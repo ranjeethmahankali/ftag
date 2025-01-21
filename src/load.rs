@@ -265,7 +265,7 @@ impl LoaderOptions {
 
 static AC_PARSER: LazyLock<AhoCorasick> = LazyLock::new(|| {
     const HEADER_STR: [&str; 3] = ["[path]", "[tags]", "[desc]"];
-    AhoCorasick::new(&HEADER_STR).expect("FATAL: Unable to initialize the parser")
+    AhoCorasick::new(HEADER_STR).expect("FATAL: Unable to initialize the parser")
 });
 
 enum HeaderType {
@@ -458,7 +458,7 @@ impl Loader {
                                 filepath.to_path_buf(),
                                 "FATAL: Error when searching for headers in the file.".into(),
                             ))?;
-                            content = &input[header.end..n.start].trim();
+                            content = input[header.end..n.start].trim();
                             (content, Some(n))
                         }
                         None => (input[header.end..].trim(), None),
