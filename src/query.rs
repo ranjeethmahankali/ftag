@@ -122,11 +122,7 @@ impl TagTable {
         ));
         while let Some((depth, curpath, relpath, files)) = walker.next() {
             inherited.update(depth)?;
-            let DirData {
-                tags,
-                globs,
-                desc: _,
-            } = {
+            let DirData { tags, globs, .. } = {
                 match get_ftag_path::<true>(curpath) {
                     Some(path) => loader.load(&path)?,
                     None => continue,

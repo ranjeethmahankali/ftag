@@ -93,11 +93,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
     ));
     let mut missing: Vec<GlobInfo> = Vec::new();
     while let Some((_depth, dirpath, relpath, files)) = walker.next() {
-        let DirData {
-            globs,
-            desc: _,
-            tags: _,
-        } = {
+        let DirData { globs, .. } = {
             match get_ftag_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 None => continue,
@@ -367,11 +363,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
 /// description.
 fn what_is_dir(path: &Path) -> Result<String, Error> {
     let mut loader = Loader::new(LoaderOptions::new(true, true, FileLoadingOptions::Skip));
-    let DirData {
-        desc,
-        tags,
-        globs: _,
-    } = {
+    let DirData { desc, tags, .. } = {
         match get_ftag_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
             None => return Err(Error::InvalidPath(path.to_path_buf())),
@@ -401,11 +393,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
         },
     ));
     while let Some((_depth, dirpath, relpath, files)) = walker.next() {
-        let DirData {
-            globs: patterns,
-            desc: _,
-            tags: _,
-        }: DirData = {
+        let DirData { globs, .. }: DirData = {
             match get_ftag_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 // Store file doesn't exist so everything is untracked.
@@ -421,7 +409,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
         };
         untracked.extend(files.iter().filter_map(|child| {
             let fnamestr = child.name().to_str()?;
-            if patterns.iter().any(|p| glob_match(p.path, fnamestr)) {
+            if globs.iter().any(|p| glob_match(p.path, fnamestr)) {
                 None
             } else {
                 let mut relpath = relpath.to_path_buf();
@@ -448,8 +436,8 @@ pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     while let Some((_depth, dirpath, _relpath, _filenames)) = walker.next() {
         let DirData {
             mut tags,
-            globs: mut files,
-            desc: _,
+            mut globs,
+            ..
         } = {
             match get_ftag_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
@@ -461,7 +449,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
                 .map(|t| t.to_string())
                 .chain(implicit_tags_str(get_filename_str(dirpath)?)),
         );
-        for mut fdata in files.drain(..) {
+        for mut fdata in globs.drain(..) {
             alltags.extend(
                 fdata
                     .tags
