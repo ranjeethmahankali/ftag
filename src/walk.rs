@@ -28,22 +28,22 @@ impl DirEntry {
 
 /// Recursively walk directories, while caching useful information
 /// about the contents of the directory. The traversal is depth first.
-pub(crate) struct WalkDirectories {
-    cur_path: PathBuf,
-    rel_path: PathBuf,
+pub(crate) struct DirWalker {
+    cur_dir: PathBuf,
+    rel_dir: PathBuf,
     stack: Vec<DirEntry>,
     cur_depth: usize,
     num_children: usize,
 }
 
-impl WalkDirectories {
-    pub fn from(dirpath: PathBuf) -> Result<Self, Error> {
-        if !dirpath.is_dir() {
-            return Err(Error::InvalidPath(dirpath));
+impl DirWalker {
+    pub fn new(rootdir: PathBuf) -> Result<Self, Error> {
+        if !rootdir.is_dir() {
+            return Err(Error::InvalidPath(rootdir));
         }
-        Ok(WalkDirectories {
-            cur_path: dirpath,
-            rel_path: PathBuf::new(),
+        Ok(DirWalker {
+            cur_dir: rootdir,
+            rel_dir: PathBuf::new(),
             stack: vec![DirEntry {
                 depth: 1,
                 entry_type: DirEntryType::Dir,
@@ -68,17 +68,17 @@ impl WalkDirectories {
                 DirEntryType::File => continue,
                 DirEntryType::Dir => {
                     while self.cur_depth > depth - 1 {
-                        self.cur_path.pop();
-                        self.rel_path.pop();
+                        self.cur_dir.pop();
+                        self.rel_dir.pop();
                         self.cur_depth -= 1;
                     }
-                    self.cur_path.push(name.clone());
-                    self.rel_path.push(name);
+                    self.cur_dir.push(name.clone());
+                    self.rel_dir.push(name);
                     self.cur_depth += 1;
                     // Push all children.
                     let mut numfiles = 0;
                     let before = self.stack.len();
-                    if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
+                    if let Ok(entries) = std::fs::read_dir(&self.cur_dir) {
                         for child in entries.flatten() {
                             let cname = child.file_name();
                             if cname == OsStr::new(FTAG_FILE)
@@ -116,7 +116,7 @@ impl WalkDirectories {
                         (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
                     });
                     let children = &self.stack[(self.stack.len() - numfiles)..];
-                    return Some((depth, &self.cur_path, &self.rel_path, children));
+                    return Some((depth, &self.cur_dir, &self.rel_dir, children));
                 }
             }
         }

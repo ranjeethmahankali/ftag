@@ -129,7 +129,7 @@ impl GlobMatches {
     pub fn find_matches(
         &mut self,
         files: &[DirEntry],
-        globs: &[FileData],
+        globs: &[GlobData],
         short_circuit_globs: bool,
     ) {
         self.num_files = files.len();
@@ -220,7 +220,7 @@ pub(crate) struct Loader {
 
 /// Data in an ftag file, corresponding to one file / glob.
 #[derive(Clone)]
-pub(crate) struct FileData<'a> {
+pub(crate) struct GlobData<'a> {
     pub desc: Option<&'a str>,
     pub path: &'a str,
     pub tags: Vec<&'a str>,
@@ -230,7 +230,7 @@ pub(crate) struct FileData<'a> {
 pub(crate) struct DirData<'a> {
     pub desc: Option<&'a str>,
     pub tags: Vec<&'a str>,
-    pub files: Vec<FileData<'a>>,
+    pub globs: Vec<GlobData<'a>>,
 }
 
 /// Options for loading the file data from an ftag file.
@@ -343,7 +343,7 @@ impl Loader {
         let mut headers = AC_PARSER.find_iter(input);
         let mut tags: Vec<&str> = Vec::new();
         let mut desc: Option<&str> = None;
-        let mut files: Vec<FileData<'a>> = Vec::new();
+        let mut files: Vec<GlobData<'a>> = Vec::new();
         // We store the data of the file we're currently parsing as:
         // (list of globs, list of tags, optional description).
         let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
@@ -386,7 +386,7 @@ impl Loader {
                         std::mem::replace(&mut curfile, Some(newfile))
                     {
                         for g in globs {
-                            files.push(FileData {
+                            files.push(GlobData {
                                 desc,
                                 path: g,
                                 tags: tags.clone(),
@@ -469,14 +469,18 @@ impl Loader {
         }
         if let Some((globs, tags, desc)) = curfile {
             for g in globs {
-                files.push(FileData {
+                files.push(GlobData {
                     desc,
                     path: g,
                     tags: tags.clone(),
                 })
             }
         }
-        Ok(DirData { desc, tags, files })
+        Ok(DirData {
+            desc,
+            tags,
+            globs: files,
+        })
     }
 }
 

@@ -5,7 +5,7 @@ use crate::{
         get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
         GlobMatches, Loader, LoaderOptions,
     },
-    walk::WalkDirectories,
+    walk::DirWalker,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -109,7 +109,7 @@ impl TagTable {
             offsets: Vec::new(),
             depth: 0,
         };
-        let mut walker = WalkDirectories::from(table.root.clone())?;
+        let mut walker = DirWalker::new(table.root.clone())?;
         let mut gmatcher = GlobMatches::new();
         let mut filetags: Vec<String> = Vec::new();
         let mut loader = Loader::new(LoaderOptions::new(
@@ -120,13 +120,9 @@ impl TagTable {
                 file_desc: false,
             },
         ));
-        while let Some((depth, curpath, relpath, children)) = walker.next() {
+        while let Some((depth, curpath, relpath, files)) = walker.next() {
             inherited.update(depth)?;
-            let DirData {
-                tags,
-                files,
-                desc: _,
-            } = {
+            let DirData { tags, globs, .. } = {
                 match get_ftag_path::<true>(curpath) {
                     Some(path) => loader.load(&path)?,
                     None => continue,
@@ -145,13 +141,13 @@ impl TagTable {
                 ));
             }
             // Process all files in the directory.
-            gmatcher.find_matches(children, &files, false);
-            for (ci, child) in children.iter().enumerate() {
+            gmatcher.find_matches(files, &globs, false);
+            for (ci, child) in files.iter().enumerate() {
                 filetags.clear();
                 let mut found: bool = false;
                 for fi in gmatcher.matched_globs(ci) {
                     found = true;
-                    filetags.extend(files[fi].tags.iter().map(|t| t.to_string()));
+                    filetags.extend(globs[fi].tags.iter().map(|t| t.to_string()));
                     filetags.extend(implicit_tags_str(
                         child
                             .name()
