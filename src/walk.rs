@@ -29,8 +29,8 @@ impl DirEntry {
 /// Recursively walk directories, while caching useful information
 /// about the contents of the directory. The traversal is depth first.
 pub(crate) struct DirWalker {
-    cur_path: PathBuf,
-    rel_path: PathBuf,
+    abs_dir: PathBuf,
+    rel_dir: PathBuf,
     stack: Vec<DirEntry>,
     cur_depth: usize,
     num_children: usize,
@@ -42,8 +42,8 @@ impl DirWalker {
             return Err(Error::InvalidPath(rootdir));
         }
         Ok(DirWalker {
-            cur_path: rootdir,
-            rel_path: PathBuf::new(),
+            abs_dir: rootdir,
+            rel_dir: PathBuf::new(),
             stack: vec![DirEntry {
                 depth: 1,
                 entry_type: DirEntryType::Dir,
@@ -68,17 +68,17 @@ impl DirWalker {
                 DirEntryType::File => continue,
                 DirEntryType::Dir => {
                     while self.cur_depth > depth - 1 {
-                        self.cur_path.pop();
-                        self.rel_path.pop();
+                        self.abs_dir.pop();
+                        self.rel_dir.pop();
                         self.cur_depth -= 1;
                     }
-                    self.cur_path.push(name.clone());
-                    self.rel_path.push(name);
+                    self.abs_dir.push(name.clone());
+                    self.rel_dir.push(name);
                     self.cur_depth += 1;
                     // Push all children.
                     let mut numfiles = 0;
                     let before = self.stack.len();
-                    if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
+                    if let Ok(entries) = std::fs::read_dir(&self.abs_dir) {
                         for child in entries.flatten() {
                             let cname = child.file_name();
                             if cname == OsStr::new(FTAG_FILE)
@@ -116,7 +116,7 @@ impl DirWalker {
                         (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
                     });
                     let children = &self.stack[(self.stack.len() - numfiles)..];
-                    return Some((depth, &self.cur_path, &self.rel_path, children));
+                    return Some((depth, &self.abs_dir, &self.rel_dir, children));
                 }
             }
         }
