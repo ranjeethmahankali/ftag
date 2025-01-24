@@ -219,7 +219,6 @@ pub(crate) struct Loader {
 }
 
 /// Data in an ftag file, corresponding to one file / glob.
-#[derive(Clone)]
 pub(crate) struct GlobData<'a> {
     pub desc: Option<&'a str>,
     pub path: &'a str,
