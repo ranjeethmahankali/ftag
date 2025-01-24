@@ -5,7 +5,7 @@ use crate::{
         get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
         GlobMatches, Loader, LoaderOptions,
     },
-    walk::WalkDirectories,
+    walk::DirWalker,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -109,7 +109,7 @@ impl TagTable {
             offsets: Vec::new(),
             depth: 0,
         };
-        let mut walker = WalkDirectories::from(table.root.clone())?;
+        let mut walker = DirWalker::new(table.root.clone())?;
         let mut gmatcher = GlobMatches::new();
         let mut filetags: Vec<String> = Vec::new();
         let mut loader = Loader::new(LoaderOptions::new(

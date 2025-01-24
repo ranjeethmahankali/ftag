@@ -4,7 +4,7 @@ use crate::{
         get_filename_str, get_ftag_backup_path, get_ftag_path, implicit_tags_str, DirData,
         FileData, FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
     },
-    walk::WalkDirectories,
+    walk::DirWalker,
 };
 use std::{
     fmt::Debug,
@@ -81,7 +81,7 @@ impl Debug for Error {
 /// files, and make sure every listed glob / path matches at least one
 /// file on disk.
 pub fn check(path: PathBuf) -> Result<(), Error> {
-    let mut walker = WalkDirectories::from(path.clone())?;
+    let mut walker = DirWalker::new(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
         false,
@@ -178,7 +178,7 @@ fn write_desc<T: AsRef<str>>(desc: &Option<T>, w: &mut impl io::Write) -> Result
 }
 
 pub fn clean(path: PathBuf) -> Result<(), Error> {
-    let mut walker = WalkDirectories::from(path.clone())?;
+    let mut walker = DirWalker::new(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
         true,
@@ -390,7 +390,7 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
 /// return all files that are not tracked.
 pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
     use fast_glob::glob_match;
-    let mut walker = WalkDirectories::from(root.clone())?;
+    let mut walker = DirWalker::new(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
     let mut loader = Loader::new(LoaderOptions::new(
         false,
@@ -436,7 +436,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 /// Recursively traverse the directories from `path` and get all tags.
 pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     let mut alltags: Vec<String> = Vec::new();
-    let mut walker = WalkDirectories::from(path)?;
+    let mut walker = DirWalker::new(path)?;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
         false,
@@ -482,7 +482,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         .split(|c: char| !c.is_alphanumeric())
         .map(|word| word.trim().to_lowercase())
         .collect();
-    let mut walker = WalkDirectories::from(path)?;
+    let mut walker = DirWalker::new(path)?;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
         true,

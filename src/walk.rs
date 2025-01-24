@@ -28,7 +28,7 @@ impl DirEntry {
 
 /// Recursively walk directories, while caching useful information
 /// about the contents of the directory. The traversal is depth first.
-pub(crate) struct WalkDirectories {
+pub(crate) struct DirWalker {
     cur_path: PathBuf,
     rel_path: PathBuf,
     stack: Vec<DirEntry>,
@@ -36,13 +36,13 @@ pub(crate) struct WalkDirectories {
     num_children: usize,
 }
 
-impl WalkDirectories {
-    pub fn from(dirpath: PathBuf) -> Result<Self, Error> {
-        if !dirpath.is_dir() {
-            return Err(Error::InvalidPath(dirpath));
+impl DirWalker {
+    pub fn new(rootdir: PathBuf) -> Result<Self, Error> {
+        if !rootdir.is_dir() {
+            return Err(Error::InvalidPath(rootdir));
         }
-        Ok(WalkDirectories {
-            cur_path: dirpath,
+        Ok(DirWalker {
+            cur_path: rootdir,
             rel_path: PathBuf::new(),
             stack: vec![DirEntry {
                 depth: 1,
