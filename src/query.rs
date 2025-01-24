@@ -120,7 +120,7 @@ impl TagTable {
                 file_desc: false,
             },
         ));
-        while let Some((depth, curpath, relpath, children)) = walker.next() {
+        while let Some((depth, curpath, relpath, files)) = walker.next() {
             inherited.update(depth)?;
             let DirData {
                 tags,
@@ -145,8 +145,8 @@ impl TagTable {
                 ));
             }
             // Process all files in the directory.
-            gmatcher.find_matches(children, &globs, false);
-            for (ci, child) in children.iter().enumerate() {
+            gmatcher.find_matches(files, &globs, false);
+            for (ci, child) in files.iter().enumerate() {
                 filetags.clear();
                 let mut found: bool = false;
                 for fi in gmatcher.matched_globs(ci) {

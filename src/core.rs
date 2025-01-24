@@ -92,7 +92,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
         },
     ));
     let mut missing: Vec<GlobInfo> = Vec::new();
-    while let Some((_depth, dirpath, relpath, children)) = walker.next() {
+    while let Some((_depth, dirpath, relpath, files)) = walker.next() {
         let DirData {
             globs,
             desc: _,
@@ -103,7 +103,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
                 None => continue,
             }
         };
-        matcher.find_matches(children, &globs, true);
+        matcher.find_matches(files, &globs, true);
         missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
             if !matcher.is_glob_matched(i) {
                 Some(GlobInfo {
@@ -189,7 +189,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         },
     ));
     let mut valid: Vec<FileDataOwned> = Vec::new();
-    while let Some((_depth, dirpath, _relpath, children)) = walker.next() {
+    while let Some((_depth, dirpath, _relpath, files)) = walker.next() {
         let (path, DirData { globs, desc, tags }) = {
             match get_ftag_path::<true>(dirpath) {
                 Some(path) => {
@@ -199,7 +199,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
                 None => continue,
             }
         };
-        matcher.find_matches(children, &globs, true);
+        matcher.find_matches(files, &globs, true);
         valid.clear();
         valid.extend(globs.iter().enumerate().filter_map(|(i, f)| {
             if matcher.is_glob_matched(i) {
@@ -400,7 +400,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
             file_desc: false,
         },
     ));
-    while let Some((_depth, dirpath, relpath, children)) = walker.next() {
+    while let Some((_depth, dirpath, relpath, files)) = walker.next() {
         let DirData {
             globs: patterns,
             desc: _,
@@ -410,7 +410,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
                 Some(path) => loader.load(&path)?,
                 // Store file doesn't exist so everything is untracked.
                 None => {
-                    untracked.extend(children.iter().map(|ch| {
+                    untracked.extend(files.iter().map(|ch| {
                         let mut relpath = relpath.to_path_buf();
                         relpath.push(ch.name());
                         relpath
@@ -419,7 +419,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
                 }
             }
         };
-        untracked.extend(children.iter().filter_map(|child| {
+        untracked.extend(files.iter().filter_map(|child| {
             let fnamestr = child.name().to_str()?;
             if patterns.iter().any(|p| glob_match(p.path, fnamestr)) {
                 None
