@@ -5,7 +5,7 @@ use crate::{
         get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
         GlobMatches, Loader, LoaderOptions,
     },
-    walk::DirWalker,
+    walk::{DirUnit, DirWalker},
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -120,10 +120,16 @@ impl TagTable {
                 file_desc: false,
             },
         ));
-        while let Some((depth, curpath, relpath, files)) = walker.next() {
+        while let Some(DirUnit {
+            depth,
+            abs_dir,
+            rel_dir,
+            files,
+        }) = walker.next()
+        {
             inherited.update(depth)?;
             let DirData { tags, globs, .. } = {
-                match get_ftag_path::<true>(curpath) {
+                match get_ftag_path::<true>(abs_dir) {
                     Some(path) => loader.load(&path)?,
                     None => continue,
                 }
@@ -132,7 +138,7 @@ impl TagTable {
             for tag in tags
                 .iter()
                 .map(|t| t.to_string())
-                .chain(implicit_tags_str(get_filename_str(curpath)?))
+                .chain(implicit_tags_str(get_filename_str(abs_dir)?))
             {
                 inherited.tag_indices.push(Self::get_tag_index(
                     tag,
@@ -158,7 +164,7 @@ impl TagTable {
                 if found {
                     table.add_file(
                         {
-                            let mut relpath = relpath.to_path_buf();
+                            let mut relpath = rel_dir.to_path_buf();
                             relpath.push(child.name());
                             relpath
                         },
