@@ -124,7 +124,7 @@ impl TagTable {
             inherited.update(depth)?;
             let DirData {
                 tags,
-                files,
+                globs,
                 desc: _,
             } = {
                 match get_ftag_path::<true>(curpath) {
@@ -145,13 +145,13 @@ impl TagTable {
                 ));
             }
             // Process all files in the directory.
-            gmatcher.find_matches(children, &files, false);
+            gmatcher.find_matches(children, &globs, false);
             for (ci, child) in children.iter().enumerate() {
                 filetags.clear();
                 let mut found: bool = false;
                 for fi in gmatcher.matched_globs(ci) {
                     found = true;
-                    filetags.extend(files[fi].tags.iter().map(|t| t.to_string()));
+                    filetags.extend(globs[fi].tags.iter().map(|t| t.to_string()));
                     filetags.extend(implicit_tags_str(
                         child
                             .name()

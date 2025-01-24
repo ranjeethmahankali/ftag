@@ -2,7 +2,7 @@ use crate::{
     filter::FilterParseError,
     load::{
         get_filename_str, get_ftag_backup_path, get_ftag_path, implicit_tags_str, DirData,
-        FileData, FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
+        FileLoadingOptions, GlobData, GlobMatches, Loader, LoaderOptions,
     },
     walk::DirWalker,
 };
@@ -94,7 +94,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
     let mut missing: Vec<GlobInfo> = Vec::new();
     while let Some((_depth, dirpath, relpath, children)) = walker.next() {
         let DirData {
-            files,
+            globs,
             desc: _,
             tags: _,
         } = {
@@ -103,8 +103,8 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
                 None => continue,
             }
         };
-        matcher.find_matches(children, &files, true);
-        missing.extend(files.iter().enumerate().filter_map(|(i, f)| {
+        matcher.find_matches(children, &globs, true);
+        missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
             if !matcher.is_glob_matched(i) {
                 Some(GlobInfo {
                     glob: f.path.to_string(),
@@ -190,7 +190,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
     ));
     let mut valid: Vec<FileDataOwned> = Vec::new();
     while let Some((_depth, dirpath, _relpath, children)) = walker.next() {
-        let (path, DirData { files, desc, tags }) = {
+        let (path, DirData { globs, desc, tags }) = {
             match get_ftag_path::<true>(dirpath) {
                 Some(path) => {
                     let dirdata = loader.load(&path)?;
@@ -199,9 +199,9 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
                 None => continue,
             }
         };
-        matcher.find_matches(children, &files, true);
+        matcher.find_matches(children, &globs, true);
         valid.clear();
-        valid.extend(files.iter().enumerate().filter_map(|(i, f)| {
+        valid.extend(globs.iter().enumerate().filter_map(|(i, f)| {
             if matcher.is_glob_matched(i) {
                 let mut tags: Vec<String> = f.tags.iter().map(|t| t.to_string()).collect();
                 tags.sort();
@@ -323,7 +323,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
             file_desc: true,
         },
     ));
-    let DirData { desc, tags, files } = {
+    let DirData { desc, tags, globs } = {
         match get_ftag_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
             None => return Err(Error::InvalidPath(path.to_path_buf())),
@@ -339,11 +339,11 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
         .ok_or(Error::InvalidPath(path.to_path_buf()))?
         .to_str()
         .ok_or(Error::InvalidPath(path.to_path_buf()))?;
-    for FileData {
+    for GlobData {
         path: pattern,
         desc: fdesc,
         tags: ftags,
-    } in files
+    } in globs
     {
         if glob_match(pattern, filenamestr) {
             outtags.extend(
@@ -370,7 +370,7 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
     let DirData {
         desc,
         tags,
-        files: _,
+        globs: _,
     } = {
         match get_ftag_path::<true>(path) {
             Some(storepath) => loader.load(&storepath)?,
@@ -402,7 +402,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
     ));
     while let Some((_depth, dirpath, relpath, children)) = walker.next() {
         let DirData {
-            files: patterns,
+            globs: patterns,
             desc: _,
             tags: _,
         }: DirData = {
@@ -448,7 +448,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
     while let Some((_depth, dirpath, _relpath, _filenames)) = walker.next() {
         let DirData {
             mut tags,
-            mut files,
+            globs: mut files,
             desc: _,
         } = {
             match get_ftag_path::<true>(dirpath) {
@@ -508,14 +508,14 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         }
     };
     while let Some((_depth, dirpath, _relpath, _filenames)) = walker.next() {
-        let DirData { tags, files, desc } = {
+        let DirData { tags, globs, desc } = {
             match get_ftag_path::<true>(dirpath) {
                 Some(path) => loader.load(&path)?,
                 None => continue,
             }
         };
         let dirmatch = match_fn(&tags, desc);
-        for filepath in files.iter().filter_map(|f| {
+        for filepath in globs.iter().filter_map(|f| {
             if dirmatch || match_fn(&f.tags, f.desc) {
                 Some(f.path)
             } else {
