@@ -5,7 +5,7 @@ use crate::{
         get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
         GlobMatches, Loader, LoaderOptions,
     },
-    walk::{VisitedDir, DirWalker},
+    walk::{DirWalker, VisitedDir},
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

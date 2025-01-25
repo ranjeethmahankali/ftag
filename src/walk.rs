@@ -64,7 +64,7 @@ impl DirWalker {
     /// Move on to the next directory. Returns a tuple containing the depth of
     /// the directory, its absolute path, its path relative to the root of the
     /// walk, and a slice containing info about the files in this directory.
-    pub(crate) fn next<'a>(&'a mut self) -> Option<VisitedDir<'a>> {
+    pub(crate) fn next(&mut self) -> Option<VisitedDir> {
         while let Some(DirEntry {
             depth,
             entry_type,

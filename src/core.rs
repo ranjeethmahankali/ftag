@@ -4,7 +4,7 @@ use crate::{
         get_filename_str, get_ftag_backup_path, get_ftag_path, implicit_tags_str, DirData,
         FileLoadingOptions, GlobData, GlobMatches, Loader, LoaderOptions,
     },
-    walk::{VisitedDir, DirWalker},
+    walk::{DirWalker, VisitedDir},
 };
 use std::{
     fmt::Debug,
