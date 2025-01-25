@@ -5,7 +5,7 @@ use crate::{
         get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
         GlobMatches, Loader, LoaderOptions,
     },
-    walk::{DirUnit, DirWalker},
+    walk::{VisitedDir, DirWalker},
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -120,7 +120,7 @@ impl TagTable {
                 file_desc: false,
             },
         ));
-        while let Some(DirUnit {
+        while let Some(VisitedDir {
             depth,
             abs_dir,
             rel_dir,

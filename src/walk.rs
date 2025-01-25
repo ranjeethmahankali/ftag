@@ -36,7 +36,7 @@ pub(crate) struct DirWalker {
     num_children: usize,
 }
 
-pub(crate) struct DirUnit<'a> {
+pub(crate) struct VisitedDir<'a> {
     pub(crate) depth: usize,
     pub(crate) abs_dir: &'a Path,
     pub(crate) rel_dir: &'a Path,
@@ -64,7 +64,7 @@ impl DirWalker {
     /// Move on to the next directory. Returns a tuple containing the depth of
     /// the directory, its absolute path, its path relative to the root of the
     /// walk, and a slice containing info about the files in this directory.
-    pub(crate) fn next<'a>(&'a mut self) -> Option<DirUnit<'a>> {
+    pub(crate) fn next<'a>(&'a mut self) -> Option<VisitedDir<'a>> {
         while let Some(DirEntry {
             depth,
             entry_type,
@@ -123,7 +123,7 @@ impl DirWalker {
                         (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
                     });
                     let children = &self.stack[(self.stack.len() - numfiles)..];
-                    return Some(DirUnit {
+                    return Some(VisitedDir {
                         depth,
                         abs_dir: &self.cur_dir,
                         rel_dir: &self.rel_dir,
