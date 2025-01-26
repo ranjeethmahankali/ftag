@@ -20,12 +20,6 @@ fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
     flags[index] = true;
 }
 
-/// Read the flag at the given index in the slice. If the index is outside the
-/// bounds false is returned safely.
-pub(crate) fn safe_get_flag(flags: &[bool], index: usize) -> bool {
-    *flags.get(index).unwrap_or(&false)
-}
-
 /*
 When a tags are specified for a folder, it's subfolders and all their subfolders
 inherit those tags. This inheritance follows the directory tree. When
