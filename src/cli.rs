@@ -33,7 +33,6 @@ fn main() -> Result<(), Error> {
         let filter = matches
             .get_one::<String>(arg::FILTER)
             .ok_or(Error::InvalidArgs)?;
-
         if let Some(true) = matches.get_one(arg::SORTED) {
             run_query_sorted(current_dir, filter)
         } else {
@@ -77,7 +76,11 @@ fn main() -> Result<(), Error> {
         }
         return Ok(());
     } else if let Some(_matches) = matches.subcommand_matches(cmd::TAGS) {
-        println!("{}", get_all_tags(current_dir)?.join("\n"));
+        let mut tags: Box<[String]> = get_all_tags(current_dir)?.collect();
+        tags.sort();
+        for tag in tags {
+            println!("{}", tag);
+        }
         return Ok(());
     } else {
         return Err(Error::InvalidArgs);
@@ -132,7 +135,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
                     let last = if last == 0 { last } else { last + 1 };
                     (&word[..last], &word[last..])
                 };
-                for tag in tags.iter().filter(|t| t.starts_with(right)) {
+                for tag in tags.filter(|t| t.starts_with(right)) {
                     println!("{left}{}", tag);
                 }
             }

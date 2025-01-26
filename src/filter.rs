@@ -1,4 +1,3 @@
-use crate::query::safe_get_flag;
 use std::fmt::{Debug, Display};
 
 pub enum FilterParseError {
@@ -69,7 +68,7 @@ impl<T: TagData> Filter<T> {
 impl Filter<usize> {
     pub fn eval(&self, flags: &[bool]) -> bool {
         match self {
-            Tag(ti) => safe_get_flag(flags, *ti),
+            Tag(ti) => *flags.get(*ti).unwrap_or(&false),
             And(lhs, rhs) => lhs.eval(flags) && rhs.eval(flags),
             Or(lhs, rhs) => lhs.eval(flags) || rhs.eval(flags),
             Not(input) => !input.eval(flags),

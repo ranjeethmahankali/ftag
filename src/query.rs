@@ -7,7 +7,7 @@ use crate::{
     },
     walk::{DirWalker, VisitedDir},
 };
-use std::collections::HashMap;
+use ahash::AHashMap;
 use std::path::{Path, PathBuf};
 
 /// Tries to set the flag at the given index. If the index is outside the bounds
@@ -18,12 +18,6 @@ fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
         flags.resize(index + 1, false);
     }
     flags[index] = true;
-}
-
-/// Read the flag at the given index in the slice. If the index is outside the
-/// bounds false is returned safely.
-pub(crate) fn safe_get_flag(flags: &[bool], index: usize) -> bool {
-    *flags.get(index).unwrap_or(&false)
 }
 
 /*
@@ -70,8 +64,8 @@ impl InheritedTags {
 /// Table of all files and tags, that can be loaded recursively from any path.
 pub(crate) struct TagTable {
     root: PathBuf,
-    tag_index_map: HashMap<String, usize>,
-    table: HashMap<PathBuf, Vec<bool>>,
+    tag_index_map: AHashMap<String, usize>,
+    table: AHashMap<PathBuf, Vec<bool>>,
 }
 
 impl TagTable {
@@ -100,10 +94,9 @@ impl TagTable {
     pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, Error> {
         let mut table = TagTable {
             root: dirpath,
-            tag_index_map: HashMap::new(),
-            table: HashMap::new(),
+            tag_index_map: AHashMap::new(),
+            table: AHashMap::new(),
         };
-        let mut num_tags: usize = 0;
         let mut inherited = InheritedTags {
             tag_indices: Vec::new(),
             offsets: Vec::new(),
@@ -122,8 +115,8 @@ impl TagTable {
         ));
         while let Some(VisitedDir {
             depth,
-            abs_dir,
-            rel_dir,
+            abs_path: abs_dir,
+            rel_path: rel_dir,
             files,
         }) = walker.next()
         {
@@ -140,28 +133,25 @@ impl TagTable {
                 .map(|t| t.to_string())
                 .chain(implicit_tags_str(get_filename_str(abs_dir)?))
             {
-                inherited.tag_indices.push(Self::get_tag_index(
-                    tag,
-                    &mut table.tag_index_map,
-                    &mut num_tags,
-                ));
+                inherited
+                    .tag_indices
+                    .push(Self::get_tag_index(tag, &mut table.tag_index_map));
             }
             // Process all files in the directory.
             gmatcher.find_matches(files, &globs, false);
             for (ci, child) in files.iter().enumerate() {
                 filetags.clear();
-                let mut found: bool = false;
-                for fi in gmatcher.matched_globs(ci) {
-                    found = true;
-                    filetags.extend(globs[fi].tags.iter().map(|t| t.to_string()));
+                let found = gmatcher.matched_globs(ci).fold(false, |_, gi| {
+                    filetags.extend(globs[gi].tags.iter().map(|t| t.to_string()));
+                    true
+                });
+                if found {
                     filetags.extend(implicit_tags_str(
                         child
                             .name()
                             .to_str()
                             .ok_or(Error::InvalidPath(child.name().into()))?,
                     ));
-                }
-                if found {
                     table.add_file(
                         {
                             let mut relpath = rel_dir.to_path_buf();
@@ -169,7 +159,6 @@ impl TagTable {
                             relpath
                         },
                         &mut filetags,
-                        &mut num_tags,
                         &inherited.tag_indices,
                     );
                 }
@@ -178,28 +167,17 @@ impl TagTable {
         Ok(table)
     }
 
-    fn get_tag_index(tag: String, map: &mut HashMap<String, usize>, counter: &mut usize) -> usize {
+    fn get_tag_index(tag: String, map: &mut AHashMap<String, usize>) -> usize {
         let size = map.len();
         let entry = *(map.entry(tag.to_string()).or_insert(size));
-        *counter = map.len();
         entry
     }
 
-    fn add_file(
-        &mut self,
-        path: PathBuf,
-        tags: &mut Vec<String>,
-        num_tags: &mut usize,
-        inherited: &Vec<usize>,
-    ) {
+    fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &Vec<usize>) {
         let flags = self.table.entry(path).or_default();
         // Set the file's explicit tags.
-        flags.reserve(flags.len() + tags.len());
         for tag in tags.drain(..) {
-            safe_set_flag(
-                flags,
-                Self::get_tag_index(tag, &mut self.tag_index_map, num_tags),
-            );
+            safe_set_flag(flags, Self::get_tag_index(tag, &mut self.tag_index_map));
         }
         // Set inherited tags.
         for i in inherited {
@@ -275,7 +253,7 @@ pub struct DenseTagTable {
     flags: BoolTable,
     files: Box<[String]>,
     tags: Box<[String]>,
-    tag_indices: HashMap<String, usize>,
+    tag_indices: AHashMap<String, usize>,
 }
 
 impl DenseTagTable {
