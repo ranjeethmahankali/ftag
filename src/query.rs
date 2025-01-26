@@ -147,18 +147,17 @@ impl TagTable {
             gmatcher.find_matches(files, &globs, false);
             for (ci, child) in files.iter().enumerate() {
                 filetags.clear();
-                let mut found: bool = false;
-                for fi in gmatcher.matched_globs(ci) {
-                    found = true;
-                    filetags.extend(globs[fi].tags.iter().map(|t| t.to_string()));
+                let found = gmatcher.matched_globs(ci).fold(false, |_, gi| {
+                    filetags.extend(globs[gi].tags.iter().map(|t| t.to_string()));
+                    true
+                });
+                if found {
                     filetags.extend(implicit_tags_str(
                         child
                             .name()
                             .to_str()
                             .ok_or(Error::InvalidPath(child.name().into()))?,
                     ));
-                }
-                if found {
                     table.add_file(
                         {
                             let mut relpath = rel_dir.to_path_buf();

@@ -165,7 +165,7 @@ impl GlobMatches {
 
     /// For a given file at `file_index`, get indices of all globs
     /// that matched the file.
-    pub fn matched_globs(&self, file_index: usize) -> impl Iterator<Item = usize> + '_ {
+    pub fn matched_globs(&self, file_index: usize) -> impl Iterator<Item = usize> + use<'_> {
         (0..self.num_globs).filter(move |gi| self.row(*gi)[file_index])
     }
 
