@@ -182,7 +182,7 @@ impl TagTable {
     fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &Vec<usize>) {
         let flags = self.table.entry(path).or_default();
         // Set the file's explicit tags.
-        flags.reserve(flags.len() + tags.len());
+        flags.reserve(tags.len());
         for tag in tags.drain(..) {
             safe_set_flag(flags, Self::get_tag_index(tag, &mut self.tag_index_map));
         }
