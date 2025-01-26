@@ -391,9 +391,9 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
 /// Recursively traverse the directories starting from `root` and
 /// return all files that are not tracked.
 pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
-    use fast_glob::glob_match;
     let mut walker = DirWalker::new(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
+    let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
         false,
         false,
@@ -423,14 +423,15 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
                 }
             }
         };
-        untracked.extend(files.iter().filter_map(|child| {
-            let fnamestr = child.name().to_str()?;
-            if globs.iter().any(|p| glob_match(p.path, fnamestr)) {
-                None
-            } else {
-                let mut relpath = rel_path.to_path_buf();
-                relpath.push(child.name());
-                Some(relpath)
+        matcher.find_matches(&files, &globs, false);
+        untracked.extend(files.iter().enumerate().filter_map(|(fi, file)| {
+            match matcher.matched_globs(fi).next() {
+                Some(_) => None,
+                None => {
+                    let mut relpath = rel_path.to_path_buf();
+                    relpath.push(file.name());
+                    Some(relpath)
+                }
             }
         }));
     }
