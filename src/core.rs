@@ -94,8 +94,8 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
     ));
     let mut missing: Vec<GlobInfo> = Vec::new();
     while let Some(VisitedDir {
-        abs_dir,
-        rel_dir,
+        abs_path: abs_dir,
+        rel_path: rel_dir,
         files,
         ..
     }) = walker.next()
@@ -192,7 +192,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         },
     ));
     let mut valid: Vec<FileDataOwned> = Vec::new();
-    while let Some(VisitedDir { abs_dir, files, .. }) = walker.next() {
+    while let Some(VisitedDir { abs_path: abs_dir, files, .. }) = walker.next() {
         let (path, DirData { globs, desc, tags }) = {
             match get_ftag_path::<true>(abs_dir) {
                 Some(path) => {
@@ -400,8 +400,8 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
         },
     ));
     while let Some(VisitedDir {
-        abs_dir,
-        rel_dir,
+        abs_path: abs_dir,
+        rel_path: rel_dir,
         files,
         ..
     }) = walker.next()
@@ -447,7 +447,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
             file_desc: false,
         },
     ));
-    while let Some(VisitedDir { abs_dir, .. }) = walker.next() {
+    while let Some(VisitedDir { abs_path: abs_dir, .. }) = walker.next() {
         let DirData {
             mut tags,
             mut globs,
@@ -507,7 +507,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
             None => false,
         }
     };
-    while let Some(VisitedDir { abs_dir, .. }) = walker.next() {
+    while let Some(VisitedDir { abs_path: abs_dir, .. }) = walker.next() {
         let DirData { tags, globs, desc } = {
             match get_ftag_path::<true>(abs_dir) {
                 Some(path) => loader.load(&path)?,
