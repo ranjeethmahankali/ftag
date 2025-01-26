@@ -423,8 +423,10 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
                 }
             }
         };
-        matcher.find_matches(&files, &globs, false);
+        matcher.find_matches(files, &globs, false);
         untracked.extend(files.iter().enumerate().filter_map(|(fi, file)| {
+            // Skip the files that matched with at least one glob. Copy the
+            // paths of files that didn't match with any glob.
             match matcher.matched_globs(fi).next() {
                 Some(_) => None,
                 None => {
