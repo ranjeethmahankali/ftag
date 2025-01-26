@@ -7,7 +7,7 @@ use crate::{
     },
     walk::{DirWalker, VisitedDir},
 };
-use std::collections::HashMap;
+use ahash::AHashMap;
 use std::path::{Path, PathBuf};
 
 /// Tries to set the flag at the given index. If the index is outside the bounds
@@ -70,8 +70,8 @@ impl InheritedTags {
 /// Table of all files and tags, that can be loaded recursively from any path.
 pub(crate) struct TagTable {
     root: PathBuf,
-    tag_index_map: HashMap<String, usize>,
-    table: HashMap<PathBuf, Vec<bool>>,
+    tag_index_map: AHashMap<String, usize>,
+    table: AHashMap<PathBuf, Vec<bool>>,
 }
 
 impl TagTable {
@@ -100,8 +100,8 @@ impl TagTable {
     pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, Error> {
         let mut table = TagTable {
             root: dirpath,
-            tag_index_map: HashMap::new(),
-            table: HashMap::new(),
+            tag_index_map: AHashMap::new(),
+            table: AHashMap::new(),
         };
         let mut inherited = InheritedTags {
             tag_indices: Vec::new(),
@@ -173,7 +173,7 @@ impl TagTable {
         Ok(table)
     }
 
-    fn get_tag_index(tag: String, map: &mut HashMap<String, usize>) -> usize {
+    fn get_tag_index(tag: String, map: &mut AHashMap<String, usize>) -> usize {
         let size = map.len();
         let entry = *(map.entry(tag.to_string()).or_insert(size));
         entry
@@ -182,7 +182,7 @@ impl TagTable {
     fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &Vec<usize>) {
         let flags = self.table.entry(path).or_default();
         // Set the file's explicit tags.
-        flags.reserve(tags.len());
+        flags.reserve(inherited.len() + tags.len());
         for tag in tags.drain(..) {
             safe_set_flag(flags, Self::get_tag_index(tag, &mut self.tag_index_map));
         }
@@ -260,7 +260,7 @@ pub struct DenseTagTable {
     flags: BoolTable,
     files: Box<[String]>,
     tags: Box<[String]>,
-    tag_indices: HashMap<String, usize>,
+    tag_indices: AHashMap<String, usize>,
 }
 
 impl DenseTagTable {
