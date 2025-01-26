@@ -77,7 +77,9 @@ fn main() -> Result<(), Error> {
         }
         return Ok(());
     } else if let Some(_matches) = matches.subcommand_matches(cmd::TAGS) {
-        println!("{}", get_all_tags(current_dir)?.join("\n"));
+        for tag in get_all_tags(current_dir)? {
+            println!("{}", tag);
+        }
         return Ok(());
     } else {
         return Err(Error::InvalidArgs);
@@ -132,7 +134,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
                     let last = if last == 0 { last } else { last + 1 };
                     (&word[..last], &word[last..])
                 };
-                for tag in tags.iter().filter(|t| t.starts_with(right)) {
+                for tag in tags.filter(|t| t.starts_with(right)) {
                     println!("{left}{}", tag);
                 }
             }

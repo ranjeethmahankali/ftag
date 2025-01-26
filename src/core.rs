@@ -7,6 +7,7 @@ use crate::{
     walk::{DirWalker, VisitedDir},
 };
 use std::{
+    collections::HashSet,
     fmt::Debug,
     fs::OpenOptions,
     io,
@@ -434,8 +435,9 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 }
 
 /// Recursively traverse the directories from `path` and get all tags.
-pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
-    let mut alltags: Vec<String> = Vec::new();
+pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error> {
+    let mut alltags: HashSet<String> = HashSet::new();
+    // let mut alltags: Vec<String> = Vec::new();
     let mut walker = DirWalker::new(path)?;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
@@ -471,9 +473,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<Vec<String>, Error> {
             );
         }
     }
-    alltags.sort();
-    alltags.dedup();
-    Ok(alltags)
+    Ok(alltags.into_iter())
 }
 
 pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
