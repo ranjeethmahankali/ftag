@@ -6,8 +6,8 @@ use crate::{
     },
     walk::{DirWalker, VisitedDir},
 };
+use ahash::AHashSet;
 use std::{
-    collections::HashSet,
     fmt::Debug,
     fs::OpenOptions,
     io,
@@ -436,7 +436,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 
 /// Recursively traverse the directories from `path` and get all tags.
 pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error> {
-    let mut alltags: HashSet<String> = HashSet::new();
+    let mut alltags: AHashSet<String> = AHashSet::new();
     // let mut alltags: Vec<String> = Vec::new();
     let mut walker = DirWalker::new(path)?;
     let mut loader = Loader::new(LoaderOptions::new(
