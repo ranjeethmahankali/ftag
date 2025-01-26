@@ -75,18 +75,11 @@ fn main() -> Result<(), Error> {
             println!("{}", path.display());
         }
         return Ok(());
-    } else if let Some(matches) = matches.subcommand_matches(cmd::TAGS) {
-        if let Some(true) = matches.get_one(arg::SORTED) {
-            let mut tags: Box<[String]> = get_all_tags(current_dir)?.collect();
-            println!("Sorting tags");
-            tags.sort();
-            for tag in tags {
-                println!("{}", tag);
-            }
-        } else {
-            for tag in get_all_tags(current_dir)? {
-                println!("{}", tag);
-            }
+    } else if let Some(_matches) = matches.subcommand_matches(cmd::TAGS) {
+        let mut tags: Box<[String]> = get_all_tags(current_dir)?.collect();
+        tags.sort();
+        for tag in tags {
+            println!("{}", tag);
         }
         return Ok(());
     } else {
@@ -223,16 +216,7 @@ fn parse_args() -> clap::ArgMatches {
         )
         .subcommand(clap::Command::new(cmd::CLEAN).about(about::CLEAN))
         .subcommand(clap::Command::new(cmd::UNTRACKED).about(about::UNTRACKED))
-        .subcommand(
-            clap::Command::new(cmd::TAGS).about(about::TAGS).arg(
-                Arg::new(arg::SORTED)
-                    .long("sorted")
-                    .short('s')
-                    .action(ArgAction::SetTrue)
-                    .help(about::TAGS_SORTED)
-                    .long_help(about::TAGS_SORTED_LONG),
-            ),
-        )
+        .subcommand(clap::Command::new(cmd::TAGS).about(about::TAGS))
         .subcommand(
             clap::Command::new(cmd::BASH_COMPLETE)
                 .arg(Arg::new(arg::BASH_COMPLETE_WORDS).num_args(3)),
@@ -278,8 +262,6 @@ that either have both 'foo' and 'bar' tags, or don't have the 'baz'
 tag.";
     pub const QUERY_SORTED: &str = "Sort query results before outputting.";
     pub const QUERY_SORTED_LONG: &str = "After applying the filter, sort all results alphabetically by filename before outputting them.";
-    pub const TAGS_SORTED: &str = "Sort the tags before outputting.";
-    pub const TAGS_SORTED_LONG: &str = "The tags are sorted before they're printed to the terminal. This may incur a slight increase in memory ussage and performance.";
     pub const SEARCH: &str = "Search all tags and descriptions for the given keywords";
     pub const SEARCH_STR: &str = "A string of keywords to search for.";
     pub const SEARCH_STR_LONG: &str = "Any file that contains any of the keywords in this string in either it's tags or description will included in the output.";
