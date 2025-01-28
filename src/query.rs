@@ -7,7 +7,7 @@ use crate::{
     },
     walk::{DirTree, VisitedDir},
 };
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
 
 /// Tries to set the flag at the given index. If the index is outside the bounds
@@ -203,8 +203,65 @@ impl TagMaker<usize> for TagTable {
 
 /// Returns the number of files and the number of tags.
 pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
-    let tt = TagTable::from_dir(path)?;
-    Ok((tt.table.len(), tt.tag_index_map.len()))
+    let mut matcher = GlobMatches::new();
+    DirTree::new(
+        path,
+        Loader::new(LoaderOptions::new(
+            true,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: false,
+            },
+        )),
+    )?
+    .walk()
+    .try_fold(
+        (AHashSet::new(), AHashSet::new()),
+        move |(mut allfiles, mut alltags),
+              VisitedDir {
+                  rel_dir_path,
+                  files,
+                  metadata,
+                  ..
+              }| {
+            match metadata {
+                Some(Err(e)) => Err(e),
+                Some(Ok(DirData { tags, globs, .. })) => {
+                    // Collect all tags.
+                    alltags.extend(
+                        tags.iter()
+                            .map(|t| t.to_string())
+                            .chain(implicit_tags_str(get_filename_str(rel_dir_path)?)),
+                    );
+                    for gdata in globs.iter() {
+                        alltags.extend(
+                            gdata
+                                .tags
+                                .iter()
+                                .map(|t| t.to_string())
+                                .chain(implicit_tags_str(gdata.path)),
+                        );
+                    }
+                    // Collect all tracked files.
+                    matcher.find_matches(files, &globs, false);
+                    allfiles.extend(files.iter().enumerate().filter_map(|(fi, file)| {
+                        match matcher.matched_globs(fi).next() {
+                            Some(_) => {
+                                let mut relpath = rel_dir_path.to_path_buf();
+                                relpath.push(file.name());
+                                Some(relpath)
+                            }
+                            None => None,
+                        }
+                    }));
+                    Ok((allfiles, alltags))
+                }
+                None => Ok((allfiles, alltags)), // No metadata, just forward received data.
+            }
+        },
+    )
+    .map(|(files, tags)| (files.len(), tags.len()))
 }
 
 pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
