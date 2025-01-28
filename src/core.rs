@@ -504,7 +504,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         .split(|c: char| !c.is_alphanumeric())
         .map(|word| word.trim().to_lowercase())
         .collect();
-    let match_fn = |tags: &[&str], desc: Option<&str>| {
+    let match_fn = move |tags: &[&str], desc: Option<&str>| {
         tags.iter().any(|tag| {
             // Check if tag matches
             let lower = tag.to_lowercase();
@@ -520,7 +520,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
             None => false,
         }
     };
-    for VisitedDir { metadata, .. } in DirTree::new(
+    DirTree::new(
         path,
         Loader::new(LoaderOptions::new(
             true,
@@ -532,23 +532,23 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         )),
     )?
     .walk()
-    {
-        let DirData { tags, globs, desc } = {
-            match metadata {
-                Some(d) => d?,
-                None => continue,
+    .try_for_each(move |VisitedDir { metadata, .. }| {
+        match metadata {
+            Some(Err(e)) => Err(e),
+            Some(Ok(DirData { tags, globs, desc })) => {
+                let dirmatch = match_fn(&tags, desc);
+                for filepath in globs.iter().filter_map(|f| {
+                    if dirmatch || match_fn(&f.tags, f.desc) {
+                        Some(f.path)
+                    } else {
+                        None
+                    }
+                }) {
+                    println!("{}", filepath);
+                }
+                Ok(())
             }
-        };
-        let dirmatch = match_fn(&tags, desc);
-        for filepath in globs.iter().filter_map(|f| {
-            if dirmatch || match_fn(&f.tags, f.desc) {
-                Some(f.path)
-            } else {
-                None
-            }
-        }) {
-            println!("{}", filepath);
+            None => Ok(()), // No metadata, just keep going.
         }
-    }
-    Ok(())
+    })
 }
