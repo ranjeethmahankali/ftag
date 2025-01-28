@@ -83,13 +83,7 @@ impl Debug for Error {
 /// file on disk.
 pub fn check(path: PathBuf) -> Result<(), Error> {
     let mut matcher = GlobMatches::new();
-    let mut missing: Vec<GlobInfo> = Vec::new();
-    for VisitedDir {
-        rel_dir_path,
-        files,
-        metadata,
-        ..
-    } in DirTree::new(
+    let missing = DirTree::new(
         path.clone(),
         Loader::new(LoaderOptions::new(
             false,
@@ -101,23 +95,33 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
         )),
     )?
     .walk()
-    {
-        let DirData { globs, .. } = match metadata {
-            Some(d) => d?,
-            None => continue,
-        };
-        matcher.find_matches(files, &globs, true);
-        missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
-            if !matcher.is_glob_matched(i) {
-                Some(GlobInfo {
-                    glob: f.path.to_string(),
-                    dirpath: rel_dir_path.to_path_buf(),
-                })
-            } else {
-                None
-            }
-        }));
-    }
+    .try_fold(
+        Vec::new(),
+        |mut missing,
+         VisitedDir {
+             rel_dir_path,
+             files,
+             metadata,
+             ..
+         }| {
+            let DirData { globs, .. } = match metadata {
+                Some(d) => d?,
+                None => return Ok(missing), // No metadata, just forward received data.
+            };
+            matcher.find_matches(files, &globs, true);
+            missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
+                if !matcher.is_glob_matched(i) {
+                    Some(GlobInfo {
+                        glob: f.path.to_string(),
+                        dirpath: rel_dir_path.to_path_buf(),
+                    })
+                } else {
+                    None
+                }
+            }));
+            Ok(missing)
+        },
+    )?;
     if missing.is_empty() {
         Ok(())
     } else {
