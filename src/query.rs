@@ -2,8 +2,8 @@ use crate::{
     core::Error,
     filter::{Filter, TagMaker},
     load::{
-        get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
-        GlobMatches, Loader, LoaderOptions,
+        get_filename_str, implicit_tags_str, DirData, FileLoadingOptions, GlobMatches, Loader,
+        LoaderOptions,
     },
     walk::{DirTree, VisitedDir},
 };
@@ -104,25 +104,29 @@ impl TagTable {
         };
         let mut gmatcher = GlobMatches::new();
         let mut filetags: Vec<String> = Vec::new();
-        let mut loader = Loader::new(LoaderOptions::new(
-            true,
-            false,
-            FileLoadingOptions::Load {
-                file_tags: true,
-                file_desc: false,
-            },
-        ));
         for VisitedDir {
-            traverse_depth: depth,
-            abs_dir_path: abs_dir,
-            rel_dir_path: rel_dir,
+            traverse_depth,
+            abs_dir_path,
+            rel_dir_path,
             files,
-        } in DirTree::new(table.root.clone())?.walk()
+            metadata,
+        } in DirTree::new(
+            table.root.clone(),
+            Loader::new(LoaderOptions::new(
+                true,
+                false,
+                FileLoadingOptions::Load {
+                    file_tags: true,
+                    file_desc: false,
+                },
+            )),
+        )?
+        .walk()
         {
-            inherited.update(depth)?;
+            inherited.update(traverse_depth)?;
             let DirData { tags, globs, .. } = {
-                match get_ftag_path::<true>(abs_dir) {
-                    Some(path) => loader.load(&path)?,
+                match metadata {
+                    Some(d) => d?,
                     None => continue,
                 }
             };
@@ -130,7 +134,7 @@ impl TagTable {
             for tag in tags
                 .iter()
                 .map(|t| t.to_string())
-                .chain(implicit_tags_str(get_filename_str(abs_dir)?))
+                .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
             {
                 inherited
                     .tag_indices
@@ -153,7 +157,7 @@ impl TagTable {
                     ));
                     table.add_file(
                         {
-                            let mut relpath = rel_dir.to_path_buf();
+                            let mut relpath = rel_dir_path.to_path_buf();
                             relpath.push(child.name());
                             relpath
                         },

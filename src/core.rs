@@ -83,27 +83,28 @@ impl Debug for Error {
 /// file on disk.
 pub fn check(path: PathBuf) -> Result<(), Error> {
     let mut matcher = GlobMatches::new();
-    let mut loader = Loader::new(LoaderOptions::new(
-        false,
-        false,
-        FileLoadingOptions::Load {
-            file_tags: false,
-            file_desc: false,
-        },
-    ));
     let mut missing: Vec<GlobInfo> = Vec::new();
     for VisitedDir {
-        abs_dir_path,
         rel_dir_path,
         files,
+        metadata,
         ..
-    } in DirTree::new(path.clone())?.walk()
+    } in DirTree::new(
+        path.clone(),
+        Loader::new(LoaderOptions::new(
+            false,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: false,
+                file_desc: false,
+            },
+        )),
+    )?
+    .walk()
     {
-        let DirData { globs, .. } = {
-            match get_ftag_path::<true>(abs_dir_path) {
-                Some(path) => loader.load(&path)?,
-                None => continue,
-            }
+        let DirData { globs, .. } = match metadata {
+            Some(d) => d?,
+            None => continue,
         };
         matcher.find_matches(files, &globs, true);
         missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
@@ -181,27 +182,25 @@ fn write_desc<T: AsRef<str>>(desc: &Option<T>, w: &mut impl io::Write) -> Result
 
 pub fn clean(path: PathBuf) -> Result<(), Error> {
     let mut matcher = GlobMatches::new();
-    let mut loader = Loader::new(LoaderOptions::new(
-        true,
-        true,
-        FileLoadingOptions::Load {
-            file_tags: true,
-            file_desc: true,
-        },
-    ));
     let mut valid: Vec<FileDataOwned> = Vec::new();
     for VisitedDir {
-        abs_dir_path,
-        files,
-        ..
-    } in DirTree::new(path.clone())?.walk()
+        files, metadata, ..
+    } in DirTree::new(
+        path.clone(),
+        Loader::new(LoaderOptions::new(
+            true,
+            true,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: true,
+            },
+        )),
+    )?
+    .walk()
     {
-        let (path, DirData { globs, desc, tags }) = {
-            match get_ftag_path::<true>(abs_dir_path) {
-                Some(path) => {
-                    let dirdata = loader.load(&path)?;
-                    (path, dirdata)
-                }
+        let DirData { globs, desc, tags } = {
+            match metadata {
+                Some(d) => d?,
                 None => continue,
             }
         };
@@ -228,8 +227,10 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
             std::cmp::Ordering::Greater => std::cmp::Ordering::Greater,
         });
         // Backup existing data.
-        std::fs::copy(&path, get_ftag_backup_path(&path))
-            .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+        if let Some(fpath) = get_ftag_path::<true>(&path) {
+            std::fs::copy(&fpath, get_ftag_backup_path(&path))
+                .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+        }
         let mut writer = io::BufWriter::new(
             OpenOptions::new()
                 .write(true)
@@ -393,25 +394,28 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
 pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
     let mut untracked: Vec<PathBuf> = Vec::new();
     let mut matcher = GlobMatches::new();
-    let mut loader = Loader::new(LoaderOptions::new(
-        false,
-        false,
-        FileLoadingOptions::Load {
-            file_tags: false,
-            file_desc: false,
-        },
-    ));
     for VisitedDir {
-        abs_dir_path,
         rel_dir_path,
         files,
+        metadata,
         ..
-    } in DirTree::new(root.clone())?.walk()
+    } in DirTree::new(
+        root.clone(),
+        Loader::new(LoaderOptions::new(
+            false,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: false,
+                file_desc: false,
+            },
+        )),
+    )?
+    .walk()
     {
         let DirData { globs, .. }: DirData = {
-            match get_ftag_path::<true>(abs_dir_path) {
-                Some(path) => loader.load(&path)?,
-                // Store file doesn't exist so everything is untracked.
+            match metadata {
+                Some(d) => d?,
+                // Metadata doesn't exist so everything is untracked.
                 None => {
                     untracked.extend(files.iter().map(|ch| {
                         let mut relpath = rel_dir_path.to_path_buf();
@@ -442,22 +446,30 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 /// Recursively traverse the directories from `path` and get all tags.
 pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error> {
     let mut alltags: AHashSet<String> = AHashSet::new();
-    let mut loader = Loader::new(LoaderOptions::new(
-        true,
-        false,
-        FileLoadingOptions::Load {
-            file_tags: true,
-            file_desc: false,
-        },
-    ));
-    for VisitedDir { abs_dir_path, .. } in DirTree::new(path)?.walk() {
+    for VisitedDir {
+        abs_dir_path,
+        metadata,
+        ..
+    } in DirTree::new(
+        path,
+        Loader::new(LoaderOptions::new(
+            true,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: false,
+            },
+        )),
+    )?
+    .walk()
+    {
         let DirData {
             mut tags,
             mut globs,
             ..
         } = {
-            match get_ftag_path::<true>(abs_dir_path) {
-                Some(path) => loader.load(&path)?,
+            match metadata {
+                Some(d) => d?,
                 None => continue,
             }
         };
@@ -485,14 +497,6 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         .split(|c: char| !c.is_alphanumeric())
         .map(|word| word.trim().to_lowercase())
         .collect();
-    let mut loader = Loader::new(LoaderOptions::new(
-        true,
-        true,
-        FileLoadingOptions::Load {
-            file_tags: true,
-            file_desc: true,
-        },
-    ));
     let match_fn = |tags: &[&str], desc: Option<&str>| {
         tags.iter().any(|tag| {
             // Check if tag matches
@@ -509,10 +513,22 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
             None => false,
         }
     };
-    for VisitedDir { abs_dir_path, .. } in DirTree::new(path)?.walk() {
+    for VisitedDir { metadata, .. } in DirTree::new(
+        path,
+        Loader::new(LoaderOptions::new(
+            true,
+            true,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: true,
+            },
+        )),
+    )?
+    .walk()
+    {
         let DirData { tags, globs, desc } = {
-            match get_ftag_path::<true>(abs_dir_path) {
-                Some(path) => loader.load(&path)?,
+            match metadata {
+                Some(d) => d?,
                 None => continue,
             }
         };

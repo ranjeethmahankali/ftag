@@ -5,7 +5,10 @@ use std::{
     ptr::NonNull,
 };
 
-use crate::core::{Error, FTAG_BACKUP_FILE, FTAG_FILE};
+use crate::{
+    core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
+    load::{get_ftag_path, DirData, Loader},
+};
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub(crate) enum DirEntryType {
@@ -36,6 +39,7 @@ pub(crate) struct DirTree {
     stack: Vec<DirEntry>,
     cur_depth: usize,
     num_children: usize,
+    loader: Loader,
 }
 
 pub(crate) struct VisitedDir<'a> {
@@ -43,6 +47,7 @@ pub(crate) struct VisitedDir<'a> {
     pub(crate) abs_dir_path: &'a Path,
     pub(crate) rel_dir_path: &'a Path,
     pub(crate) files: &'a [DirEntry],
+    pub(crate) metadata: Option<Result<DirData<'a>, Error>>,
 }
 
 pub(crate) struct DirIter<'a> {
@@ -60,7 +65,7 @@ impl<'a> Iterator for DirIter<'a> {
 }
 
 impl DirTree {
-    pub fn new(rootdir: PathBuf) -> Result<Self, Error> {
+    pub fn new(rootdir: PathBuf, loader: Loader) -> Result<Self, Error> {
         if !rootdir.is_dir() {
             return Err(Error::InvalidPath(rootdir));
         }
@@ -74,6 +79,7 @@ impl DirTree {
             }],
             cur_depth: 0,
             num_children: 0,
+            loader,
         })
     }
 
@@ -146,11 +152,14 @@ impl DirTree {
                         (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
                     });
                     let children = &self.stack[(self.stack.len() - numfiles)..];
+                    let metadata = get_ftag_path::<true>(&self.abs_dir_path)
+                        .map(|path| self.loader.load(&path));
                     return Some(VisitedDir {
                         traverse_depth: depth,
                         abs_dir_path: &self.abs_dir_path,
                         rel_dir_path: &self.rel_dir_path,
                         files: children,
+                        metadata,
                     });
                 }
             }
