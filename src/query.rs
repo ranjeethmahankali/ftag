@@ -102,7 +102,6 @@ impl TagTable {
             offsets: Vec::new(),
             depth: 0,
         };
-        let mut walker = DirTree::new(table.root.clone())?;
         let mut gmatcher = GlobMatches::new();
         let mut filetags: Vec<String> = Vec::new();
         let mut loader = Loader::new(LoaderOptions::new(
@@ -118,7 +117,7 @@ impl TagTable {
             abs_dir_path: abs_dir,
             rel_dir_path: rel_dir,
             files,
-        } in walker.walk()
+        } in DirTree::new(table.root.clone())?.walk()
         {
             inherited.update(depth)?;
             let DirData { tags, globs, .. } = {

@@ -82,7 +82,6 @@ impl Debug for Error {
 /// files, and make sure every listed glob / path matches at least one
 /// file on disk.
 pub fn check(path: PathBuf) -> Result<(), Error> {
-    let mut walker = DirTree::new(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
         false,
@@ -98,7 +97,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
         rel_dir_path,
         files,
         ..
-    } in walker.walk()
+    } in DirTree::new(path.clone())?.walk()
     {
         let DirData { globs, .. } = {
             match get_ftag_path::<true>(abs_dir_path) {
@@ -181,7 +180,6 @@ fn write_desc<T: AsRef<str>>(desc: &Option<T>, w: &mut impl io::Write) -> Result
 }
 
 pub fn clean(path: PathBuf) -> Result<(), Error> {
-    let mut walker = DirTree::new(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
         true,
@@ -196,7 +194,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         abs_dir_path,
         files,
         ..
-    } in walker.walk()
+    } in DirTree::new(path.clone())?.walk()
     {
         let (path, DirData { globs, desc, tags }) = {
             match get_ftag_path::<true>(abs_dir_path) {
@@ -393,7 +391,6 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
 /// Recursively traverse the directories starting from `root` and
 /// return all files that are not tracked.
 pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
-    let mut walker = DirTree::new(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
@@ -409,7 +406,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
         rel_dir_path,
         files,
         ..
-    } in walker.walk()
+    } in DirTree::new(root.clone())?.walk()
     {
         let DirData { globs, .. }: DirData = {
             match get_ftag_path::<true>(abs_dir_path) {
@@ -445,8 +442,6 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 /// Recursively traverse the directories from `path` and get all tags.
 pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error> {
     let mut alltags: AHashSet<String> = AHashSet::new();
-    // let mut alltags: Vec<String> = Vec::new();
-    let mut walker = DirTree::new(path)?;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
         false,
@@ -455,7 +450,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
             file_desc: false,
         },
     ));
-    for VisitedDir { abs_dir_path, .. } in walker.walk() {
+    for VisitedDir { abs_dir_path, .. } in DirTree::new(path)?.walk() {
         let DirData {
             mut tags,
             mut globs,
@@ -490,7 +485,6 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         .split(|c: char| !c.is_alphanumeric())
         .map(|word| word.trim().to_lowercase())
         .collect();
-    let mut walker = DirTree::new(path)?;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
         true,
@@ -515,7 +509,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
             None => false,
         }
     };
-    for VisitedDir { abs_dir_path, .. } in walker.walk() {
+    for VisitedDir { abs_dir_path, .. } in DirTree::new(path)?.walk() {
         let DirData { tags, globs, desc } = {
             match get_ftag_path::<true>(abs_dir_path) {
                 Some(path) => loader.load(&path)?,
