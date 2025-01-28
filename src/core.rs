@@ -508,6 +508,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         .split(|c: char| !c.is_alphanumeric())
         .map(|word| word.trim().to_lowercase())
         .collect();
+
     let match_fn = move |tags: &[&str], desc: Option<&str>| {
         tags.iter().any(|tag| {
             // Check if tag matches

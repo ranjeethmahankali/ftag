@@ -52,7 +52,7 @@ pub(crate) struct VisitedDir<'a> {
 
 pub(crate) struct DirIter<'a> {
     ptr: NonNull<DirTree>,
-    phantom: PhantomData<&'a DirTree>,
+    phantom: PhantomData<&'a mut DirTree>,
 }
 
 impl<'a> Iterator for DirIter<'a> {
@@ -83,7 +83,7 @@ impl DirTree {
         })
     }
 
-    pub fn walk(&mut self) -> DirIter {
+    pub fn walk(&mut self) -> DirIter<'_> {
         DirIter {
             ptr: NonNull::from(self),
             phantom: PhantomData,
