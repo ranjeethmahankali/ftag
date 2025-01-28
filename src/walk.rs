@@ -29,17 +29,17 @@ impl DirEntry {
 /// Recursively walk directories, while caching useful information
 /// about the contents of the directory. The traversal is depth first.
 pub(crate) struct DirWalker {
-    cur_path: PathBuf,
-    rel_path: PathBuf,
+    abs_dir_path: PathBuf,
+    rel_dir_path: PathBuf,
     stack: Vec<DirEntry>,
     cur_depth: usize,
     num_children: usize,
 }
 
 pub(crate) struct VisitedDir<'a> {
-    pub(crate) depth: usize,
-    pub(crate) abs_path: &'a Path,
-    pub(crate) rel_path: &'a Path,
+    pub(crate) traverse_depth: usize,
+    pub(crate) abs_dir_path: &'a Path,
+    pub(crate) rel_dir_path: &'a Path,
     pub(crate) files: &'a [DirEntry],
 }
 
@@ -49,8 +49,8 @@ impl DirWalker {
             return Err(Error::InvalidPath(rootdir));
         }
         Ok(DirWalker {
-            cur_path: rootdir,
-            rel_path: PathBuf::new(),
+            abs_dir_path: rootdir,
+            rel_dir_path: PathBuf::new(),
             stack: vec![DirEntry {
                 depth: 1,
                 entry_type: DirEntryType::Dir,
@@ -75,17 +75,17 @@ impl DirWalker {
                 DirEntryType::File => continue,
                 DirEntryType::Dir => {
                     while self.cur_depth > depth - 1 {
-                        self.cur_path.pop();
-                        self.rel_path.pop();
+                        self.abs_dir_path.pop();
+                        self.rel_dir_path.pop();
                         self.cur_depth -= 1;
                     }
-                    self.cur_path.push(name.clone());
-                    self.rel_path.push(name);
+                    self.abs_dir_path.push(name.clone());
+                    self.rel_dir_path.push(name);
                     self.cur_depth += 1;
                     // Push all children.
                     let mut numfiles = 0;
                     let before = self.stack.len();
-                    if let Ok(entries) = std::fs::read_dir(&self.cur_path) {
+                    if let Ok(entries) = std::fs::read_dir(&self.abs_dir_path) {
                         for child in entries.flatten() {
                             let cname = child.file_name();
                             if cname == OsStr::new(FTAG_FILE)
@@ -124,9 +124,9 @@ impl DirWalker {
                     });
                     let children = &self.stack[(self.stack.len() - numfiles)..];
                     return Some(VisitedDir {
-                        depth,
-                        abs_path: &self.cur_path,
-                        rel_path: &self.rel_path,
+                        traverse_depth: depth,
+                        abs_dir_path: &self.abs_dir_path,
+                        rel_dir_path: &self.rel_dir_path,
                         files: children,
                     });
                 }

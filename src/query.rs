@@ -114,9 +114,9 @@ impl TagTable {
             },
         ));
         while let Some(VisitedDir {
-            depth,
-            abs_path: abs_dir,
-            rel_path: rel_dir,
+            traverse_depth: depth,
+            abs_dir_path: abs_dir,
+            rel_dir_path: rel_dir,
             files,
         }) = walker.next()
         {
