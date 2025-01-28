@@ -70,23 +70,25 @@ pub(crate) struct TagTable {
 
 impl TagTable {
     fn query(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
-        self.table.iter().filter_map(move |(path, flags)| {
-            if filter.eval(flags) {
-                Some(path.display())
-            } else {
-                None
-            }
-        })
+        self.table
+            .iter()
+            .filter_map(move |(path, flags)| match filter.eval(flags) {
+                true => Some(path.display()),
+                false => None,
+            })
     }
 
     fn query_sorted(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
         let mut results: Vec<_> = self
             .table
             .iter()
-            .filter(move |(_, flags)| filter.eval(flags))
+            .filter_map(move |(path, flags)| match filter.eval(flags) {
+                true => Some(path),
+                false => None,
+            })
             .collect();
         results.sort();
-        results.into_iter().map(|(path, _)| path.display())
+        results.into_iter().map(|path| path.display())
     }
 
     /// Create a new tag table by recursively traversing directories
