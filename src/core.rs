@@ -85,14 +85,14 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
     let mut matcher = GlobMatches::new();
     let missing = DirTree::new(
         path.clone(),
-        Loader::new(LoaderOptions::new(
+        LoaderOptions::new(
             false,
             false,
             FileLoadingOptions::Load {
                 file_tags: false,
                 file_desc: false,
             },
-        )),
+        ),
     )?
     .walk()
     .try_fold(
@@ -191,14 +191,14 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         files, metadata, ..
     } in DirTree::new(
         path.clone(),
-        Loader::new(LoaderOptions::new(
+        LoaderOptions::new(
             true,
             true,
             FileLoadingOptions::Load {
                 file_tags: true,
                 file_desc: true,
             },
-        )),
+        ),
     )?
     .walk()
     {
@@ -399,14 +399,14 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
     let mut matcher = GlobMatches::new();
     DirTree::new(
         root.clone(),
-        Loader::new(LoaderOptions::new(
+        LoaderOptions::new(
             false,
             false,
             FileLoadingOptions::Load {
                 file_tags: false,
                 file_desc: false,
             },
-        )),
+        ),
     )?
     .walk()
     .try_fold(
@@ -454,14 +454,14 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error> {
     DirTree::new(
         path,
-        Loader::new(LoaderOptions::new(
+        LoaderOptions::new(
             true,
             false,
             FileLoadingOptions::Load {
                 file_tags: true,
                 file_desc: false,
             },
-        )),
+        ),
     )?
     .walk()
     .try_fold(
@@ -527,14 +527,14 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
     };
     DirTree::new(
         path,
-        Loader::new(LoaderOptions::new(
+        LoaderOptions::new(
             true,
             true,
             FileLoadingOptions::Load {
                 file_tags: true,
                 file_desc: true,
             },
-        )),
+        ),
     )?
     .walk()
     .try_for_each(move |VisitedDir { metadata, .. }| {

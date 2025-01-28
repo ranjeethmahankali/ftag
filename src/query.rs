@@ -2,7 +2,7 @@ use crate::{
     core::Error,
     filter::{Filter, TagMaker},
     load::{
-        get_filename_str, implicit_tags_str, DirData, FileLoadingOptions, GlobMatches, Loader,
+        get_filename_str, implicit_tags_str, DirData, FileLoadingOptions, GlobMatches,
         LoaderOptions,
     },
     walk::{DirTree, VisitedDir},
@@ -114,14 +114,14 @@ impl TagTable {
             metadata,
         } in DirTree::new(
             table.root.clone(),
-            Loader::new(LoaderOptions::new(
+            LoaderOptions::new(
                 true,
                 false,
                 FileLoadingOptions::Load {
                     file_tags: true,
                     file_desc: false,
                 },
-            )),
+            ),
         )?
         .walk()
         {
@@ -206,14 +206,14 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let mut matcher = GlobMatches::new();
     DirTree::new(
         path,
-        Loader::new(LoaderOptions::new(
+        LoaderOptions::new(
             true,
             false,
             FileLoadingOptions::Load {
                 file_tags: true,
                 file_desc: false,
             },
-        )),
+        ),
     )?
     .walk()
     .try_fold(

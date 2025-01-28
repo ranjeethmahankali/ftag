@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
-    load::{get_ftag_path, DirData, Loader},
+    load::{get_ftag_path, DirData, Loader, LoaderOptions},
 };
 
 #[derive(PartialEq, Eq, Copy, Clone)]
@@ -65,7 +65,7 @@ impl<'a> Iterator for DirIter<'a> {
 }
 
 impl DirTree {
-    pub fn new(rootdir: PathBuf, loader: Loader) -> Result<Self, Error> {
+    pub fn new(rootdir: PathBuf, options: LoaderOptions) -> Result<Self, Error> {
         if !rootdir.is_dir() {
             return Err(Error::InvalidPath(rootdir));
         }
@@ -79,7 +79,7 @@ impl DirTree {
             }],
             cur_depth: 0,
             num_children: 0,
-            loader,
+            loader: Loader::new(options),
         })
     }
 
