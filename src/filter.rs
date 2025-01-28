@@ -203,7 +203,7 @@ fn parse_filter<T: TagData>(
         return Err(FilterParseError::MalformedParens);
     }
     push_tag(input, begin, end + 1, &mut stack, tagmaker);
-    return parse_tokens(stack.drain(..));
+    return parse_tokens(stack.into_iter());
 }
 
 /// Reduce the iterator of tokens into a filter.

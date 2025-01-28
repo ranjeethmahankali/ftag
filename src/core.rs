@@ -474,21 +474,17 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
          }| {
             match metadata {
                 Some(Err(e)) => Err(e), // Bail out with error.
-                Some(Ok(DirData {
-                    mut tags,
-                    mut globs,
-                    ..
-                })) => {
+                Some(Ok(DirData { tags, globs, .. })) => {
                     alltags.extend(
-                        tags.drain(..)
+                        tags.into_iter()
                             .map(|t| t.to_string())
                             .chain(implicit_tags_str(get_filename_str(abs_dir_path)?)),
                     );
-                    for mut fdata in globs.drain(..) {
+                    for fdata in globs.into_iter() {
                         alltags.extend(
                             fdata
                                 .tags
-                                .drain(..)
+                                .into_iter()
                                 .map(|t| t.to_string())
                                 .chain(implicit_tags_str(fdata.path)),
                         );
