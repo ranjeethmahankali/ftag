@@ -4,7 +4,7 @@ use crate::{
         get_filename_str, get_ftag_backup_path, get_ftag_path, implicit_tags_str, DirData,
         FileLoadingOptions, GlobData, GlobMatches, Loader, LoaderOptions,
     },
-    walk::{DirWalker, VisitedDir},
+    walk::{DirTree, VisitedDir},
 };
 use ahash::AHashSet;
 use std::{
@@ -82,7 +82,7 @@ impl Debug for Error {
 /// files, and make sure every listed glob / path matches at least one
 /// file on disk.
 pub fn check(path: PathBuf) -> Result<(), Error> {
-    let mut walker = DirWalker::new(path.clone())?;
+    let mut walker = DirTree::new(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
         false,
@@ -93,12 +93,12 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
         },
     ));
     let mut missing: Vec<GlobInfo> = Vec::new();
-    while let Some(VisitedDir {
+    for VisitedDir {
         abs_dir_path,
         rel_dir_path,
         files,
         ..
-    }) = walker.next()
+    } in walker.walk()
     {
         let DirData { globs, .. } = {
             match get_ftag_path::<true>(abs_dir_path) {
@@ -181,7 +181,7 @@ fn write_desc<T: AsRef<str>>(desc: &Option<T>, w: &mut impl io::Write) -> Result
 }
 
 pub fn clean(path: PathBuf) -> Result<(), Error> {
-    let mut walker = DirWalker::new(path.clone())?;
+    let mut walker = DirTree::new(path.clone())?;
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
         true,
@@ -192,11 +192,11 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         },
     ));
     let mut valid: Vec<FileDataOwned> = Vec::new();
-    while let Some(VisitedDir {
+    for VisitedDir {
         abs_dir_path,
         files,
         ..
-    }) = walker.next()
+    } in walker.walk()
     {
         let (path, DirData { globs, desc, tags }) = {
             match get_ftag_path::<true>(abs_dir_path) {
@@ -393,7 +393,7 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
 /// Recursively traverse the directories starting from `root` and
 /// return all files that are not tracked.
 pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
-    let mut walker = DirWalker::new(root.clone())?;
+    let mut walker = DirTree::new(root.clone())?;
     let mut untracked: Vec<PathBuf> = Vec::new();
     let mut matcher = GlobMatches::new();
     let mut loader = Loader::new(LoaderOptions::new(
@@ -404,12 +404,12 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
             file_desc: false,
         },
     ));
-    while let Some(VisitedDir {
+    for VisitedDir {
         abs_dir_path,
         rel_dir_path,
         files,
         ..
-    }) = walker.next()
+    } in walker.walk()
     {
         let DirData { globs, .. }: DirData = {
             match get_ftag_path::<true>(abs_dir_path) {
@@ -446,7 +446,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error> {
     let mut alltags: AHashSet<String> = AHashSet::new();
     // let mut alltags: Vec<String> = Vec::new();
-    let mut walker = DirWalker::new(path)?;
+    let mut walker = DirTree::new(path)?;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
         false,
@@ -455,7 +455,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
             file_desc: false,
         },
     ));
-    while let Some(VisitedDir { abs_dir_path, .. }) = walker.next() {
+    for VisitedDir { abs_dir_path, .. } in walker.walk() {
         let DirData {
             mut tags,
             mut globs,
@@ -490,7 +490,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         .split(|c: char| !c.is_alphanumeric())
         .map(|word| word.trim().to_lowercase())
         .collect();
-    let mut walker = DirWalker::new(path)?;
+    let mut walker = DirTree::new(path)?;
     let mut loader = Loader::new(LoaderOptions::new(
         true,
         true,
@@ -515,7 +515,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
             None => false,
         }
     };
-    while let Some(VisitedDir { abs_dir_path, .. }) = walker.next() {
+    for VisitedDir { abs_dir_path, .. } in walker.walk() {
         let DirData { tags, globs, desc } = {
             match get_ftag_path::<true>(abs_dir_path) {
                 Some(path) => loader.load(&path)?,

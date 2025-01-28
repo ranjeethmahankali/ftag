@@ -5,7 +5,7 @@ use crate::{
         get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
         GlobMatches, Loader, LoaderOptions,
     },
-    walk::{DirWalker, VisitedDir},
+    walk::{DirTree, VisitedDir},
 };
 use ahash::AHashMap;
 use std::path::{Path, PathBuf};
@@ -102,7 +102,7 @@ impl TagTable {
             offsets: Vec::new(),
             depth: 0,
         };
-        let mut walker = DirWalker::new(table.root.clone())?;
+        let mut walker = DirTree::new(table.root.clone())?;
         let mut gmatcher = GlobMatches::new();
         let mut filetags: Vec<String> = Vec::new();
         let mut loader = Loader::new(LoaderOptions::new(
@@ -113,12 +113,12 @@ impl TagTable {
                 file_desc: false,
             },
         ));
-        while let Some(VisitedDir {
+        for VisitedDir {
             traverse_depth: depth,
             abs_dir_path: abs_dir,
             rel_dir_path: rel_dir,
             files,
-        }) = walker.next()
+        } in walker.walk()
         {
             inherited.update(depth)?;
             let DirData { tags, globs, .. } = {
