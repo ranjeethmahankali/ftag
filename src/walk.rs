@@ -83,7 +83,7 @@ impl DirTree {
         })
     }
 
-    pub fn walk<'a>(&'a mut self) -> DirIter<'a> {
+    pub fn walk(&mut self) -> DirIter {
         DirIter {
             ptr: NonNull::from(self),
             phantom: PhantomData,
