@@ -4,7 +4,7 @@ use crate::{
         get_filename_str, get_ftag_backup_path, get_ftag_path, implicit_tags_str, DirData,
         FileLoadingOptions, GlobData, GlobMatches, Loader, LoaderOptions,
     },
-    walk::{DirTree, VisitedDir},
+    walk::{DirTree, MetaData, VisitedDir},
 };
 use ahash::AHashSet;
 use std::{
@@ -104,22 +104,24 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
              metadata,
              ..
          }| {
-            let DirData { globs, .. } = match metadata {
-                Some(d) => d?,
-                None => return Ok(missing), // No metadata, just forward received data.
-            };
-            matcher.find_matches(files, &globs, true);
-            missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
-                if !matcher.is_glob_matched(i) {
-                    Some(GlobInfo {
-                        glob: f.path.to_string(),
-                        dirpath: rel_dir_path.to_path_buf(),
-                    })
-                } else {
-                    None
+            match metadata {
+                MetaData::FailedToLoad(e) => Err(e),
+                MetaData::NotFound => Ok(missing), // No metadata, just forward received data.
+                MetaData::Ok(DirData { globs, .. }) => {
+                    matcher.find_matches(files, &globs, true);
+                    missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
+                        if !matcher.is_glob_matched(i) {
+                            Some(GlobInfo {
+                                glob: f.path.to_string(),
+                                dirpath: rel_dir_path.to_path_buf(),
+                            })
+                        } else {
+                            None
+                        }
+                    }));
+                    Ok(missing)
                 }
-            }));
-            Ok(missing)
+            }
         },
     )?;
     if missing.is_empty() {
@@ -202,11 +204,10 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
     )?
     .walk()
     {
-        let DirData { globs, desc, tags } = {
-            match metadata {
-                Some(d) => d?,
-                None => continue,
-            }
+        let DirData { globs, desc, tags } = match metadata {
+            MetaData::Ok(d) => d,
+            MetaData::NotFound => continue,
+            MetaData::FailedToLoad(e) => return Err(e),
         };
         matcher.find_matches(files, &globs, true);
         valid.clear();
@@ -419,8 +420,8 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
                   ..
               }| {
             match metadata {
-                Some(Err(e)) => Err(e),
-                Some(Ok(DirData { globs, .. })) => {
+                MetaData::FailedToLoad(e) => Err(e),
+                MetaData::Ok(DirData { globs, .. }) => {
                     matcher.find_matches(files, &globs, false);
                     untracked.extend(files.iter().enumerate().filter_map(|(fi, file)| {
                         // Skip the files that matched with at least one glob. Copy the
@@ -436,7 +437,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
                     }));
                     Ok(untracked)
                 }
-                None => {
+                MetaData::NotFound => {
                     // Metadata doesn't exist so everything is untracked.
                     untracked.extend(files.iter().map(|ch| {
                         let mut relpath = rel_dir_path.to_path_buf();
@@ -473,8 +474,8 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
              ..
          }| {
             match metadata {
-                Some(Err(e)) => Err(e), // Bail out with error.
-                Some(Ok(DirData { tags, globs, .. })) => {
+                MetaData::FailedToLoad(e) => Err(e), // Bail out with error.
+                MetaData::Ok(DirData { tags, globs, .. }) => {
                     alltags.extend(
                         tags.into_iter()
                             .map(|t| t.to_string())
@@ -491,7 +492,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                     }
                     Ok(alltags)
                 }
-                None => Ok(alltags), // No metadata, just pass on the tags to the next dir.
+                MetaData::NotFound => Ok(alltags), // No metadata, just pass on the tags to the next dir.
             }
         },
     )
@@ -535,8 +536,8 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
     .walk()
     .try_for_each(move |VisitedDir { metadata, .. }| {
         match metadata {
-            Some(Err(e)) => Err(e),
-            Some(Ok(DirData { tags, globs, desc })) => {
+            MetaData::FailedToLoad(e) => Err(e),
+            MetaData::Ok(DirData { tags, globs, desc }) => {
                 let dirmatch = match_fn(&tags, desc);
                 for filepath in globs.iter().filter_map(|f| {
                     if dirmatch || match_fn(&f.tags, f.desc) {
@@ -549,7 +550,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
                 }
                 Ok(())
             }
-            None => Ok(()), // No metadata, just keep going.
+            MetaData::NotFound => Ok(()), // No metadata, just keep going.
         }
     })
 }

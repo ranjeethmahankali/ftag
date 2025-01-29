@@ -5,7 +5,7 @@ use crate::{
         get_filename_str, implicit_tags_str, DirData, FileLoadingOptions, GlobMatches,
         LoaderOptions,
     },
-    walk::{DirTree, VisitedDir},
+    walk::{DirTree, MetaData, VisitedDir},
 };
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
@@ -126,11 +126,10 @@ impl TagTable {
         .walk()
         {
             inherited.update(traverse_depth)?;
-            let DirData { tags, globs, .. } = {
-                match metadata {
-                    Some(d) => d?,
-                    None => continue,
-                }
+            let DirData { tags, globs, .. } = match metadata {
+                MetaData::Ok(d) => d,
+                MetaData::NotFound => continue,
+                MetaData::FailedToLoad(e) => return Err(e),
             };
             // Push directory tags.
             for tag in tags
@@ -226,8 +225,9 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                   ..
               }| {
             match metadata {
-                Some(Err(e)) => Err(e),
-                Some(Ok(DirData { tags, globs, .. })) => {
+                MetaData::FailedToLoad(e) => Err(e),
+                MetaData::NotFound => Ok((allfiles, alltags)), // No metadata, just forward received data.
+                MetaData::Ok(DirData { tags, globs, .. }) => {
                     // Collect all tags.
                     alltags.extend(
                         tags.iter()
@@ -257,7 +257,6 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                     }));
                     Ok((allfiles, alltags))
                 }
-                None => Ok((allfiles, alltags)), // No metadata, just forward received data.
             }
         },
     )

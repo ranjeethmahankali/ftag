@@ -43,12 +43,18 @@ pub(crate) struct DirTree {
     loader: Loader,
 }
 
+pub(crate) enum MetaData<'a> {
+    Ok(DirData<'a>),
+    NotFound,
+    FailedToLoad(Error),
+}
+
 pub(crate) struct VisitedDir<'a> {
     pub(crate) traverse_depth: usize,
     pub(crate) abs_dir_path: &'a Path,
     pub(crate) rel_dir_path: &'a Path,
     pub(crate) files: &'a [DirEntry],
-    pub(crate) metadata: Option<Result<DirData<'a>, Error>>,
+    pub(crate) metadata: MetaData<'a>,
 }
 
 pub(crate) struct DirIter<'a> {
@@ -164,14 +170,18 @@ impl DirTree {
                         (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
                     });
                     let children = &self.stack[(self.stack.len() - numfiles)..];
-                    let metadata = get_ftag_path::<true>(&self.abs_dir_path)
-                        .map(|path| self.loader.load(&path));
                     return Some(VisitedDir {
                         traverse_depth: depth,
                         abs_dir_path: &self.abs_dir_path,
                         rel_dir_path: &self.rel_dir_path,
                         files: children,
-                        metadata,
+                        metadata: match get_ftag_path::<true>(&self.abs_dir_path) {
+                            Some(fpath) => match self.loader.load(&fpath) {
+                                Ok(data) => MetaData::Ok(data),
+                                Err(e) => MetaData::FailedToLoad(e),
+                            },
+                            None => MetaData::NotFound,
+                        },
                     });
                 }
             }
