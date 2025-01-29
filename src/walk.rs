@@ -34,6 +34,7 @@ impl DirEntry {
 /// Recursively walk directories, while caching useful information
 /// about the contents of the directory. The traversal is depth first.
 pub(crate) struct DirTree {
+    root_dir_path: PathBuf,
     abs_dir_path: PathBuf,
     rel_dir_path: PathBuf,
     stack: Vec<DirEntry>,
@@ -70,20 +71,31 @@ impl DirTree {
             return Err(Error::InvalidPath(rootdir));
         }
         Ok(DirTree {
-            abs_dir_path: rootdir,
-            rel_dir_path: PathBuf::new(),
-            stack: vec![DirEntry {
-                depth: 1,
-                entry_type: DirEntryType::Dir,
-                name: OsString::from(""),
-            }],
+            root_dir_path: rootdir,
+            loader: Loader::new(options),
+            abs_dir_path: Default::default(),
+            rel_dir_path: Default::default(),
+            stack: Default::default(),
             cur_depth: 0,
             num_children: 0,
-            loader: Loader::new(options),
         })
     }
 
+    fn init(&mut self) {
+        self.abs_dir_path = self.root_dir_path.clone();
+        self.rel_dir_path.clear();
+        self.stack.clear();
+        self.stack.push(DirEntry {
+            depth: 1,
+            entry_type: DirEntryType::Dir,
+            name: OsString::new(),
+        });
+        self.cur_depth = 0;
+        self.num_children = 0;
+    }
+
     pub fn walk(&mut self) -> DirIter<'_> {
+        self.init();
         DirIter {
             ptr: NonNull::from(self),
             phantom: PhantomData,
