@@ -499,29 +499,29 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
     .map(|set| set.into_iter()) // Convert to an iterator that takes the ownership of the hashset.
 }
 
+fn match_desc(words: &[String], tags: &[&str], desc: Option<&str>) -> bool {
+    tags.iter().any(|tag| {
+        // Check if tag matches
+        let lower = tag.to_lowercase();
+        words
+            .iter()
+            .any(|word| lower.matches(word).next().is_some())
+    }) || match desc {
+        // Check if description matches.
+        Some(desc) => {
+            let desc = desc.to_lowercase();
+            words.iter().any(|word| desc.matches(word).next().is_some())
+        }
+        None => false,
+    }
+}
+
 pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
     let words: Vec<_> = needle
         .trim()
         .split(|c: char| !c.is_alphanumeric())
         .map(|word| word.trim().to_lowercase())
         .collect();
-
-    let match_fn = move |tags: &[&str], desc: Option<&str>| {
-        tags.iter().any(|tag| {
-            // Check if tag matches
-            let lower = tag.to_lowercase();
-            words
-                .iter()
-                .any(|word| lower.matches(word).next().is_some())
-        }) || match desc {
-            // Check if description matches.
-            Some(desc) => {
-                let desc = desc.to_lowercase();
-                words.iter().any(|word| desc.matches(word).next().is_some())
-            }
-            None => false,
-        }
-    };
     DirTree::new(
         path,
         LoaderOptions::new(
@@ -538,9 +538,9 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         match metadata {
             MetaData::FailedToLoad(e) => Err(e),
             MetaData::Ok(DirData { tags, globs, desc }) => {
-                let dirmatch = match_fn(&tags, desc);
+                let dirmatch = match_desc(&words, &tags, desc);
                 for filepath in globs.iter().filter_map(|f| {
-                    if dirmatch || match_fn(&f.tags, f.desc) {
+                    if dirmatch || match_desc(&words, &f.tags, f.desc) {
                         Some(f.path)
                     } else {
                         None
