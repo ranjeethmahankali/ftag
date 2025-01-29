@@ -66,8 +66,7 @@ impl<'a> Iterator for DirIter<'a> {
     type Item = VisitedDir<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let walker = unsafe { self.ptr.as_mut() };
-        walker.next()
+        unsafe { self.ptr.as_mut() }.next()
     }
 }
 
