@@ -2,12 +2,12 @@ use crate::{
     core::Error,
     filter::{Filter, TagMaker},
     load::{
-        get_filename_str, get_ftag_path, implicit_tags_str, DirData, FileLoadingOptions,
-        GlobMatches, Loader, LoaderOptions,
+        get_filename_str, implicit_tags_str, DirData, FileLoadingOptions, GlobMatches,
+        LoaderOptions,
     },
-    walk::{DirWalker, VisitedDir},
+    walk::{DirTree, MetaData, VisitedDir},
 };
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
 
 /// Tries to set the flag at the given index. If the index is outside the bounds
@@ -69,24 +69,13 @@ pub(crate) struct TagTable {
 }
 
 impl TagTable {
-    fn query(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
-        self.table.iter().filter_map(move |(path, flags)| {
-            if filter.eval(flags) {
-                Some(path.display())
-            } else {
-                None
-            }
-        })
-    }
-
-    fn query_sorted(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
-        let mut results: Vec<_> = self
-            .table
-            .iter()
-            .filter(move |(_, flags)| filter.eval(flags))
-            .collect();
-        results.sort();
-        results.into_iter().map(|(path, _)| path.display())
+    fn into_query(self, filter: Filter<usize>) -> impl Iterator<Item = PathBuf> {
+        self.table
+            .into_iter()
+            .filter_map(move |(path, flags)| match filter.eval(&flags) {
+                true => Some(path),
+                false => None,
+            })
     }
 
     /// Create a new tag table by recursively traversing directories
@@ -102,36 +91,38 @@ impl TagTable {
             offsets: Vec::new(),
             depth: 0,
         };
-        let mut walker = DirWalker::new(table.root.clone())?;
         let mut gmatcher = GlobMatches::new();
         let mut filetags: Vec<String> = Vec::new();
-        let mut loader = Loader::new(LoaderOptions::new(
-            true,
-            false,
-            FileLoadingOptions::Load {
-                file_tags: true,
-                file_desc: false,
-            },
-        ));
+        let mut dir = DirTree::new(
+            table.root.clone(),
+            LoaderOptions::new(
+                true,
+                false,
+                FileLoadingOptions::Load {
+                    file_tags: true,
+                    file_desc: false,
+                },
+            ),
+        )?;
         while let Some(VisitedDir {
-            depth,
-            abs_path: abs_dir,
-            rel_path: rel_dir,
+            traverse_depth,
+            abs_dir_path,
+            rel_dir_path,
             files,
-        }) = walker.next()
+            metadata,
+        }) = dir.walk()
         {
-            inherited.update(depth)?;
-            let DirData { tags, globs, .. } = {
-                match get_ftag_path::<true>(abs_dir) {
-                    Some(path) => loader.load(&path)?,
-                    None => continue,
-                }
+            inherited.update(traverse_depth)?;
+            let DirData { tags, globs, .. } = match metadata {
+                MetaData::Ok(d) => d,
+                MetaData::NotFound => continue,
+                MetaData::FailedToLoad(e) => return Err(e),
             };
             // Push directory tags.
             for tag in tags
                 .iter()
                 .map(|t| t.to_string())
-                .chain(implicit_tags_str(get_filename_str(abs_dir)?))
+                .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
             {
                 inherited
                     .tag_indices
@@ -154,7 +145,7 @@ impl TagTable {
                     ));
                     table.add_file(
                         {
-                            let mut relpath = rel_dir.to_path_buf();
+                            let mut relpath = rel_dir_path.to_path_buf();
                             relpath.push(child.name());
                             relpath
                         },
@@ -198,15 +189,68 @@ impl TagMaker<usize> for TagTable {
 
 /// Returns the number of files and the number of tags.
 pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
-    let tt = TagTable::from_dir(path)?;
-    Ok((tt.table.len(), tt.tag_index_map.len()))
+    let mut matcher = GlobMatches::new();
+    let (mut allfiles, mut alltags) = (AHashSet::new(), AHashSet::new());
+    let mut dir = DirTree::new(
+        path,
+        LoaderOptions::new(
+            true,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: false,
+            },
+        ),
+    )?;
+    while let Some(VisitedDir {
+        rel_dir_path,
+        files,
+        metadata,
+        ..
+    }) = dir.walk()
+    {
+        match metadata {
+            MetaData::FailedToLoad(e) => return Err(e),
+            MetaData::NotFound => continue,
+            MetaData::Ok(DirData { tags, globs, .. }) => {
+                // Collect all tags.
+                alltags.extend(
+                    tags.iter()
+                        .map(|t| t.to_string())
+                        .chain(implicit_tags_str(get_filename_str(rel_dir_path)?)),
+                );
+                for gdata in globs.iter() {
+                    alltags.extend(
+                        gdata
+                            .tags
+                            .iter()
+                            .map(|t| t.to_string())
+                            .chain(implicit_tags_str(gdata.path)),
+                    );
+                }
+                // Collect all tracked files.
+                matcher.find_matches(files, &globs, false);
+                allfiles.extend(files.iter().enumerate().filter_map(|(fi, file)| {
+                    match matcher.matched_globs(fi).next() {
+                        Some(_) => {
+                            let mut relpath = rel_dir_path.to_path_buf();
+                            relpath.push(file.name());
+                            Some(relpath)
+                        }
+                        None => None,
+                    }
+                }));
+            }
+        }
+    }
+    Ok((allfiles.len(), alltags.len()))
 }
 
 pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
-    for path in table.query(filter) {
-        println!("{}", path);
+    for path in table.into_query(filter) {
+        println!("{}", path.display());
     }
     Ok(())
 }
@@ -214,8 +258,10 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
 pub fn run_query_sorted(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
-    for path in table.query_sorted(filter) {
-        println!("{}", path);
+    let mut results: Box<[_]> = table.into_query(filter).collect();
+    results.sort_unstable();
+    for path in results {
+        println!("{}", path.display());
     }
     Ok(())
 }

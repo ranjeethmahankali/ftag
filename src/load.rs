@@ -261,6 +261,28 @@ impl LoaderOptions {
             file_options,
         }
     }
+
+    /// Check whether the file description should be loaded.
+    pub fn include_file_desc(&self) -> bool {
+        match self.file_options {
+            FileLoadingOptions::Skip => false,
+            FileLoadingOptions::Load {
+                file_tags: _,
+                file_desc,
+            } => file_desc,
+        }
+    }
+
+    /// Check whether the file tags should be loaded.
+    pub fn include_file_tags(&self) -> bool {
+        match self.file_options {
+            FileLoadingOptions::Skip => false,
+            FileLoadingOptions::Load {
+                file_tags,
+                file_desc: _,
+            } => file_tags,
+        }
+    }
 }
 
 static AC_PARSER: LazyLock<AhoCorasick> = LazyLock::new(|| {
@@ -306,28 +328,6 @@ impl Loader {
         Loader {
             raw_text: String::new(),
             options,
-        }
-    }
-
-    /// Check whether the file description should be loaded.
-    pub fn include_file_desc(&self) -> bool {
-        match self.options.file_options {
-            FileLoadingOptions::Skip => false,
-            FileLoadingOptions::Load {
-                file_tags: _,
-                file_desc,
-            } => file_desc,
-        }
-    }
-
-    /// Check whether the file tags should be loaded.
-    pub fn include_file_tags(&self) -> bool {
-        match self.options.file_options {
-            FileLoadingOptions::Skip => false,
-            FileLoadingOptions::Load {
-                file_tags,
-                file_desc: _,
-            } => file_tags,
         }
     }
 
@@ -396,7 +396,7 @@ impl Loader {
                 }
                 HeaderType::Tags => {
                     if let Some(file) = &mut curfile {
-                        if self.include_file_tags() {
+                        if self.options.include_file_tags() {
                             let (globs, tags, _desc) = file;
                             if tags.is_empty() {
                                 tags.extend(content.split_whitespace().map(|w| w.trim()));
@@ -423,7 +423,7 @@ impl Loader {
                 }
                 HeaderType::Desc => {
                     if let Some(file) = &mut curfile {
-                        if self.include_file_desc() {
+                        if self.options.include_file_desc() {
                             let (globs, _tags, desc) = file;
                             if desc.is_some() {
                                 return Err(Error::CannotParseFtagFile(
