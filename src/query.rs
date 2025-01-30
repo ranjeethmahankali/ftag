@@ -125,23 +125,23 @@ impl TagTable {
             }
             // Process all files in the directory.
             gmatcher.find_matches(files, &globs, false);
-            for (ci, child) in files.iter().enumerate() {
+            table.files.reserve(files.len());
+            for (fi, file) in files.iter().enumerate() {
                 filetags.clear();
-                let found = gmatcher.matched_globs(ci).fold(false, |_, gi| {
+                let found = gmatcher.matched_globs(fi).fold(false, |_, gi| {
                     filetags.extend(globs[gi].tags.iter().map(|t| t.to_string()));
                     true
                 });
                 if found {
                     filetags.extend(implicit_tags_str(
-                        child
-                            .name()
+                        file.name()
                             .to_str()
-                            .ok_or(Error::InvalidPath(child.name().into()))?,
+                            .ok_or(Error::InvalidPath(file.name().into()))?,
                     ));
                     table.add_file(
                         {
                             let mut relpath = rel_dir_path.to_path_buf();
-                            relpath.push(child.name());
+                            relpath.push(file.name());
                             relpath
                         },
                         &mut filetags,
