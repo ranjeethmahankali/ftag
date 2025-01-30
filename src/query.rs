@@ -70,12 +70,12 @@ pub(crate) struct TagTable {
 
 impl TagTable {
     fn into_query(self, filter: Filter<usize>) -> impl Iterator<Item = PathBuf> {
-        self.table
-            .into_iter()
-            .filter_map(move |(path, flags)| match filter.eval(&flags) {
+        self.table.into_iter().filter_map(move |(path, flags)| {
+            match filter.eval(&|ti| *flags.get(ti).unwrap_or(&false)) {
                 true => Some(path),
                 false => None,
-            })
+            }
+        })
     }
 
     /// Create a new tag table by recursively traversing directories
