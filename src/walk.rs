@@ -128,11 +128,13 @@ impl DirTree {
                     }
                     self.num_children = self.stack.len() - before;
                     // Sort the contents of this folder to move all the files to the end of the stack.
-                    self.stack[before..].sort_by(|a, b| match (a.entry_type, b.entry_type) {
-                        (DirEntryType::File, DirEntryType::File) => a.name.cmp(&b.name),
-                        (DirEntryType::File, DirEntryType::Dir) => std::cmp::Ordering::Greater,
-                        (DirEntryType::Dir, DirEntryType::File) => std::cmp::Ordering::Less,
-                        (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
+                    self.stack[before..].sort_unstable_by(|a, b| {
+                        match (a.entry_type, b.entry_type) {
+                            (DirEntryType::File, DirEntryType::File) => a.name.cmp(&b.name),
+                            (DirEntryType::File, DirEntryType::Dir) => std::cmp::Ordering::Greater,
+                            (DirEntryType::Dir, DirEntryType::File) => std::cmp::Ordering::Less,
+                            (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
+                        }
                     });
                     return Some(VisitedDir {
                         traverse_depth: depth,

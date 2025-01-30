@@ -213,7 +213,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         valid.extend(globs.iter().enumerate().filter_map(|(i, f)| {
             if matcher.is_glob_matched(i) {
                 let mut tags: Vec<String> = f.tags.iter().map(|t| t.to_string()).collect();
-                tags.sort();
+                tags.sort_unstable();
                 tags.dedup();
                 Some(FileDataOwned {
                     glob: f.path.to_string(),
@@ -225,7 +225,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
             }
         }));
         // This should group files that share the same tags and desc
-        valid.sort_by(|a, b| match a.tags.cmp(&b.tags) {
+        valid.sort_unstable_by(|a, b| match a.tags.cmp(&b.tags) {
             std::cmp::Ordering::Less => std::cmp::Ordering::Less,
             std::cmp::Ordering::Equal => a.desc.cmp(&b.desc),
             std::cmp::Ordering::Greater => std::cmp::Ordering::Greater,
@@ -370,7 +370,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
         }
     }
     // Remove duplicate tags.
-    outtags.sort();
+    outtags.sort_unstable();
     outtags.dedup();
     Ok(full_description(outtags, outdesc))
 }

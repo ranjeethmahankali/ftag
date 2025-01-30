@@ -311,7 +311,7 @@ impl DenseTagTable {
         } = TagTable::from_dir(dirpath)?;
         let tags: Box<[String]> = {
             let mut pairs: Vec<_> = tag_indices.iter().collect();
-            pairs.sort_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
+            pairs.sort_unstable_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
             pairs.into_iter().map(|(t, _i)| t.clone()).collect()
         };
         let (files, flags) = {
@@ -319,7 +319,7 @@ impl DenseTagTable {
                 .into_iter()
                 .map(|(p1, f1)| (format!("{}", p1.display()), f1))
                 .collect();
-            pairs.sort_by(|(path1, _flags1), (path2, _flags2)| path1.cmp(path2));
+            pairs.sort_unstable_by(|(path1, _flags1), (path2, _flags2)| path1.cmp(path2));
             let (files, flags): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
             let mut dense = BoolTable::new(files.len(), tags.len());
             for (i, src) in flags.iter().enumerate() {

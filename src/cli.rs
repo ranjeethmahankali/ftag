@@ -77,7 +77,7 @@ fn main() -> Result<(), Error> {
         return Ok(());
     } else if let Some(_matches) = matches.subcommand_matches(cmd::TAGS) {
         let mut tags: Box<[String]> = get_all_tags(current_dir)?.collect();
-        tags.sort();
+        tags.sort_unstable();
         for tag in tags {
             println!("{}", tag);
         }
