@@ -183,7 +183,8 @@ impl TagMaker<usize> for TagTable {
 /// Returns the number of files and the number of tags.
 pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let mut matcher = GlobMatches::new();
-    let (mut allfiles, mut alltags) = (AHashSet::new(), AHashSet::new());
+    let mut alltags = AHashSet::new();
+    let mut numfiles = 0usize;
     let mut dir = DirTree::new(
         path,
         LoaderOptions::new(
@@ -223,20 +224,22 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                 }
                 // Collect all tracked files.
                 matcher.find_matches(files, &globs, false);
-                allfiles.extend(files.iter().enumerate().filter_map(|(fi, file)| {
-                    match matcher.matched_globs(fi).next() {
+                numfiles += files
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(fi, file)| match matcher.matched_globs(fi).next() {
                         Some(_) => {
                             let mut relpath = rel_dir_path.to_path_buf();
                             relpath.push(file.name());
                             Some(relpath)
                         }
                         None => None,
-                    }
-                }));
+                    })
+                    .count();
             }
         }
     }
-    Ok((allfiles.len(), alltags.len()))
+    Ok((numfiles, alltags.len()))
 }
 
 pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
