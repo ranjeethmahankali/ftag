@@ -114,15 +114,12 @@ impl TagTable {
                 MetaData::FailedToLoad(e) => return Err(e),
             };
             // Push directory tags.
-            for tag in tags
-                .iter()
-                .map(|t| t.to_string())
-                .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
-            {
-                inherited
-                    .tag_indices
-                    .push(Self::get_tag_index(tag, &mut table.tag_index));
-            }
+            inherited.tag_indices.extend(
+                tags.iter()
+                    .map(|t| t.to_string())
+                    .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
+                    .map(|tag| Self::get_tag_index(tag, &mut table.tag_index)),
+            );
             // Process all files in the directory.
             gmatcher.find_matches(files, &globs, false);
             table.files.reserve(files.len());
