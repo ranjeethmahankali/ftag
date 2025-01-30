@@ -54,6 +54,10 @@ pub(crate) struct VisitedDir<'a> {
     pub(crate) metadata: MetaData<'a>,
 }
 
+fn is_ftag_file(file: &OsStr) -> bool {
+    file == OsStr::new(FTAG_FILE) || file == OsStr::new(FTAG_BACKUP_FILE)
+}
+
 impl DirTree {
     pub fn new(rootdir: PathBuf, options: LoaderOptions) -> Result<Self, Error> {
         if !rootdir.is_dir() {
@@ -99,30 +103,22 @@ impl DirTree {
                     let before = self.stack.len();
                     if let Ok(entries) = std::fs::read_dir(&self.abs_dir_path) {
                         for child in entries.flatten() {
-                            let cname = child.file_name();
-                            if cname == OsStr::new(FTAG_FILE)
-                                || cname == OsStr::new(FTAG_BACKUP_FILE)
-                            {
-                                continue;
-                            }
-                            match child.file_type() {
-                                Ok(ctype) => {
-                                    if ctype.is_dir() {
-                                        self.stack.push(DirEntry {
-                                            depth: depth + 1,
-                                            entry_type: DirEntryType::Dir,
-                                            name: cname,
-                                        });
-                                    } else if ctype.is_file() {
-                                        self.stack.push(DirEntry {
-                                            depth: depth + 1,
-                                            entry_type: DirEntryType::File,
-                                            name: cname,
-                                        });
-                                        numfiles += 1;
-                                    }
+                            match (child.file_name(), child.file_type()) {
+                                (cname, _) if is_ftag_file(&cname) => continue,
+                                (cname, Ok(ctype)) if ctype.is_dir() => self.stack.push(DirEntry {
+                                    depth: depth + 1,
+                                    entry_type: DirEntryType::Dir,
+                                    name: cname,
+                                }),
+                                (cname, Ok(ctype)) if ctype.is_file() => {
+                                    self.stack.push(DirEntry {
+                                        depth: depth + 1,
+                                        entry_type: DirEntryType::File,
+                                        name: cname,
+                                    });
+                                    numfiles += 1;
                                 }
-                                Err(_) => continue,
+                                _ => continue,
                             }
                         }
                     }
