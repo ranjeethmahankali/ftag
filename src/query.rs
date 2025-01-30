@@ -69,11 +69,11 @@ pub(crate) struct TagTable {
 }
 
 impl TagTable {
-    fn query(&self, filter: Filter<usize>) -> impl Iterator<Item = &Path> {
+    fn into_query(self, filter: Filter<usize>) -> impl Iterator<Item = PathBuf> {
         self.table
-            .iter()
-            .filter_map(move |(path, flags)| match filter.eval(flags) {
-                true => Some(path.as_ref()),
+            .into_iter()
+            .filter_map(move |(path, flags)| match filter.eval(&flags) {
+                true => Some(path),
                 false => None,
             })
     }
@@ -249,7 +249,7 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
 pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
-    for path in table.query(filter) {
+    for path in table.into_query(filter) {
         println!("{}", path.display());
     }
     Ok(())
@@ -258,7 +258,7 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
 pub fn run_query_sorted(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
-    let mut results: Box<[_]> = table.query(filter).collect();
+    let mut results: Box<[_]> = table.into_query(filter).collect();
     results.sort_unstable();
     for path in results {
         println!("{}", path.display());
