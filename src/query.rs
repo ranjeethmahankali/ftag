@@ -69,26 +69,13 @@ pub(crate) struct TagTable {
 }
 
 impl TagTable {
-    fn query(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
+    fn query(&self, filter: Filter<usize>) -> impl Iterator<Item = &Path> {
         self.table
             .iter()
             .filter_map(move |(path, flags)| match filter.eval(flags) {
-                true => Some(path.display()),
+                true => Some(path.as_ref()),
                 false => None,
             })
-    }
-
-    fn query_sorted(&self, filter: Filter<usize>) -> impl Iterator<Item = std::path::Display<'_>> {
-        let mut results: Vec<_> = self
-            .table
-            .iter()
-            .filter_map(move |(path, flags)| match filter.eval(flags) {
-                true => Some(path),
-                false => None,
-            })
-            .collect();
-        results.sort();
-        results.into_iter().map(|path| path.display())
     }
 
     /// Create a new tag table by recursively traversing directories
@@ -263,7 +250,7 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
     for path in table.query(filter) {
-        println!("{}", path);
+        println!("{}", path.display());
     }
     Ok(())
 }
@@ -271,8 +258,10 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
 pub fn run_query_sorted(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
-    for path in table.query_sorted(filter) {
-        println!("{}", path);
+    let mut results: Box<[_]> = table.query(filter).collect();
+    results.sort_unstable();
+    for path in results {
+        println!("{}", path.display());
     }
     Ok(())
 }
