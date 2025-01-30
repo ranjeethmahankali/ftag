@@ -127,19 +127,18 @@ impl DirTree {
                         }
                     }
                     self.num_children = self.stack.len() - before;
-                    let children = &mut self.stack[before..];
-                    children.sort_by(|a, b| match (a.entry_type, b.entry_type) {
+                    // Sort the contents of this folder to move all the files to the end of the stack.
+                    self.stack[before..].sort_by(|a, b| match (a.entry_type, b.entry_type) {
                         (DirEntryType::File, DirEntryType::File) => a.name.cmp(&b.name),
                         (DirEntryType::File, DirEntryType::Dir) => std::cmp::Ordering::Greater,
                         (DirEntryType::Dir, DirEntryType::File) => std::cmp::Ordering::Less,
                         (DirEntryType::Dir, DirEntryType::Dir) => std::cmp::Ordering::Equal,
                     });
-                    let children = &self.stack[(self.stack.len() - numfiles)..];
                     return Some(VisitedDir {
                         traverse_depth: depth,
                         abs_dir_path: &self.abs_dir_path,
                         rel_dir_path: &self.rel_dir_path,
-                        files: children,
+                        files: &self.stack[(self.stack.len() - numfiles)..], // Files are sorted to the end of the stack.
                         metadata: match get_ftag_path::<true>(&self.abs_dir_path) {
                             Some(fpath) => match self.loader.load(&fpath) {
                                 Ok(data) => MetaData::Ok(data),
