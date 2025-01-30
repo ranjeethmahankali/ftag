@@ -231,10 +231,10 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
             std::cmp::Ordering::Greater => std::cmp::Ordering::Greater,
         });
 
-        let fpath = get_ftag_path::<true>(&abs_dir_path)
+        let fpath = get_ftag_path::<true>(abs_dir_path)
             .ok_or(Error::CannotReadStoreFile(abs_dir_path.to_path_buf()))?;
         // Backup existing data.
-        std::fs::copy(&fpath, get_ftag_backup_path(&abs_dir_path))
+        std::fs::copy(&fpath, get_ftag_backup_path(abs_dir_path))
             .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
         let mut writer = io::BufWriter::new(
             OpenOptions::new()
