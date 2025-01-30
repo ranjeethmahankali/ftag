@@ -10,16 +10,6 @@ use crate::{
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
 
-/// Tries to set the flag at the given index. If the index is outside the bounds
-/// of the vector, the vector is automatically resized. That is what makes it
-/// 'safe'.
-fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
-    if index >= flags.len() {
-        flags.resize(index + 1, false);
-    }
-    flags[index] = true;
-}
-
 /*
 When a tags are specified for a folder, it's subfolders and all their subfolders
 inherit those tags. This inheritance follows the directory tree. When
@@ -65,17 +55,21 @@ impl InheritedTags {
 pub(crate) struct TagTable {
     root: PathBuf,
     tag_index: AHashMap<String, usize>,
-    table: AHashMap<PathBuf, Vec<bool>>,
+    files: Vec<PathBuf>,
+    table: AHashSet<(usize, usize)>,
 }
 
 impl TagTable {
     fn into_query(self, filter: Filter<usize>) -> impl Iterator<Item = PathBuf> {
-        self.table.into_iter().filter_map(move |(path, flags)| {
-            match filter.eval(&|ti| *flags.get(ti).unwrap_or(&false)) {
-                true => Some(path),
-                false => None,
-            }
-        })
+        self.files
+            .into_iter()
+            .enumerate()
+            .filter_map(
+                move |(fi, path)| match filter.eval(&|ti| self.table.contains(&(fi, ti))) {
+                    true => Some(path),
+                    false => None,
+                },
+            )
     }
 
     /// Create a new tag table by recursively traversing directories
@@ -84,7 +78,8 @@ impl TagTable {
         let mut table = TagTable {
             root: dirpath,
             tag_index: AHashMap::new(),
-            table: AHashMap::new(),
+            files: Vec::new(),
+            table: AHashSet::new(),
         };
         let mut inherited = InheritedTags {
             tag_indices: Vec::new(),
@@ -160,20 +155,18 @@ impl TagTable {
 
     fn get_tag_index(tag: String, map: &mut AHashMap<String, usize>) -> usize {
         let size = map.len();
-        let entry = *(map.entry(tag.to_string()).or_insert(size));
-        entry
+        *(map.entry(tag.to_string()).or_insert(size))
     }
 
-    fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &Vec<usize>) {
-        let flags = self.table.entry(path).or_default();
-        // Set the file's explicit tags.
-        for tag in tags.drain(..) {
-            safe_set_flag(flags, Self::get_tag_index(tag, &mut self.tag_index));
-        }
-        // Set inherited tags.
-        for i in inherited {
-            safe_set_flag(flags, *i);
-        }
+    fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &[usize]) {
+        let fi = self.files.len();
+        self.files.push(path);
+
+        self.table.extend(
+            tags.drain(..)
+                .map(|tag| (fi, Self::get_tag_index(tag, &mut self.tag_index))) // This file's explicit tags.
+                .chain(inherited.iter().map(|ti| (fi, *ti))), // Inherited tags.
+        );
     }
 }
 
@@ -307,29 +300,24 @@ impl DenseTagTable {
         let TagTable {
             root,
             tag_index,
-            table: sparse,
+            mut files,
+            table,
         } = TagTable::from_dir(dirpath)?;
         let tags: Box<[String]> = {
+            // Vec of tags sorted by their indices.
             let mut pairs: Vec<_> = tag_index.iter().collect();
             pairs.sort_unstable_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
             pairs.into_iter().map(|(t, _i)| t.clone()).collect()
         };
-        let (files, flags) = {
-            let mut pairs: Vec<_> = sparse
-                .into_iter()
-                .map(|(p1, f1)| (format!("{}", p1.display()), f1))
-                .collect();
-            pairs.sort_unstable_by(|(path1, _flags1), (path2, _flags2)| path1.cmp(path2));
-            let (files, flags): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
-            let mut dense = BoolTable::new(files.len(), tags.len());
-            for (i, src) in flags.iter().enumerate() {
-                debug_assert!(tags.len() >= src.len());
-                let dst = dense.row_mut(i);
-                let dst = &mut dst[..src.len()];
-                dst.copy_from_slice(src); // Requires the src and dst to be of same length.
-            }
-            (files.into_boxed_slice(), dense)
-        };
+        let files: Box<[String]> = files
+            .drain(..)
+            .map(|f| format!("{}", f.display()))
+            .collect();
+        // Construct the bool-table.
+        let mut flags = BoolTable::new(files.len(), tags.len());
+        for (fi, ti) in table.into_iter() {
+            flags.row_mut(fi)[ti] = true;
+        }
         Ok(DenseTagTable {
             root,
             flags,
