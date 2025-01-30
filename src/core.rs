@@ -186,7 +186,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
     let mut matcher = GlobMatches::new();
     let mut valid: Vec<FileDataOwned> = Vec::new();
     let mut dir = DirTree::new(
-        path.clone(),
+        path,
         LoaderOptions::new(
             true,
             true,
@@ -197,7 +197,10 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         ),
     )?;
     while let Some(VisitedDir {
-        files, metadata, ..
+        abs_dir_path,
+        files,
+        metadata,
+        ..
     }) = dir.walk()
     {
         let DirData { globs, desc, tags } = match metadata {
@@ -227,22 +230,23 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
             std::cmp::Ordering::Equal => a.desc.cmp(&b.desc),
             std::cmp::Ordering::Greater => std::cmp::Ordering::Greater,
         });
+
+        let fpath = get_ftag_path::<true>(&abs_dir_path)
+            .ok_or(Error::CannotReadStoreFile(abs_dir_path.to_path_buf()))?;
         // Backup existing data.
-        if let Some(fpath) = get_ftag_path::<true>(&path) {
-            std::fs::copy(&fpath, get_ftag_backup_path(&path))
-                .map_err(|_| Error::CannotWriteFile(path.clone()))?;
-        }
+        std::fs::copy(&fpath, get_ftag_backup_path(&abs_dir_path))
+            .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
         let mut writer = io::BufWriter::new(
             OpenOptions::new()
                 .write(true)
                 .truncate(true)
                 .create(true)
-                .open(&path)
-                .map_err(|_| Error::CannotWriteFile(path.clone()))?,
+                .open(&fpath)
+                .map_err(|_| Error::CannotWriteFile(fpath.clone()))?,
         );
         // Write directory data.
-        write_tags(&tags, &mut writer).map_err(|_| Error::CannotWriteFile(path.clone()))?;
-        write_desc(&desc, &mut writer).map_err(|_| Error::CannotWriteFile(path.clone()))?;
+        write_tags(&tags, &mut writer).map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
+        write_desc(&desc, &mut writer).map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
         // Write out the file data in groups that share the same tags and description.
         if let Some(last) = valid // TODO: Try to simplify this by making better use of iterators.
             .drain(..)
@@ -276,15 +280,15 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
                     })
                 },
             )
-            .map_err(|_| Error::CannotWriteFile(path.clone()))?
+            .map_err(|_| Error::CannotWriteFile(fpath.clone()))?
         {
             // This is the last entry.
             write_globs(&last.globs, &mut writer)
-                .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+                .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
             write_tags(&last.tags, &mut writer)
-                .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+                .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
             write_desc(&last.desc, &mut writer)
-                .map_err(|_| Error::CannotWriteFile(path.clone()))?;
+                .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
         }
     }
     Ok(())
