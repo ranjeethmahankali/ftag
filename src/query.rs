@@ -106,13 +106,7 @@ impl TagTable {
         };
         let mut gmatcher = GlobMatches::new();
         let mut filetags: Vec<String> = Vec::new();
-        for VisitedDir {
-            traverse_depth,
-            abs_dir_path,
-            rel_dir_path,
-            files,
-            metadata,
-        } in DirTree::new(
+        let mut dir = DirTree::new(
             table.root.clone(),
             LoaderOptions::new(
                 true,
@@ -122,8 +116,14 @@ impl TagTable {
                     file_desc: false,
                 },
             ),
-        )?
-        .walk()
+        )?;
+        while let Some(VisitedDir {
+            traverse_depth,
+            abs_dir_path,
+            rel_dir_path,
+            files,
+            metadata,
+        }) = dir.walk()
         {
             inherited.update(traverse_depth)?;
             let DirData { tags, globs, .. } = match metadata {
@@ -203,7 +203,8 @@ impl TagMaker<usize> for TagTable {
 /// Returns the number of files and the number of tags.
 pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let mut matcher = GlobMatches::new();
-    DirTree::new(
+    let (mut allfiles, mut alltags) = (AHashSet::new(), AHashSet::new());
+    let mut dir = DirTree::new(
         path,
         LoaderOptions::new(
             true,
@@ -213,54 +214,49 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                 file_desc: false,
             },
         ),
-    )?
-    .walk()
-    .try_fold(
-        (AHashSet::new(), AHashSet::new()),
-        move |(mut allfiles, mut alltags),
-              VisitedDir {
-                  rel_dir_path,
-                  files,
-                  metadata,
-                  ..
-              }| {
-            match metadata {
-                MetaData::FailedToLoad(e) => Err(e),
-                MetaData::NotFound => Ok((allfiles, alltags)), // No metadata, just forward received data.
-                MetaData::Ok(DirData { tags, globs, .. }) => {
-                    // Collect all tags.
+    )?;
+    while let Some(VisitedDir {
+        rel_dir_path,
+        files,
+        metadata,
+        ..
+    }) = dir.walk()
+    {
+        match metadata {
+            MetaData::FailedToLoad(e) => return Err(e),
+            MetaData::NotFound => continue,
+            MetaData::Ok(DirData { tags, globs, .. }) => {
+                // Collect all tags.
+                alltags.extend(
+                    tags.iter()
+                        .map(|t| t.to_string())
+                        .chain(implicit_tags_str(get_filename_str(rel_dir_path)?)),
+                );
+                for gdata in globs.iter() {
                     alltags.extend(
-                        tags.iter()
+                        gdata
+                            .tags
+                            .iter()
                             .map(|t| t.to_string())
-                            .chain(implicit_tags_str(get_filename_str(rel_dir_path)?)),
+                            .chain(implicit_tags_str(gdata.path)),
                     );
-                    for gdata in globs.iter() {
-                        alltags.extend(
-                            gdata
-                                .tags
-                                .iter()
-                                .map(|t| t.to_string())
-                                .chain(implicit_tags_str(gdata.path)),
-                        );
-                    }
-                    // Collect all tracked files.
-                    matcher.find_matches(files, &globs, false);
-                    allfiles.extend(files.iter().enumerate().filter_map(|(fi, file)| {
-                        match matcher.matched_globs(fi).next() {
-                            Some(_) => {
-                                let mut relpath = rel_dir_path.to_path_buf();
-                                relpath.push(file.name());
-                                Some(relpath)
-                            }
-                            None => None,
-                        }
-                    }));
-                    Ok((allfiles, alltags))
                 }
+                // Collect all tracked files.
+                matcher.find_matches(files, &globs, false);
+                allfiles.extend(files.iter().enumerate().filter_map(|(fi, file)| {
+                    match matcher.matched_globs(fi).next() {
+                        Some(_) => {
+                            let mut relpath = rel_dir_path.to_path_buf();
+                            relpath.push(file.name());
+                            Some(relpath)
+                        }
+                        None => None,
+                    }
+                }));
             }
-        },
-    )
-    .map(|(files, tags)| (files.len(), tags.len()))
+        }
+    }
+    Ok((allfiles.len(), alltags.len()))
 }
 
 pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {

@@ -83,7 +83,8 @@ impl Debug for Error {
 /// file on disk.
 pub fn check(path: PathBuf) -> Result<(), Error> {
     let mut matcher = GlobMatches::new();
-    let missing = DirTree::new(
+    let mut missing = Vec::new();
+    let mut dir = DirTree::new(
         path.clone(),
         LoaderOptions::new(
             false,
@@ -93,37 +94,32 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
                 file_desc: false,
             },
         ),
-    )?
-    .walk()
-    .try_fold(
-        Vec::new(),
-        |mut missing,
-         VisitedDir {
-             rel_dir_path,
-             files,
-             metadata,
-             ..
-         }| {
-            match metadata {
-                MetaData::FailedToLoad(e) => Err(e),
-                MetaData::NotFound => Ok(missing), // No metadata, just forward received data.
-                MetaData::Ok(DirData { globs, .. }) => {
-                    matcher.find_matches(files, &globs, true);
-                    missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
-                        if !matcher.is_glob_matched(i) {
-                            Some(GlobInfo {
-                                glob: f.path.to_string(),
-                                dirpath: rel_dir_path.to_path_buf(),
-                            })
-                        } else {
-                            None
-                        }
-                    }));
-                    Ok(missing)
-                }
-            }
-        },
     )?;
+    while let Some(VisitedDir {
+        rel_dir_path,
+        files,
+        metadata,
+        ..
+    }) = dir.walk()
+    {
+        match metadata {
+            MetaData::FailedToLoad(e) => return Err(e),
+            MetaData::NotFound => continue, // No metadata.
+            MetaData::Ok(DirData { globs, .. }) => {
+                matcher.find_matches(files, &globs, true);
+                missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
+                    if !matcher.is_glob_matched(i) {
+                        Some(GlobInfo {
+                            glob: f.path.to_string(),
+                            dirpath: rel_dir_path.to_path_buf(),
+                        })
+                    } else {
+                        None
+                    }
+                }));
+            }
+        }
+    }
     if missing.is_empty() {
         Ok(())
     } else {
@@ -189,9 +185,7 @@ fn write_desc<T: AsRef<str>>(desc: &Option<T>, w: &mut impl io::Write) -> Result
 pub fn clean(path: PathBuf) -> Result<(), Error> {
     let mut matcher = GlobMatches::new();
     let mut valid: Vec<FileDataOwned> = Vec::new();
-    for VisitedDir {
-        files, metadata, ..
-    } in DirTree::new(
+    let mut dir = DirTree::new(
         path.clone(),
         LoaderOptions::new(
             true,
@@ -201,8 +195,10 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
                 file_desc: true,
             },
         ),
-    )?
-    .walk()
+    )?;
+    while let Some(VisitedDir {
+        files, metadata, ..
+    }) = dir.walk()
     {
         let DirData { globs, desc, tags } = match metadata {
             MetaData::Ok(d) => d,
@@ -398,7 +394,7 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
 /// return all files that are not tracked.
 pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
     let mut matcher = GlobMatches::new();
-    DirTree::new(
+    let mut dir = DirTree::new(
         root.clone(),
         LoaderOptions::new(
             false,
@@ -408,52 +404,49 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
                 file_desc: false,
             },
         ),
-    )?
-    .walk()
-    .try_fold(
-        Vec::new(),
-        move |mut untracked,
-              VisitedDir {
-                  rel_dir_path,
-                  files,
-                  metadata,
-                  ..
-              }| {
-            match metadata {
-                MetaData::FailedToLoad(e) => Err(e),
-                MetaData::Ok(DirData { globs, .. }) => {
-                    matcher.find_matches(files, &globs, false);
-                    untracked.extend(files.iter().enumerate().filter_map(|(fi, file)| {
-                        // Skip the files that matched with at least one glob. Copy the
-                        // paths of files that didn't match with any glob.
-                        match matcher.matched_globs(fi).next() {
-                            Some(_) => None,
-                            None => {
-                                let mut relpath = rel_dir_path.to_path_buf();
-                                relpath.push(file.name());
-                                Some(relpath)
-                            }
+    )?;
+    let mut untracked = Vec::new();
+    while let Some(VisitedDir {
+        rel_dir_path,
+        files,
+        metadata,
+        ..
+    }) = dir.walk()
+    {
+        match metadata {
+            MetaData::FailedToLoad(e) => return Err(e),
+            MetaData::Ok(DirData { globs, .. }) => {
+                matcher.find_matches(files, &globs, false);
+                untracked.extend(files.iter().enumerate().filter_map(|(fi, file)| {
+                    // Skip the files that matched with at least one glob. Copy the
+                    // paths of files that didn't match with any glob.
+                    match matcher.matched_globs(fi).next() {
+                        Some(_) => None,
+                        None => {
+                            let mut relpath = rel_dir_path.to_path_buf();
+                            relpath.push(file.name());
+                            Some(relpath)
                         }
-                    }));
-                    Ok(untracked)
-                }
-                MetaData::NotFound => {
-                    // Metadata doesn't exist so everything is untracked.
-                    untracked.extend(files.iter().map(|ch| {
-                        let mut relpath = rel_dir_path.to_path_buf();
-                        relpath.push(ch.name());
-                        relpath
-                    }));
-                    Ok(untracked)
-                }
+                    }
+                }));
             }
-        },
-    )
+            MetaData::NotFound => {
+                // Metadata doesn't exist so everything is untracked.
+                untracked.extend(files.iter().map(|ch| {
+                    let mut relpath = rel_dir_path.to_path_buf();
+                    relpath.push(ch.name());
+                    relpath
+                }));
+            }
+        }
+    }
+    Ok(untracked)
 }
 
 /// Recursively traverse the directories from `path` and get all tags.
 pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error> {
-    DirTree::new(
+    let mut alltags = AHashSet::new();
+    let mut dir = DirTree::new(
         path,
         LoaderOptions::new(
             true,
@@ -463,40 +456,35 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                 file_desc: false,
             },
         ),
-    )?
-    .walk()
-    .try_fold(
-        AHashSet::new(),
-        |mut alltags,
-         VisitedDir {
-             abs_dir_path,
-             metadata,
-             ..
-         }| {
-            match metadata {
-                MetaData::FailedToLoad(e) => Err(e), // Bail out with error.
-                MetaData::Ok(DirData { tags, globs, .. }) => {
+    )?;
+    while let Some(VisitedDir {
+        abs_dir_path,
+        metadata,
+        ..
+    }) = dir.walk()
+    {
+        match metadata {
+            MetaData::FailedToLoad(e) => return Err(e), // Bail out with error.
+            MetaData::Ok(DirData { tags, globs, .. }) => {
+                alltags.extend(
+                    tags.into_iter()
+                        .map(|t| t.to_string())
+                        .chain(implicit_tags_str(get_filename_str(abs_dir_path)?)),
+                );
+                for fdata in globs.into_iter() {
                     alltags.extend(
-                        tags.into_iter()
+                        fdata
+                            .tags
+                            .into_iter()
                             .map(|t| t.to_string())
-                            .chain(implicit_tags_str(get_filename_str(abs_dir_path)?)),
+                            .chain(implicit_tags_str(fdata.path)),
                     );
-                    for fdata in globs.into_iter() {
-                        alltags.extend(
-                            fdata
-                                .tags
-                                .into_iter()
-                                .map(|t| t.to_string())
-                                .chain(implicit_tags_str(fdata.path)),
-                        );
-                    }
-                    Ok(alltags)
                 }
-                MetaData::NotFound => Ok(alltags), // No metadata, just pass on the tags to the next dir.
             }
-        },
-    )
-    .map(|set| set.into_iter()) // Convert to an iterator that takes the ownership of the hashset.
+            MetaData::NotFound => continue, // No metadata, just pass on the tags to the next dir.
+        }
+    }
+    Ok(alltags.into_iter())
 }
 
 fn match_desc(words: &[String], tags: &[&str], desc: Option<&str>) -> bool {
@@ -522,7 +510,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
         .split(|c: char| !c.is_alphanumeric())
         .map(|word| word.trim().to_lowercase())
         .collect();
-    DirTree::new(
+    let mut dir = DirTree::new(
         path,
         LoaderOptions::new(
             true,
@@ -532,11 +520,10 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
                 file_desc: true,
             },
         ),
-    )?
-    .walk()
-    .try_for_each(move |VisitedDir { metadata, .. }| {
+    )?;
+    while let Some(VisitedDir { metadata, .. }) = dir.walk() {
         match metadata {
-            MetaData::FailedToLoad(e) => Err(e),
+            MetaData::FailedToLoad(e) => return Err(e),
             MetaData::Ok(DirData { tags, globs, desc }) => {
                 let dirmatch = match_desc(&words, &tags, desc);
                 for filepath in globs.iter().filter_map(|f| {
@@ -548,9 +535,9 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
                 }) {
                     println!("{}", filepath);
                 }
-                Ok(())
             }
-            MetaData::NotFound => Ok(()), // No metadata, just keep going.
+            MetaData::NotFound => continue, // No metadata, just keep going.
         }
-    })
+    }
+    Ok(())
 }

@@ -1,8 +1,6 @@
 use std::{
     ffi::{OsStr, OsString},
-    marker::PhantomData,
     path::{Path, PathBuf},
-    ptr::NonNull,
 };
 
 use crate::{
@@ -34,7 +32,6 @@ impl DirEntry {
 /// Recursively walk directories, while caching useful information
 /// about the contents of the directory. The traversal is depth first.
 pub(crate) struct DirTree {
-    root_dir_path: PathBuf,
     abs_dir_path: PathBuf,
     rel_dir_path: PathBuf,
     stack: Vec<DirEntry>,
@@ -57,60 +54,29 @@ pub(crate) struct VisitedDir<'a> {
     pub(crate) metadata: MetaData<'a>,
 }
 
-pub(crate) struct DirIter<'a> {
-    ptr: NonNull<DirTree>,
-    phantom: PhantomData<&'a mut DirTree>,
-}
-
-impl<'a> Iterator for DirIter<'a> {
-    type Item = VisitedDir<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        unsafe { self.ptr.as_mut() }.next()
-    }
-}
-
 impl DirTree {
     pub fn new(rootdir: PathBuf, options: LoaderOptions) -> Result<Self, Error> {
         if !rootdir.is_dir() {
             return Err(Error::InvalidPath(rootdir));
         }
         Ok(DirTree {
-            root_dir_path: rootdir,
-            loader: Loader::new(options),
-            abs_dir_path: Default::default(),
-            rel_dir_path: Default::default(),
-            stack: Default::default(),
+            abs_dir_path: rootdir,
+            rel_dir_path: PathBuf::new(),
+            stack: vec![DirEntry {
+                depth: 1,
+                entry_type: DirEntryType::Dir,
+                name: OsString::new(),
+            }],
             cur_depth: 0,
             num_children: 0,
+            loader: Loader::new(options),
         })
-    }
-
-    fn init(&mut self) {
-        self.abs_dir_path = self.root_dir_path.clone();
-        self.rel_dir_path.clear();
-        self.stack.clear();
-        self.stack.push(DirEntry {
-            depth: 1,
-            entry_type: DirEntryType::Dir,
-            name: OsString::new(),
-        });
-        self.cur_depth = 0;
-        self.num_children = 0;
-    }
-
-    pub fn walk(&mut self) -> DirIter<'_> {
-        self.init();
-        DirIter {
-            ptr: NonNull::from(self),
-            phantom: PhantomData,
-        }
     }
 
     /// Move on to the next directory. Returns a tuple containing the depth of
     /// the directory, its absolute path, its path relative to the root of the
     /// walk, and a slice containing info about the files in this directory.
-    fn next(&mut self) -> Option<VisitedDir> {
+    pub fn walk(&mut self) -> Option<VisitedDir> {
         while let Some(DirEntry {
             depth,
             entry_type,
