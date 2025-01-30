@@ -64,7 +64,7 @@ impl InheritedTags {
 /// Table of all files and tags, that can be loaded recursively from any path.
 pub(crate) struct TagTable {
     root: PathBuf,
-    tag_index_map: AHashMap<String, usize>,
+    tag_index: AHashMap<String, usize>,
     table: AHashMap<PathBuf, Vec<bool>>,
 }
 
@@ -83,7 +83,7 @@ impl TagTable {
     pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, Error> {
         let mut table = TagTable {
             root: dirpath,
-            tag_index_map: AHashMap::new(),
+            tag_index: AHashMap::new(),
             table: AHashMap::new(),
         };
         let mut inherited = InheritedTags {
@@ -126,7 +126,7 @@ impl TagTable {
             {
                 inherited
                     .tag_indices
-                    .push(Self::get_tag_index(tag, &mut table.tag_index_map));
+                    .push(Self::get_tag_index(tag, &mut table.tag_index));
             }
             // Process all files in the directory.
             gmatcher.find_matches(files, &globs, false);
@@ -168,7 +168,7 @@ impl TagTable {
         let flags = self.table.entry(path).or_default();
         // Set the file's explicit tags.
         for tag in tags.drain(..) {
-            safe_set_flag(flags, Self::get_tag_index(tag, &mut self.tag_index_map));
+            safe_set_flag(flags, Self::get_tag_index(tag, &mut self.tag_index));
         }
         // Set inherited tags.
         for i in inherited {
@@ -180,7 +180,7 @@ impl TagTable {
 impl TagMaker<usize> for TagTable {
     /// Return the index of the given string tag from the list of parsed tags.
     fn create_tag(&self, tagstr: &str) -> Filter<usize> {
-        match self.tag_index_map.get(tagstr) {
+        match self.tag_index.get(tagstr) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,
         }
@@ -299,18 +299,18 @@ pub struct DenseTagTable {
     flags: BoolTable,
     files: Box<[String]>,
     tags: Box<[String]>,
-    tag_indices: AHashMap<String, usize>,
+    tag_index: AHashMap<String, usize>,
 }
 
 impl DenseTagTable {
     pub fn from_dir(dirpath: PathBuf) -> Result<DenseTagTable, Error> {
         let TagTable {
             root,
-            tag_index_map: tag_indices,
+            tag_index,
             table: sparse,
         } = TagTable::from_dir(dirpath)?;
         let tags: Box<[String]> = {
-            let mut pairs: Vec<_> = tag_indices.iter().collect();
+            let mut pairs: Vec<_> = tag_index.iter().collect();
             pairs.sort_unstable_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
             pairs.into_iter().map(|(t, _i)| t.clone()).collect()
         };
@@ -335,7 +335,7 @@ impl DenseTagTable {
             flags,
             files,
             tags,
-            tag_indices,
+            tag_index,
         })
     }
 
@@ -359,7 +359,7 @@ impl DenseTagTable {
 impl TagMaker<usize> for DenseTagTable {
     /// Return the index of the given string tag from the list of parsed tags.
     fn create_tag(&self, input: &str) -> Filter<usize> {
-        match self.tag_indices.get(input) {
+        match self.tag_index.get(input) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,
         }
