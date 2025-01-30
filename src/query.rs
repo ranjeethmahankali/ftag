@@ -251,17 +251,6 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn run_query_sorted(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
-    let table = TagTable::from_dir(dirpath)?;
-    let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
-    let mut results: Box<[_]> = table.into_query(filter).collect();
-    results.sort_unstable();
-    for path in results {
-        println!("{}", path.display());
-    }
-    Ok(())
-}
-
 /// 2d array of bools.
 pub(crate) struct BoolTable {
     data: Box<[bool]>, // Cannot be resized by accident.
