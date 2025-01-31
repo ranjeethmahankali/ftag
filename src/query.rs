@@ -125,26 +125,27 @@ impl TagTable {
             table.files.reserve(files.len());
             for (fi, file) in files.iter().enumerate() {
                 filetags.clear();
-                let found = gmatcher.matched_globs(fi).fold(false, |_, gi| {
+                // Simultaneously check if this file is tracked, and collect all it's tags.
+                if !gmatcher.matched_globs(fi).fold(false, |_, gi| {
                     filetags.extend(globs[gi].tags.iter().map(|t| t.to_string()));
                     true
-                });
-                if found {
-                    filetags.extend(implicit_tags_str(
-                        file.name()
-                            .to_str()
-                            .ok_or(Error::InvalidPath(file.name().into()))?,
-                    ));
-                    table.add_file(
-                        {
-                            let mut relpath = rel_dir_path.to_path_buf();
-                            relpath.push(file.name());
-                            relpath
-                        },
-                        &mut filetags,
-                        &inherited.tag_indices,
-                    );
+                }) {
+                    continue; // None of the globs matched this file. This is not tracked.
                 }
+                filetags.extend(implicit_tags_str(
+                    file.name()
+                        .to_str()
+                        .ok_or(Error::InvalidPath(file.name().into()))?,
+                ));
+                table.add_file(
+                    {
+                        let mut relpath = rel_dir_path.to_path_buf();
+                        relpath.push(file.name());
+                        relpath
+                    },
+                    &mut filetags,
+                    &inherited.tag_indices,
+                );
             }
         }
         Ok(table)
