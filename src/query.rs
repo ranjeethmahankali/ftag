@@ -153,7 +153,7 @@ impl TagTable {
 
     fn get_tag_index(tag: String, map: &mut AHashMap<String, usize>) -> usize {
         let size = map.len();
-        *(map.entry(tag.to_string()).or_insert(size))
+        *(map.entry(tag).or_insert(size))
     }
 
     fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &[usize]) {
