@@ -97,8 +97,8 @@ impl InteractiveSession {
         let index = match numstr.parse::<usize>() {
             Ok(num) if num < self.filtered_indices.len() => Ok(num),
             Ok(num) => Err(Error::InvalidCommand(format!(
-                "{num} is not a valid choice. Please choose an index between 0 and  {}",
-                self.filtered_indices.len()
+                "{num} is not a valid choice. Please choose an index between 0 and {}",
+                self.filtered_indices.len().saturating_sub(1)
             ))),
             Err(_) => Err(Error::InvalidCommand(format!(
                 "Unable to parse '{numstr}' to an index."
