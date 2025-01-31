@@ -173,6 +173,10 @@ impl GlobMatches {
     pub fn is_glob_matched(&self, glob_index: usize) -> bool {
         self.row(glob_index).iter().any(|m| *m)
     }
+
+    pub fn is_file_matched(&self, file_index: usize) -> bool {
+        self.matched_globs(file_index).next().is_some()
+    }
 }
 
 /// Get the path of the store file corresponding to `path`. `path` can
@@ -223,14 +227,27 @@ pub(crate) struct Loader {
 pub(crate) struct GlobData<'a> {
     pub desc: Option<&'a str>,
     pub path: &'a str,
-    pub tags: Vec<&'a str>,
+    tags: Range<usize>,
 }
 
 /// Data from an ftag file.
 pub(crate) struct DirData<'a> {
+    pub alltags: Vec<&'a str>,
     pub desc: Option<&'a str>,
-    pub tags: Vec<&'a str>,
+    tags: Range<usize>,
     pub globs: Vec<GlobData<'a>>,
+}
+
+impl<'a> GlobData<'a> {
+    pub fn tags(&'a self, alltags: &'a [&'a str]) -> &'a [&'a str] {
+        &alltags[self.tags.start..self.tags.end]
+    }
+}
+
+impl<'a> DirData<'a> {
+    pub fn tags(&'a self) -> &'a [&'a str] {
+        &self.alltags[self.tags.start..self.tags.end]
+    }
 }
 
 /// Options for loading the file data from an ftag file.
@@ -341,12 +358,13 @@ impl Loader {
         let input = self.raw_text.trim();
         // TODO: Consider checking if the file begins with a header.
         let mut headers = AC_PARSER.find_iter(input);
-        let mut tags: Vec<&str> = Vec::new();
+        let mut alltags: Vec<&str> = Vec::new();
         let mut desc: Option<&str> = None;
+        let mut dirtags: Range<usize> = 0..0;
         let mut files: Vec<GlobData<'a>> = Vec::new();
         // We store the data of the file we're currently parsing as:
         // (list of globs, list of tags, optional description).
-        let mut curfile: Option<(Vec<&'a str>, Vec<&'a str>, Option<&'a str>)> = None;
+        let mut current_unit: Option<(Vec<&'a str>, Range<usize>, Option<&'a str>)> = None;
         // Begin parsing.
         let (mut header, mut content, mut next_header) = match headers.next() {
             Some(mat) => {
@@ -381,25 +399,31 @@ impl Loader {
                     if let FileLoadingOptions::Skip = self.options.file_options {
                         break; // Stop parsing the file.
                     }
-                    let newfile = (content.lines().collect(), Vec::new(), None);
-                    if let Some((globs, tags, desc)) =
-                        std::mem::replace(&mut curfile, Some(newfile))
-                    {
-                        for g in globs {
-                            files.push(GlobData {
-                                desc,
-                                path: g,
-                                tags: tags.clone(),
-                            })
+                    let globiter = content.lines().map(|l| l.trim());
+                    match current_unit.as_mut() {
+                        Some((globs, tags, desc)) => {
+                            let desc = std::mem::replace(desc, None);
+                            let tags = std::mem::replace(tags, 0..0);
+                            for g in globs.drain(..) {
+                                files.push(GlobData {
+                                    desc,
+                                    path: g,
+                                    tags: tags.clone(),
+                                })
+                            }
+                            globs.extend(globiter);
                         }
+                        None => current_unit = Some((globiter.collect(), 0..0, None)),
                     }
                 }
                 HeaderType::Tags => {
-                    if let Some(file) = &mut curfile {
+                    if let Some((globs, tags, _desc)) = current_unit.as_mut() {
                         if self.options.include_file_tags() {
-                            let (globs, tags, _desc) = file;
-                            if tags.is_empty() {
-                                tags.extend(content.split_whitespace());
+                            if tags.start == tags.end {
+                                // No tags found for the current unit.
+                                let before = alltags.len();
+                                alltags.extend(content.split_whitespace());
+                                *tags = before..alltags.len();
                             } else {
                                 return Err(Error::CannotParseFtagFile(
                                     filepath.to_path_buf(),
@@ -411,8 +435,11 @@ impl Loader {
                             }
                         }
                     } else if self.options.dir_tags {
-                        if tags.is_empty() {
-                            tags.extend(content.split_whitespace());
+                        if dirtags.start == dirtags.end {
+                            // No directory tags found.
+                            let before = alltags.len();
+                            alltags.extend(content.split_whitespace());
+                            dirtags = before..alltags.len();
                         } else {
                             return Err(Error::CannotParseFtagFile(
                                 filepath.to_path_buf(),
@@ -422,7 +449,7 @@ impl Loader {
                     }
                 }
                 HeaderType::Desc => {
-                    if let Some(file) = &mut curfile {
+                    if let Some(file) = &mut current_unit {
                         if self.options.include_file_desc() {
                             let (globs, _tags, desc) = file;
                             if desc.is_some() {
@@ -467,8 +494,8 @@ impl Loader {
                 None => break,
             }
         }
-        if let Some((globs, tags, desc)) = curfile {
-            for g in globs {
+        if let Some((globs, tags, desc)) = current_unit {
+            for g in globs.into_iter() {
                 files.push(GlobData {
                     desc,
                     path: g,
@@ -477,8 +504,9 @@ impl Loader {
             }
         }
         Ok(DirData {
+            alltags,
             desc,
-            tags,
+            tags: dirtags,
             globs: files,
         })
     }

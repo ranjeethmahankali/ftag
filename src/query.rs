@@ -1,10 +1,7 @@
 use crate::{
     core::Error,
     filter::{Filter, TagMaker},
-    load::{
-        get_filename_str, implicit_tags_str, DirData, FileLoadingOptions, GlobMatches,
-        LoaderOptions,
-    },
+    load::{get_filename_str, implicit_tags_str, FileLoadingOptions, GlobMatches, LoaderOptions},
     walk::{DirTree, MetaData, VisitedDir},
 };
 use ahash::{AHashMap, AHashSet};
@@ -108,26 +105,32 @@ impl TagTable {
         }) = dir.walk()
         {
             inherited.update(traverse_depth)?;
-            let DirData { tags, globs, .. } = match metadata {
+            let data = match metadata {
                 MetaData::Ok(d) => d,
                 MetaData::NotFound => continue,
                 MetaData::FailedToLoad(e) => return Err(e),
             };
             // Push directory tags.
             inherited.tag_indices.extend(
-                tags.iter()
+                data.tags()
+                    .iter()
                     .map(|t| t.to_string())
                     .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
                     .map(|tag| Self::get_tag_index(tag, &mut table.tag_index)),
             );
             // Process all files in the directory.
-            gmatcher.find_matches(files, &globs, false);
+            gmatcher.find_matches(files, &data.globs, false);
             table.files.reserve(files.len());
             for (fi, file) in files.iter().enumerate() {
                 filetags.clear();
                 // Simultaneously check if this file is tracked, and collect all it's tags.
                 if !gmatcher.matched_globs(fi).fold(false, |_, gi| {
-                    filetags.extend(globs[gi].tags.iter().map(|t| t.to_string()));
+                    filetags.extend(
+                        data.globs[gi]
+                            .tags(&data.alltags)
+                            .iter()
+                            .map(|t| t.to_string()),
+                    );
                     true
                 }) {
                     continue; // None of the globs matched this file. This is not tracked.
@@ -203,35 +206,32 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
         match metadata {
             MetaData::FailedToLoad(e) => return Err(e),
             MetaData::NotFound => continue,
-            MetaData::Ok(DirData { tags, globs, .. }) => {
+            MetaData::Ok(data) => {
                 // Collect all tags.
                 alltags.extend(
-                    tags.iter()
+                    data.alltags
+                        .into_iter()
                         .map(|t| t.to_string())
                         .chain(implicit_tags_str(get_filename_str(rel_dir_path)?)),
                 );
-                for gdata in globs.iter() {
-                    alltags.extend(
-                        gdata
-                            .tags
-                            .iter()
-                            .map(|t| t.to_string())
-                            .chain(implicit_tags_str(gdata.path)),
-                    );
-                }
                 // Collect all tracked files.
-                matcher.find_matches(files, &globs, false);
+                matcher.find_matches(files, &data.globs, false);
+                files.iter().enumerate().fold(0usize, |numfiles, (fi, f)| {
+                    match matcher.is_file_matched(fi) {
+                        true => {
+                            match f.name().to_str() {
+                                Some(name) => alltags.extend(implicit_tags_str(name)),
+                                None => {}
+                            };
+                            numfiles + 1
+                        }
+                        false => numfiles,
+                    }
+                });
                 numfiles += files
                     .iter()
                     .enumerate()
-                    .filter_map(|(fi, file)| match matcher.matched_globs(fi).next() {
-                        Some(_) => {
-                            let mut relpath = rel_dir_path.to_path_buf();
-                            relpath.push(file.name());
-                            Some(relpath)
-                        }
-                        None => None,
-                    })
+                    .filter(|(fi, _file)| matcher.matched_globs(*fi).next().is_some())
                     .count();
             }
         }
