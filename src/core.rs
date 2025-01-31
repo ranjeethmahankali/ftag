@@ -481,14 +481,14 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                         .map(|t| t.to_string())
                         .chain(implicit_tags_str(get_filename_str(abs_dir_path)?)),
                 );
-                matcher.find_matches(&files, &globs, false);
+                matcher.find_matches(files, &globs, false);
                 alltags.extend(
                     files
                         .iter()
                         .enumerate()
                         .filter(|(fi, _f)| matcher.is_file_matched(*fi))
                         .filter_map(|(_fi, f)| f.name().to_str())
-                        .flat_map(|name| implicit_tags_str(name)),
+                        .flat_map(implicit_tags_str),
                 );
             }
             MetaData::NotFound => continue, // No metadata, just pass on the tags to the next dir.

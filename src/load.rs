@@ -402,7 +402,7 @@ impl Loader {
                     let globiter = content.lines().map(|l| l.trim());
                     match current_unit.as_mut() {
                         Some((globs, tags, desc)) => {
-                            let desc = std::mem::replace(desc, None);
+                            let desc = desc.take();
                             let tags = std::mem::replace(tags, 0..0);
                             for g in globs.drain(..) {
                                 files.push(GlobData {
