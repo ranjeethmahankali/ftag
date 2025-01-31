@@ -2,7 +2,7 @@ use crate::{
     filter::FilterParseError,
     load::{
         get_filename_str, get_ftag_backup_path, get_ftag_path, implicit_tags_str, DirData,
-        FileLoadingOptions, GlobData, GlobMatches, Loader, LoaderOptions,
+        FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
     },
     walk::{DirTree, MetaData, VisitedDir},
 };
@@ -174,11 +174,10 @@ fn write_tags<T: AsRef<str>>(tags: &[T], w: &mut impl io::Write) -> Result<(), i
     Ok(())
 }
 
-fn write_desc<T: AsRef<str>>(desc: &Option<T>, w: &mut impl io::Write) -> Result<(), io::Error> {
-    if let Some(desc) = desc {
-        writeln!(w, "[desc]\n{}", desc.as_ref())
-    } else {
-        Ok(())
+fn write_desc<T: AsRef<str>>(desc: Option<&T>, w: &mut impl io::Write) -> Result<(), io::Error> {
+    match desc {
+        Some(desc) => writeln!(w, "[desc]\n{}", desc.as_ref()),
+        None => Ok(()),
     }
 }
 
@@ -203,22 +202,26 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         ..
     }) = dir.walk()
     {
-        let DirData { globs, desc, tags } = match metadata {
+        let data = match metadata {
             MetaData::Ok(d) => d,
             MetaData::NotFound => continue,
             MetaData::FailedToLoad(e) => return Err(e),
         };
-        matcher.find_matches(files, &globs, true);
+        matcher.find_matches(files, &data.globs, true);
         valid.clear();
-        valid.extend(globs.iter().enumerate().filter_map(|(i, f)| {
-            if matcher.is_glob_matched(i) {
-                let mut tags: Vec<String> = f.tags.iter().map(|t| t.to_string()).collect();
+        valid.extend(data.globs.iter().enumerate().filter_map(|(gi, g)| {
+            if matcher.is_glob_matched(gi) {
+                let mut tags: Vec<String> = g
+                    .tags(&data.alltags)
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect();
                 tags.sort_unstable();
                 tags.dedup();
                 Some(FileDataOwned {
-                    glob: f.path.to_string(),
+                    glob: g.path.to_string(),
                     tags,
-                    desc: f.desc.map(|d| d.to_string()),
+                    desc: g.desc.map(|d| d.to_string()),
                 })
             } else {
                 None
@@ -245,8 +248,9 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
                 .map_err(|_| Error::CannotWriteFile(fpath.clone()))?,
         );
         // Write directory data.
-        write_tags(&tags, &mut writer).map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
-        write_desc(&desc, &mut writer).map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
+        write_tags(data.tags(), &mut writer).map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
+        write_desc(data.desc.as_ref(), &mut writer)
+            .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
         // Write out the file data in groups that share the same tags and description.
         if let Some(last) = valid // TODO: Try to simplify this by making better use of iterators.
             .drain(..)
@@ -265,7 +269,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
                         Some(current) => {
                             write_globs(&current.globs, &mut writer)?;
                             write_tags(&current.tags, &mut writer)?;
-                            write_desc(&current.desc, &mut writer)?;
+                            write_desc(current.desc.as_ref(), &mut writer)?;
                             Some(FileDataMultiple {
                                 globs: vec![file.glob],
                                 tags: file.tags,
@@ -287,7 +291,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
                 .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
             write_tags(&last.tags, &mut writer)
                 .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
-            write_desc(&last.desc, &mut writer)
+            write_desc(last.desc.as_ref(), &mut writer)
                 .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
         }
     }
@@ -335,14 +339,16 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
             file_desc: true,
         },
     ));
-    let DirData { desc, tags, globs } = {
-        match get_ftag_path::<true>(path) {
-            Some(storepath) => loader.load(&storepath)?,
-            None => return Err(Error::InvalidPath(path.to_path_buf())),
-        }
+    let data = match get_ftag_path::<true>(path) {
+        Some(storepath) => loader.load(&storepath)?,
+        None => return Err(Error::InvalidPath(path.to_path_buf())),
     };
-    let mut outdesc = desc.unwrap_or("").to_string();
-    let mut outtags = tags.iter().map(|t| t.to_string()).collect::<Vec<_>>();
+    let mut outdesc = data.desc.unwrap_or("").to_string();
+    let mut outtags = data
+        .tags()
+        .iter()
+        .map(|t| t.to_string())
+        .collect::<Vec<_>>();
     if let Some(parent) = path.parent() {
         outtags.extend(implicit_tags_str(get_filename_str(parent)?));
     }
@@ -351,20 +357,15 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
         .ok_or(Error::InvalidPath(path.to_path_buf()))?
         .to_str()
         .ok_or(Error::InvalidPath(path.to_path_buf()))?;
-    for GlobData {
-        path: pattern,
-        desc: fdesc,
-        tags: ftags,
-    } in globs
-    {
-        if glob_match(pattern, filenamestr) {
+    for g in data.globs {
+        if glob_match(g.path, filenamestr) {
             outtags.extend(
-                ftags
+                g.tags(&data.alltags)
                     .iter()
                     .map(|t| t.to_string())
                     .chain(implicit_tags_str(filenamestr)),
             );
-            if let Some(fdesc) = fdesc {
+            if let Some(fdesc) = g.desc {
                 outdesc = format!("{}\n{}", fdesc, outdesc);
             }
         }
@@ -379,14 +380,13 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
 /// description.
 fn what_is_dir(path: &Path) -> Result<String, Error> {
     let mut loader = Loader::new(LoaderOptions::new(true, true, FileLoadingOptions::Skip));
-    let DirData { desc, tags, .. } = {
-        match get_ftag_path::<true>(path) {
-            Some(storepath) => loader.load(&storepath)?,
-            None => return Err(Error::InvalidPath(path.to_path_buf())),
-        }
+    let data = match get_ftag_path::<true>(path) {
+        Some(storepath) => loader.load(&storepath)?,
+        None => return Err(Error::InvalidPath(path.to_path_buf())),
     };
-    let desc = desc.unwrap_or("").to_string();
-    let tags = tags
+    let desc = data.desc.unwrap_or("").to_string();
+    let tags = data
+        .tags()
         .iter()
         .map(|t| t.to_string())
         .chain(implicit_tags_str(get_filename_str(path)?))
@@ -450,6 +450,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 /// Recursively traverse the directories from `path` and get all tags.
 pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error> {
     let mut alltags = AHashSet::new();
+    let mut matcher = GlobMatches::new();
     let mut dir = DirTree::new(
         path,
         LoaderOptions::new(
@@ -464,26 +465,31 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
     while let Some(VisitedDir {
         abs_dir_path,
         metadata,
+        files,
         ..
     }) = dir.walk()
     {
         match metadata {
             MetaData::FailedToLoad(e) => return Err(e), // Bail out with error.
-            MetaData::Ok(DirData { tags, globs, .. }) => {
+            MetaData::Ok(DirData {
+                alltags: tags,
+                globs,
+                ..
+            }) => {
                 alltags.extend(
                     tags.into_iter()
                         .map(|t| t.to_string())
                         .chain(implicit_tags_str(get_filename_str(abs_dir_path)?)),
                 );
-                for fdata in globs.into_iter() {
-                    alltags.extend(
-                        fdata
-                            .tags
-                            .into_iter()
-                            .map(|t| t.to_string())
-                            .chain(implicit_tags_str(fdata.path)),
-                    );
-                }
+                matcher.find_matches(files, &globs, false);
+                alltags.extend(
+                    files
+                        .iter()
+                        .enumerate()
+                        .filter(|(fi, _f)| matcher.is_file_matched(*fi))
+                        .filter_map(|(_fi, f)| f.name().to_str())
+                        .flat_map(implicit_tags_str),
+                );
             }
             MetaData::NotFound => continue, // No metadata, just pass on the tags to the next dir.
         }
@@ -528,11 +534,11 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
     while let Some(VisitedDir { metadata, .. }) = dir.walk() {
         match metadata {
             MetaData::FailedToLoad(e) => return Err(e),
-            MetaData::Ok(DirData { tags, globs, desc }) => {
-                let dirmatch = match_desc(&words, &tags, desc);
-                for filepath in globs.iter().filter_map(|f| {
-                    if dirmatch || match_desc(&words, &f.tags, f.desc) {
-                        Some(f.path)
+            MetaData::Ok(data) => {
+                let dirmatch = match_desc(&words, data.tags(), data.desc);
+                for filepath in data.globs.iter().filter_map(|g| {
+                    if dirmatch || match_desc(&words, g.tags(&data.alltags), g.desc) {
+                        Some(g.path)
                     } else {
                         None
                     }
