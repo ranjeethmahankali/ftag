@@ -399,7 +399,7 @@ impl Loader {
                         if self.options.include_file_tags() {
                             let (globs, tags, _desc) = file;
                             if tags.is_empty() {
-                                tags.extend(content.split_whitespace().map(|w| w.trim()));
+                                tags.extend(content.split_whitespace());
                             } else {
                                 return Err(Error::CannotParseFtagFile(
                                     filepath.to_path_buf(),
@@ -412,7 +412,7 @@ impl Loader {
                         }
                     } else if self.options.dir_tags {
                         if tags.is_empty() {
-                            tags.extend(content.split_whitespace().map(|w| w.trim()));
+                            tags.extend(content.split_whitespace());
                         } else {
                             return Err(Error::CannotParseFtagFile(
                                 filepath.to_path_buf(),
