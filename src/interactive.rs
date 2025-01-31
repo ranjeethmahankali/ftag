@@ -250,9 +250,12 @@ impl InteractiveSession {
                         }
                         Command::Filter(filter) => {
                             self.filtered_indices.clear();
-                            self.filtered_indices.extend(
-                                (0..self.num_files()).filter(|i| filter.eval(self.table.flags(*i))),
-                            );
+                            self.filtered_indices
+                                .extend((0..self.num_files()).filter(|fi| {
+                                    filter.eval(&|ti| {
+                                        *self.table.flags(*fi).get(ti).unwrap_or(&false)
+                                    })
+                                }));
                             self.update_lists();
                             self.filter_str = filter.text(self.table.tags());
                             self.state = State::ListsUpdated;

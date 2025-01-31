@@ -10,16 +10,6 @@ use crate::{
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
 
-/// Tries to set the flag at the given index. If the index is outside the bounds
-/// of the vector, the vector is automatically resized. That is what makes it
-/// 'safe'.
-fn safe_set_flag(flags: &mut Vec<bool>, index: usize) {
-    if index >= flags.len() {
-        flags.resize(index + 1, false);
-    }
-    flags[index] = true;
-}
-
 /*
 When a tags are specified for a folder, it's subfolders and all their subfolders
 inherit those tags. This inheritance follows the directory tree. When
@@ -64,18 +54,22 @@ impl InheritedTags {
 /// Table of all files and tags, that can be loaded recursively from any path.
 pub(crate) struct TagTable {
     root: PathBuf,
-    tag_index_map: AHashMap<String, usize>,
-    table: AHashMap<PathBuf, Vec<bool>>,
+    tag_index: AHashMap<String, usize>,
+    files: Vec<PathBuf>,
+    table: AHashSet<(usize, usize)>,
 }
 
 impl TagTable {
     fn into_query(self, filter: Filter<usize>) -> impl Iterator<Item = PathBuf> {
-        self.table
+        self.files
             .into_iter()
-            .filter_map(move |(path, flags)| match filter.eval(&flags) {
-                true => Some(path),
-                false => None,
-            })
+            .enumerate()
+            .filter_map(
+                move |(fi, path)| match filter.eval(&|ti| self.table.contains(&(fi, ti))) {
+                    true => Some(path),
+                    false => None,
+                },
+            )
     }
 
     /// Create a new tag table by recursively traversing directories
@@ -83,8 +77,9 @@ impl TagTable {
     pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, Error> {
         let mut table = TagTable {
             root: dirpath,
-            tag_index_map: AHashMap::new(),
-            table: AHashMap::new(),
+            tag_index: AHashMap::new(),
+            files: Vec::new(),
+            table: AHashSet::new(),
         };
         let mut inherited = InheritedTags {
             tag_indices: Vec::new(),
@@ -119,34 +114,31 @@ impl TagTable {
                 MetaData::FailedToLoad(e) => return Err(e),
             };
             // Push directory tags.
-            for tag in tags
-                .iter()
-                .map(|t| t.to_string())
-                .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
-            {
-                inherited
-                    .tag_indices
-                    .push(Self::get_tag_index(tag, &mut table.tag_index_map));
-            }
+            inherited.tag_indices.extend(
+                tags.iter()
+                    .map(|t| t.to_string())
+                    .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
+                    .map(|tag| Self::get_tag_index(tag, &mut table.tag_index)),
+            );
             // Process all files in the directory.
             gmatcher.find_matches(files, &globs, false);
-            for (ci, child) in files.iter().enumerate() {
+            table.files.reserve(files.len());
+            for (fi, file) in files.iter().enumerate() {
                 filetags.clear();
-                let found = gmatcher.matched_globs(ci).fold(false, |_, gi| {
+                let found = gmatcher.matched_globs(fi).fold(false, |_, gi| {
                     filetags.extend(globs[gi].tags.iter().map(|t| t.to_string()));
                     true
                 });
                 if found {
                     filetags.extend(implicit_tags_str(
-                        child
-                            .name()
+                        file.name()
                             .to_str()
-                            .ok_or(Error::InvalidPath(child.name().into()))?,
+                            .ok_or(Error::InvalidPath(file.name().into()))?,
                     ));
                     table.add_file(
                         {
                             let mut relpath = rel_dir_path.to_path_buf();
-                            relpath.push(child.name());
+                            relpath.push(file.name());
                             relpath
                         },
                         &mut filetags,
@@ -160,27 +152,25 @@ impl TagTable {
 
     fn get_tag_index(tag: String, map: &mut AHashMap<String, usize>) -> usize {
         let size = map.len();
-        let entry = *(map.entry(tag.to_string()).or_insert(size));
-        entry
+        *(map.entry(tag.to_string()).or_insert(size))
     }
 
-    fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &Vec<usize>) {
-        let flags = self.table.entry(path).or_default();
-        // Set the file's explicit tags.
-        for tag in tags.drain(..) {
-            safe_set_flag(flags, Self::get_tag_index(tag, &mut self.tag_index_map));
-        }
-        // Set inherited tags.
-        for i in inherited {
-            safe_set_flag(flags, *i);
-        }
+    fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &[usize]) {
+        let fi = self.files.len();
+        self.files.push(path);
+
+        self.table.extend(
+            tags.drain(..)
+                .map(|tag| (fi, Self::get_tag_index(tag, &mut self.tag_index))) // This file's explicit tags.
+                .chain(inherited.iter().map(|ti| (fi, *ti))), // Inherited tags.
+        );
     }
 }
 
 impl TagMaker<usize> for TagTable {
     /// Return the index of the given string tag from the list of parsed tags.
     fn create_tag(&self, tagstr: &str) -> Filter<usize> {
-        match self.tag_index_map.get(tagstr) {
+        match self.tag_index.get(tagstr) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,
         }
@@ -190,7 +180,8 @@ impl TagMaker<usize> for TagTable {
 /// Returns the number of files and the number of tags.
 pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let mut matcher = GlobMatches::new();
-    let (mut allfiles, mut alltags) = (AHashSet::new(), AHashSet::new());
+    let mut alltags = AHashSet::new();
+    let mut numfiles = 0usize;
     let mut dir = DirTree::new(
         path,
         LoaderOptions::new(
@@ -230,37 +221,28 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                 }
                 // Collect all tracked files.
                 matcher.find_matches(files, &globs, false);
-                allfiles.extend(files.iter().enumerate().filter_map(|(fi, file)| {
-                    match matcher.matched_globs(fi).next() {
+                numfiles += files
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(fi, file)| match matcher.matched_globs(fi).next() {
                         Some(_) => {
                             let mut relpath = rel_dir_path.to_path_buf();
                             relpath.push(file.name());
                             Some(relpath)
                         }
                         None => None,
-                    }
-                }));
+                    })
+                    .count();
             }
         }
     }
-    Ok((allfiles.len(), alltags.len()))
+    Ok((numfiles, alltags.len()))
 }
 
 pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
     let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
     for path in table.into_query(filter) {
-        println!("{}", path.display());
-    }
-    Ok(())
-}
-
-pub fn run_query_sorted(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
-    let table = TagTable::from_dir(dirpath)?;
-    let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
-    let mut results: Box<[_]> = table.into_query(filter).collect();
-    results.sort_unstable();
-    for path in results {
         println!("{}", path.display());
     }
     Ok(())
@@ -299,43 +281,38 @@ pub struct DenseTagTable {
     flags: BoolTable,
     files: Box<[String]>,
     tags: Box<[String]>,
-    tag_indices: AHashMap<String, usize>,
+    tag_index: AHashMap<String, usize>,
 }
 
 impl DenseTagTable {
     pub fn from_dir(dirpath: PathBuf) -> Result<DenseTagTable, Error> {
         let TagTable {
             root,
-            tag_index_map: tag_indices,
-            table: sparse,
+            tag_index,
+            mut files,
+            table,
         } = TagTable::from_dir(dirpath)?;
         let tags: Box<[String]> = {
-            let mut pairs: Vec<_> = tag_indices.iter().collect();
-            pairs.sort_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
+            // Vec of tags sorted by their indices.
+            let mut pairs: Vec<_> = tag_index.iter().collect();
+            pairs.sort_unstable_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
             pairs.into_iter().map(|(t, _i)| t.clone()).collect()
         };
-        let (files, flags) = {
-            let mut pairs: Vec<_> = sparse
-                .into_iter()
-                .map(|(p1, f1)| (format!("{}", p1.display()), f1))
-                .collect();
-            pairs.sort_by(|(path1, _flags1), (path2, _flags2)| path1.cmp(path2));
-            let (files, flags): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
-            let mut dense = BoolTable::new(files.len(), tags.len());
-            for (i, src) in flags.iter().enumerate() {
-                debug_assert!(tags.len() >= src.len());
-                let dst = dense.row_mut(i);
-                let dst = &mut dst[..src.len()];
-                dst.copy_from_slice(src); // Requires the src and dst to be of same length.
-            }
-            (files.into_boxed_slice(), dense)
-        };
+        let files: Box<[String]> = files
+            .drain(..)
+            .map(|f| format!("{}", f.display()))
+            .collect();
+        // Construct the bool-table.
+        let mut flags = BoolTable::new(files.len(), tags.len());
+        for (fi, ti) in table.into_iter() {
+            flags.row_mut(fi)[ti] = true;
+        }
         Ok(DenseTagTable {
             root,
             flags,
             files,
             tags,
-            tag_indices,
+            tag_index,
         })
     }
 
@@ -359,7 +336,7 @@ impl DenseTagTable {
 impl TagMaker<usize> for DenseTagTable {
     /// Return the index of the given string tag from the list of parsed tags.
     fn create_tag(&self, input: &str) -> Filter<usize> {
-        match self.tag_indices.get(input) {
+        match self.tag_index.get(input) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,
         }

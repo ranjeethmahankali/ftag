@@ -66,12 +66,15 @@ impl<T: TagData> Filter<T> {
 }
 
 impl Filter<usize> {
-    pub fn eval(&self, flags: &[bool]) -> bool {
+    pub fn eval<F>(&self, checker: &F) -> bool
+    where
+        F: Fn(usize) -> bool,
+    {
         match self {
-            Tag(ti) => *flags.get(*ti).unwrap_or(&false),
-            And(lhs, rhs) => lhs.eval(flags) && rhs.eval(flags),
-            Or(lhs, rhs) => lhs.eval(flags) || rhs.eval(flags),
-            Not(input) => !input.eval(flags),
+            Tag(ti) => checker(*ti),
+            And(lhs, rhs) => lhs.eval(checker) && rhs.eval(checker),
+            Or(lhs, rhs) => lhs.eval(checker) || rhs.eval(checker),
+            Not(input) => !input.eval(checker),
             FalseTag => false,
             TrueTag => true,
         }
