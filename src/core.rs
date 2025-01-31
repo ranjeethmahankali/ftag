@@ -175,10 +175,9 @@ fn write_tags<T: AsRef<str>>(tags: &[T], w: &mut impl io::Write) -> Result<(), i
 }
 
 fn write_desc<T: AsRef<str>>(desc: Option<&T>, w: &mut impl io::Write) -> Result<(), io::Error> {
-    if let Some(desc) = desc {
-        writeln!(w, "[desc]\n{}", desc.as_ref())
-    } else {
-        Ok(())
+    match desc {
+        Some(desc) => writeln!(w, "[desc]\n{}", desc.as_ref()),
+        None => Ok(()),
     }
 }
 
