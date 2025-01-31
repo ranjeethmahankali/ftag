@@ -219,10 +219,9 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                 files.iter().enumerate().fold(0usize, |numfiles, (fi, f)| {
                     match matcher.is_file_matched(fi) {
                         true => {
-                            match f.name().to_str() {
-                                Some(name) => alltags.extend(implicit_tags_str(name)),
-                                None => {}
-                            };
+                            if let Some(name) = f.name().to_str() {
+                                alltags.extend(implicit_tags_str(name));
+                            }
                             numfiles + 1
                         }
                         false => numfiles,
