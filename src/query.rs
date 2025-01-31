@@ -159,7 +159,6 @@ impl TagTable {
     fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &[usize]) {
         let fi = self.files.len();
         self.files.push(path);
-
         self.table.extend(
             tags.drain(..)
                 .map(|tag| (fi, Self::get_tag_index(tag, &mut self.tag_index))) // This file's explicit tags.
