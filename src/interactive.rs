@@ -15,7 +15,6 @@ pub enum State {
 
 enum Command {
     Exit,
-    Quit,
     Reset,
     Filter(Filter<usize>),
     WhatIs(PathBuf),
@@ -112,25 +111,21 @@ impl InteractiveSession {
 
     fn parse_command(&mut self) -> Result<Command, Error> {
         let cmd = self.command.trim();
-        if let Some(cmd) = cmd.strip_prefix('/') {
-            if cmd == "exit" {
-                Ok(Command::Exit)
-            } else if cmd == "quit" {
-                Ok(Command::Quit)
-            } else if cmd == "reset" {
-                Ok(Command::Reset)
-            } else if let Some(numstr) = cmd.strip_prefix("whatis ") {
-                Ok(Command::WhatIs(self.parse_index_to_filepath(numstr)?))
-            } else if let Some(numstr) = cmd.strip_prefix("open ") {
-                Ok(Command::Open(self.parse_index_to_filepath(numstr)?))
-            } else {
-                Err(Error::InvalidCommand(cmd.to_string()))
-            }
-        } else {
-            let newfilter = format!("{} {cmd}", self.filter_str);
-            Ok(Command::Filter(
-                Filter::<usize>::parse(&newfilter, &self.table).map_err(Error::InvalidFilter)?,
-            ))
+        match cmd.strip_prefix('/') {
+            Some("exit") => Ok(Command::Exit),
+            Some("quit") => Ok(Command::Exit),
+            Some("reset") => Ok(Command::Reset),
+            Some(cmd) => match cmd.split_once(char::is_whitespace) {
+                Some(("whatis", numstr)) => {
+                    Ok(Command::WhatIs(self.parse_index_to_filepath(numstr)?))
+                }
+                Some(("open", numstr)) => Ok(Command::Open(self.parse_index_to_filepath(numstr)?)),
+                _ => Err(Error::InvalidCommand(cmd.to_string())),
+            },
+            None => Ok(Command::Filter(
+                Filter::<usize>::parse(&format!("{} {cmd}", self.filter_str), &self.table)
+                    .map_err(Error::InvalidFilter)?,
+            )),
         }
     }
 
@@ -240,7 +235,7 @@ impl InteractiveSession {
             State::ListsUpdated | State::Default => {
                 match self.parse_command() {
                     Ok(cmd) => match cmd {
-                        Command::Exit | Command::Quit => self.state = State::Exit,
+                        Command::Exit => self.state = State::Exit,
                         Command::WhatIs(path) => {
                             self.echo = what_is(&path)
                                 .unwrap_or(String::from(
