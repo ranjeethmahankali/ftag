@@ -357,7 +357,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
         .ok_or(Error::InvalidPath(path.to_path_buf()))?
         .to_str()
         .ok_or(Error::InvalidPath(path.to_path_buf()))?;
-    for g in data.globs {
+    for g in data.globs.iter() {
         if glob_match(g.path, filenamestr) {
             outtags.extend(
                 g.tags(&data.alltags)

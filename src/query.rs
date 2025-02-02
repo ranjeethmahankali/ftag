@@ -210,7 +210,7 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                 // Collect all tags.
                 alltags.extend(
                     data.alltags
-                        .into_iter()
+                        .iter()
                         .map(|t| t.to_string())
                         .chain(implicit_tags_str(get_filename_str(rel_dir_path)?)),
                 );
