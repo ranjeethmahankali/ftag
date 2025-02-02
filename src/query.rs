@@ -1,6 +1,6 @@
 use crate::{
     core::Error,
-    filter::{Filter, TagMaker},
+    filter::Filter,
     load::{get_filename_str, implicit_tags_str, FileLoadingOptions, GlobMatches, LoaderOptions},
     walk::{DirTree, MetaData, VisitedDir},
 };
@@ -174,16 +174,6 @@ impl TagTable {
     }
 }
 
-impl TagMaker<usize> for TagTable {
-    /// Return the index of the given string tag from the list of parsed tags.
-    fn create_tag(&self, tagstr: &str) -> Filter<usize> {
-        match self.tag_index.get(tagstr) {
-            Some(i) => Filter::Tag(*i),
-            None => Filter::FalseTag,
-        }
-    }
-}
-
 /// Returns the number of files and the number of tags.
 pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let mut matcher = GlobMatches::new();
@@ -244,7 +234,11 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
 
 pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let table = TagTable::from_dir(dirpath)?;
-    let filter = Filter::<usize>::parse(filter, &table).map_err(Error::InvalidFilter)?;
+    let filter = Filter::<usize>::parse(filter, |tag| match table.tag_index.get(tag) {
+        Some(i) => Filter::Tag(*i),
+        None => Filter::FalseTag,
+    })
+    .map_err(Error::InvalidFilter)?;
     for path in table.into_query(filter) {
         println!("{}", path.display());
     }
@@ -334,14 +328,8 @@ impl DenseTagTable {
     pub fn files(&self) -> &[String] {
         &self.files
     }
-}
 
-impl TagMaker<usize> for DenseTagTable {
-    /// Return the index of the given string tag from the list of parsed tags.
-    fn create_tag(&self, input: &str) -> Filter<usize> {
-        match self.tag_index.get(input) {
-            Some(i) => Filter::Tag(*i),
-            None => Filter::FalseTag,
-        }
+    pub fn tag_index(&self) -> &AHashMap<String, usize> {
+        &self.tag_index
     }
 }

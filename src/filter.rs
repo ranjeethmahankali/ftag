@@ -27,14 +27,6 @@ pub trait TagData: std::fmt::Display + Clone + Default {}
 
 impl TagData for usize {}
 
-/// The user always supplies tags as strings. But `TagData` can be
-/// other things such as indices. A class that implements this trait
-/// should know how to convert a user supplied tag string into a
-/// filter that wraps `TagData`.
-pub trait TagMaker<T: TagData> {
-    fn create_tag(&self, input: &str) -> Filter<T>;
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Filter<T: TagData> {
     Tag(T),
@@ -53,8 +45,11 @@ impl<T: TagData> Default for Filter<T> {
 }
 
 impl<T: TagData> Filter<T> {
-    pub fn parse(input: &str, tagmaker: &impl TagMaker<T>) -> Result<Self, FilterParseError> {
-        parse_filter(input, tagmaker)
+    pub fn parse<F>(input: &str, mut tagmaker: F) -> Result<Self, FilterParseError>
+    where
+        F: FnMut(&str) -> Filter<T>,
+    {
+        parse_filter(input, &mut tagmaker)
     }
 
     fn maybe_parens(parent: &Filter<T>, child: &Filter<T>, childstr: String) -> String {
@@ -150,10 +145,10 @@ impl<T: TagData> Display for Token<T> {
 
 /// Parse filter from a string. The tagmaker is used to create tag-data from
 /// strings corresponding to the tags.
-fn parse_filter<T: TagData>(
-    input: &str,
-    tagmaker: &impl TagMaker<T>,
-) -> Result<Filter<T>, FilterParseError> {
+fn parse_filter<T: TagData, F>(input: &str, tagmaker: &mut F) -> Result<Filter<T>, FilterParseError>
+where
+    F: FnMut(&str) -> Filter<T>,
+{
     if input.is_empty() {
         return Err(FilterParseError::EmptyQuery);
     }
@@ -254,48 +249,47 @@ fn not_filter<T: TagData>(filter: Filter<T>) -> Filter<T> {
 
 /// Push the tag into the vector of tokens. The tag-data is created using the
 /// tag maker.
-fn push_tag<T: TagData>(
+fn push_tag<T: TagData, F>(
     input: &str,
     from: usize,
     to: usize,
     tokens: &mut Vec<Token<T>>,
-    tagmaker: &impl TagMaker<T>,
-) {
+    tagmaker: &mut F,
+) where
+    F: FnMut(&str) -> Filter<T>,
+{
     if to > from {
-        tokens.push(Token::Parsed(tagmaker.create_tag(&input[from..to])));
+        tokens.push(Token::Parsed(tagmaker(&input[from..to])));
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-
-    struct StringMaker;
-
-    impl TagData for String {}
-
-    impl TagMaker<String> for StringMaker {
-        fn create_tag(&self, input: &str) -> Filter<String> {
-            Tag(input.to_string())
-        }
-    }
+    use std::collections::BTreeMap;
 
     #[test]
     fn t_filter_parse_round_trip() {
-        let maker = StringMaker;
         for fstr in [
             "apple & banana",
             "(apple & mango) | banana",
             "(apple & mango) | !banana",
             "(apple & pear) | !(banana & !pear) | (fig & grape)",
         ] {
-            assert_eq!(Filter::parse(fstr, &maker).unwrap().to_string(), fstr);
+            let mut map = BTreeMap::<String, usize>::new();
+            let filter = Filter::parse(fstr, |tag| {
+                let size = map.len();
+                let idx = *map.entry(tag.to_string()).or_insert(size);
+                Filter::Tag(idx)
+            })
+            .unwrap();
+            let tagnames: Box<[_]> = map.keys().map(|t| t.to_string()).collect();
+            assert_eq!(filter.text(&tagnames), fstr);
         }
     }
 
     #[test]
     fn t_not_not_filter() {
-        let maker = StringMaker;
         for (before, after) in [
             ("!apple", "!apple"),
             ("!!apple", "apple"),
@@ -305,7 +299,14 @@ mod test {
             ("!!(!!(!apple))", "!apple"),
             ("!!(!!(!(!apple)))", "apple"),
         ] {
-            assert_eq!(Filter::parse(before, &maker).unwrap().to_string(), after);
+            let mut map = BTreeMap::<String, usize>::new();
+            let filter = Filter::parse(before, |tag| {
+                let size = map.len();
+                Filter::Tag(*map.entry(tag.to_string()).or_insert(size))
+            })
+            .unwrap();
+            let tagnames: Box<[_]> = map.keys().map(|t| t.to_string()).collect();
+            assert_eq!(filter.text(&tagnames), after);
         }
     }
 }

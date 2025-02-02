@@ -123,8 +123,13 @@ impl InteractiveSession {
                 _ => Err(Error::InvalidCommand(cmd.to_string())),
             },
             None => Ok(Command::Filter(
-                Filter::<usize>::parse(&format!("{} {cmd}", self.filter_str), &self.table)
-                    .map_err(Error::InvalidFilter)?,
+                Filter::<usize>::parse(&format!("{} {cmd}", self.filter_str), |tag| {
+                    match self.table.tag_index().get(tag) {
+                        Some(i) => Filter::Tag(*i),
+                        None => Filter::FalseTag,
+                    }
+                })
+                .map_err(Error::InvalidFilter)?,
             )),
         }
     }
