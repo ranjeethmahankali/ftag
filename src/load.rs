@@ -335,11 +335,11 @@ impl Header {
     }
 }
 
-fn load_impl<'text, 'temp>(
+fn load_impl<'text>(
     input: &'text str,
     filepath: &Path,
     options: &LoaderOptions,
-    dst: &'temp mut DirData<'text>,
+    dst: &mut DirData<'text>,
 ) -> Result<(), Error> {
     let DirData {
         alltags,
