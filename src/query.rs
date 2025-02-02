@@ -59,92 +59,6 @@ pub(crate) struct TagTable {
     table: AHashSet<(usize, usize)>,
 }
 
-fn query_new(filterstr: &str, dirpath: PathBuf) -> Result<(), Error> {
-    let mut tag_index = BTreeMap::<String, usize>::new();
-    let filter = Filter::<usize>::parse(filterstr, |tag| {
-        let size = tag_index.len();
-        let index = *tag_index.entry(tag.to_string()).or_insert(size);
-        Filter::Tag(index)
-    })
-    .map_err(Error::InvalidFilter)?;
-    let tag_index = tag_index; // Immutable.
-    let mut inherited = InheritedTags {
-        tag_indices: Vec::new(),
-        offsets: Vec::new(),
-        depth: 0,
-    };
-    let mut matcher = GlobMatches::new();
-    let mut dir = DirTree::new(
-        dirpath,
-        LoaderOptions::new(
-            true,
-            false,
-            FileLoadingOptions::Load {
-                file_tags: true,
-                file_desc: false,
-            },
-        ),
-    )?;
-    while let Some(VisitedDir {
-        traverse_depth,
-        abs_dir_path,
-        rel_dir_path,
-        files,
-        metadata,
-    }) = dir.walk()
-    {
-        inherited.update(traverse_depth)?;
-        let data = match metadata {
-            MetaData::Ok(d) => d,
-            MetaData::NotFound => continue,
-            MetaData::FailedToLoad(e) => return Err(e),
-        };
-        // Push directory tags.
-        inherited.tag_indices.extend(
-            data.tags()
-                .iter()
-                .map(|t| t.to_string())
-                .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
-                .filter_map(|tag| tag_index.get(&tag).copied()),
-        );
-        // Process all files in the directory.
-        matcher.find_matches(files, &data.globs, false);
-        let mut filetags = vec![false; tag_index.len()].into_boxed_slice(); // TODO: Consider using a bitset or a bit vec.
-        for (fi, file) in files
-            .iter()
-            .enumerate()
-            .filter(|(fi, _)| matcher.is_file_matched(*fi))
-        {
-            filetags.fill(false);
-            for index in matcher
-                .matched_globs(fi) // Tags associated with matching globs.
-                .flat_map(|gi| {
-                    data.globs[gi]
-                        .tags(&data.alltags)
-                        .iter()
-                        .map(|t| t.to_string())
-                })
-                // Implicit tags.
-                .chain(implicit_tags_str(
-                    file.name()
-                        .to_str()
-                        .ok_or(Error::InvalidPath(file.name().into()))?,
-                ))
-                .filter_map(|tag| tag_index.get(&tag).copied())
-                .chain(inherited.tag_indices.iter().copied())
-            {
-                filetags[index] = true;
-            }
-            if filter.eval(&|ti| filetags[ti]) {
-                let mut path = rel_dir_path.to_path_buf();
-                path.push(file.name());
-                println!("{}", path.display());
-            }
-        }
-    }
-    Ok(())
-}
-
 impl TagTable {
     /// Create a new tag table by recursively traversing directories
     /// from `dirpath`.
@@ -310,7 +224,89 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
 }
 
 pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
-    query_new(filter, dirpath)
+    let mut tag_index = BTreeMap::<String, usize>::new();
+    let filter = Filter::<usize>::parse(filter, |tag| {
+        let size = tag_index.len();
+        let index = *tag_index.entry(tag.to_string()).or_insert(size);
+        Filter::Tag(index)
+    })
+    .map_err(Error::InvalidFilter)?;
+    let tag_index = tag_index; // Immutable.
+    let mut inherited = InheritedTags {
+        tag_indices: Vec::new(),
+        offsets: Vec::new(),
+        depth: 0,
+    };
+    let mut matcher = GlobMatches::new();
+    let mut dir = DirTree::new(
+        dirpath,
+        LoaderOptions::new(
+            true,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: false,
+            },
+        ),
+    )?;
+    while let Some(VisitedDir {
+        traverse_depth,
+        abs_dir_path,
+        rel_dir_path,
+        files,
+        metadata,
+    }) = dir.walk()
+    {
+        inherited.update(traverse_depth)?;
+        let data = match metadata {
+            MetaData::Ok(d) => d,
+            MetaData::NotFound => continue,
+            MetaData::FailedToLoad(e) => return Err(e),
+        };
+        // Push directory tags.
+        inherited.tag_indices.extend(
+            data.tags()
+                .iter()
+                .map(|t| t.to_string())
+                .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
+                .filter_map(|tag| tag_index.get(&tag).copied()),
+        );
+        // Process all files in the directory.
+        matcher.find_matches(files, &data.globs, false);
+        let mut filetags = vec![false; tag_index.len()].into_boxed_slice(); // TODO: Consider using a bitset or a bit vec.
+        for (fi, file) in files
+            .iter()
+            .enumerate()
+            .filter(|(fi, _)| matcher.is_file_matched(*fi))
+        {
+            filetags.fill(false);
+            for index in matcher
+                .matched_globs(fi) // Tags associated with matching globs.
+                .flat_map(|gi| {
+                    data.globs[gi]
+                        .tags(&data.alltags)
+                        .iter()
+                        .map(|t| t.to_string())
+                })
+                // Implicit tags.
+                .chain(implicit_tags_str(
+                    file.name()
+                        .to_str()
+                        .ok_or(Error::InvalidPath(file.name().into()))?,
+                ))
+                .filter_map(|tag| tag_index.get(&tag).copied())
+                .chain(inherited.tag_indices.iter().copied())
+            {
+                filetags[index] = true;
+            }
+            if filter.eval(&|ti| filetags[ti]) {
+                let mut path = rel_dir_path.to_path_buf();
+                path.push(file.name());
+                println!("{}", path.display());
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 2d array of bools.
