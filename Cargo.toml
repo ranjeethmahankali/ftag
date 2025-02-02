@@ -1,6 +1,6 @@
 [package]
 name = "ftag"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2021"
 authors = ["Ranjeeth Mahankali <ranjeethmahankali@gmail.com>"]
 description = "CLI tool for tagging and searching files. See README.md for more info."
@@ -13,10 +13,8 @@ categories = ["command-line-utilities"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+#Used by the CLI.
 clap = { version = "4.5.26", features = ["cargo"] }
-fast-glob = "0.4.3"
-aho-corasick = "1.1.3"
-ahash = "0.8.11"
 edit = "0.1.5"
 crossterm = "0.28.1"
 ratatui = "0.29.0"
@@ -26,6 +24,11 @@ egui = "0.28.1"
 eframe = "0.28.1"
 egui_extras = { version = "0.28.1", default-features = false, features = ["all_loaders", "image"] }
 image = { version = "0.25.5", default-features = false, features = ["png", "jpeg"] }
+# Used for loading and parsing data.
+fast-glob = "0.4.3"
+aho-corasick = "1.1.3"
+ahash = "0.8.11"
+smallvec = "1.13.2"
 
 [[bin]]
 name = "ftag"

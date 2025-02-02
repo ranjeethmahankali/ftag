@@ -4,6 +4,7 @@ use crate::{
 };
 use aho_corasick::{AhoCorasick, Match};
 use fast_glob::glob_match;
+use smallvec::SmallVec;
 use std::{
     ffi::OsStr,
     fs::File,
@@ -93,32 +94,16 @@ pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
 /// files on disk, and globs listed in the ftag file. This can be
 /// reused for multiple folders to avoid reallocations.
 pub(crate) struct GlobMatches {
-    table: Vec<bool>, //The major index represents the files matched by a single glob.
-    num_files: usize,
-    num_globs: usize,
+    file_matches: Vec<SmallVec<[usize; 8]>>,
+    glob_matches: Vec<SmallVec<[usize; 8]>>,
 }
 
 impl GlobMatches {
     pub fn new() -> GlobMatches {
         GlobMatches {
-            table: Vec::new(),
-            num_files: 0,
-            num_globs: 0,
+            file_matches: Vec::new(),
+            glob_matches: Vec::new(),
         }
-    }
-
-    /// Get a row from the table as a slice. The row indicates all the files
-    /// that a particular glob matches.
-    fn row(&self, gi: usize) -> &[bool] {
-        let start = gi * self.num_files;
-        &self.table[start..(start + self.num_files)]
-    }
-
-    /// Get the row and perfect match as mutable reference for the given glob
-    /// index.
-    fn row_mut(&mut self, gi: usize) -> &mut [bool] {
-        let start = gi * self.num_files;
-        &mut self.table[start..(start + self.num_files)]
     }
 
     /// Populate this struct with matches from a new set of `files` and
@@ -132,12 +117,11 @@ impl GlobMatches {
         globs: &[GlobData],
         short_circuit_globs: bool,
     ) {
-        self.num_files = files.len();
-        self.num_globs = globs.len();
-        self.table.clear();
-        self.table.resize(files.len() * globs.len(), false);
+        self.file_matches.clear();
+        self.file_matches.resize(files.len(), SmallVec::new());
+        self.glob_matches.clear();
+        self.glob_matches.resize(globs.len(), SmallVec::new());
         'globs: for (gi, g) in globs.iter().enumerate() {
-            let row = self.row_mut(gi);
             /* A glob can either directly be a filename or a glob that matches
              * one or more files. Checking for glob matches is MUCH more
              * expensive than direct comparison. So for this glob, first we look
@@ -149,12 +133,14 @@ impl GlobMatches {
              */
             let gpath = OsStr::new(g.path);
             if let Ok(fi) = files.binary_search_by(move |f| f.name().cmp(gpath)) {
-                row[fi] = true;
+                self.file_matches[fi].push(gi);
+                self.glob_matches[gi].push(fi);
                 continue 'globs;
             }
             for (fi, f) in files.iter().enumerate() {
                 if glob_match(g.path.as_bytes(), f.name().as_encoded_bytes()) {
-                    row[fi] = true;
+                    self.file_matches[fi].push(gi);
+                    self.glob_matches[gi].push(fi);
                     if short_circuit_globs {
                         break;
                     }
@@ -166,16 +152,16 @@ impl GlobMatches {
     /// For a given file at `file_index`, get indices of all globs
     /// that matched the file.
     pub fn matched_globs(&self, file_index: usize) -> impl Iterator<Item = usize> + use<'_> {
-        (0..self.num_globs).filter(move |gi| self.row(*gi)[file_index])
+        self.file_matches[file_index].iter().copied()
     }
 
     /// Check if the glob at `glob_index` matched at least one file.
     pub fn is_glob_matched(&self, glob_index: usize) -> bool {
-        self.row(glob_index).iter().any(|m| *m)
+        !self.glob_matches[glob_index].is_empty()
     }
 
     pub fn is_file_matched(&self, file_index: usize) -> bool {
-        self.matched_globs(file_index).next().is_some()
+        !self.file_matches[file_index].is_empty()
     }
 }
 
@@ -218,9 +204,9 @@ pub fn get_ftag_backup_path(path: &Path) -> PathBuf {
 
 /// Loads and parses an ftag file. Reuse this to avoid allocations.
 pub(crate) struct Loader {
+    parsed: DirData<'static>, // This MUST be the first member of the struct, because it holds references to `raw_text`.
     raw_text: String,
     options: LoaderOptions,
-    parsed: DirData<'static>,
 }
 
 /// Data in an ftag file, corresponding to one file / glob.
