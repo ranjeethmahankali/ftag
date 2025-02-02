@@ -1,7 +1,7 @@
 use crate::{
     filter::FilterParseError,
     load::{
-        get_filename_str, get_ftag_backup_path, get_ftag_path, implicit_tags_str, DirData,
+        get_filename_str, get_ftag_backup_path, get_ftag_path, infer_implicit_tags, DirData,
         FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
     },
     walk::{DirTree, MetaData, VisitedDir},
@@ -350,7 +350,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
         .map(|t| t.to_string())
         .collect::<Vec<_>>();
     if let Some(parent) = path.parent() {
-        outtags.extend(implicit_tags_str(get_filename_str(parent)?));
+        outtags.extend(infer_implicit_tags(get_filename_str(parent)?));
     }
     let filenamestr = path
         .file_name()
@@ -363,7 +363,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
                 g.tags(&data.alltags)
                     .iter()
                     .map(|t| t.to_string())
-                    .chain(implicit_tags_str(filenamestr)),
+                    .chain(infer_implicit_tags(filenamestr)),
             );
             if let Some(fdesc) = g.desc {
                 outdesc = format!("{}\n{}", fdesc, outdesc);
@@ -389,7 +389,7 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
         .tags()
         .iter()
         .map(|t| t.to_string())
-        .chain(implicit_tags_str(get_filename_str(path)?))
+        .chain(infer_implicit_tags(get_filename_str(path)?))
         .collect::<Vec<_>>();
     Ok(full_description(tags, desc))
 }
@@ -479,7 +479,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                 alltags.extend(
                     tags.iter()
                         .map(|t| t.to_string())
-                        .chain(implicit_tags_str(get_filename_str(abs_dir_path)?)),
+                        .chain(infer_implicit_tags(get_filename_str(abs_dir_path)?)),
                 );
                 matcher.find_matches(files, globs, false);
                 alltags.extend(
@@ -488,7 +488,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                         .enumerate()
                         .filter(|(fi, _f)| matcher.is_file_matched(*fi))
                         .filter_map(|(_fi, f)| f.name().to_str())
-                        .flat_map(implicit_tags_str),
+                        .flat_map(infer_implicit_tags),
                 );
             }
             MetaData::NotFound => continue, // No metadata, just pass on the tags to the next dir.

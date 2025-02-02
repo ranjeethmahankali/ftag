@@ -1,7 +1,7 @@
 use crate::{
     core::Error,
     filter::Filter,
-    load::{get_filename_str, implicit_tags_str, FileLoadingOptions, GlobMatches, LoaderOptions},
+    load::{get_filename_str, infer_implicit_tags, FileLoadingOptions, GlobMatches, LoaderOptions},
     walk::{DirTree, MetaData, VisitedDir},
 };
 use ahash::{AHashMap, AHashSet};
@@ -83,7 +83,7 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                     data.alltags
                         .iter()
                         .map(|t| t.to_string())
-                        .chain(implicit_tags_str(get_filename_str(rel_dir_path)?)),
+                        .chain(infer_implicit_tags(get_filename_str(rel_dir_path)?)),
                 );
                 // Collect all tracked files.
                 matcher.find_matches(files, &data.globs, false);
@@ -91,7 +91,7 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                     match matcher.is_file_matched(fi) {
                         true => {
                             if let Some(name) = f.name().to_str() {
-                                alltags.extend(implicit_tags_str(name));
+                                alltags.extend(infer_implicit_tags(name));
                             }
                             numfiles + 1
                         }
@@ -155,7 +155,7 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
             data.tags()
                 .iter()
                 .map(|t| t.to_string())
-                .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
+                .chain(infer_implicit_tags(get_filename_str(abs_dir_path)?))
                 .filter_map(|tag| tag_index.get(&tag).copied()),
         );
         // Process all files in the directory.
@@ -175,7 +175,7 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
                         .map(|t| t.to_string())
                 })
                 // Implicit tags.
-                .chain(implicit_tags_str(
+                .chain(infer_implicit_tags(
                     file.name()
                         .to_str()
                         .ok_or(Error::InvalidPath(file.name().into()))?,
@@ -273,7 +273,7 @@ impl TagTable {
                 data.tags()
                     .iter()
                     .map(|t| t.to_string())
-                    .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
+                    .chain(infer_implicit_tags(get_filename_str(abs_dir_path)?))
                     .map(|tag| Self::get_tag_index(tag, &mut tag_index)),
             );
             // Process all files in the directory.
@@ -296,7 +296,7 @@ impl TagTable {
                                 .map(|t| t.to_string())
                         })
                         // Implicit tags.
-                        .chain(implicit_tags_str(
+                        .chain(infer_implicit_tags(
                             file.name()
                                 .to_str()
                                 .ok_or(Error::InvalidPath(file.name().into()))?,

@@ -15,7 +15,7 @@ use std::{
 };
 
 /// Try to infer a range of years from the name of a document or file.
-fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
+fn infer_year_range(mut input: &str) -> Option<Range<u16>> {
     if input.len() < 4 {
         return None;
     }
@@ -71,9 +71,9 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
 
 /// Get an iterator over all the implicit tags that can be inferred
 /// from the name of the file or directory.
-pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> + '_ {
+pub(crate) fn infer_implicit_tags(name: &str) -> impl Iterator<Item = String> + use<'_> {
     // TODO: Try avoid allocating strings, and return &str instead.
-    infer_year_range_str(name)
+    infer_year_range(name)
         .unwrap_or(0..0)
         .map(|y| y.to_string())
         .chain(infer_format_tag(name))
@@ -522,13 +522,13 @@ mod test {
         let inputs = vec!["2021_to_2023", "2021_2023"];
         let expected = vec!["2021", "2022", "2023"];
         for input in inputs {
-            let actual: Vec<_> = implicit_tags_str(input).collect();
+            let actual: Vec<_> = infer_implicit_tags(input).collect();
             assert_eq!(actual, expected);
         }
         let inputs = vec!["1998_MyDirectory", "1998_MyFile.pdf"];
         let expected = vec!["1998"];
         for input in inputs {
-            let actual: Vec<_> = implicit_tags_str(input).collect();
+            let actual: Vec<_> = infer_implicit_tags(input).collect();
             assert_eq!(actual, expected);
         }
     }
