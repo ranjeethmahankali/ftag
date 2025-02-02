@@ -232,6 +232,7 @@ pub(crate) struct GlobData<'a> {
 }
 
 /// Data from an ftag file.
+#[derive(Default)]
 pub(crate) struct DirData<'a> {
     pub alltags: Vec<&'a str>,
     pub desc: Option<&'a str>,
@@ -255,17 +256,6 @@ impl<'a> DirData<'a> {
         self.desc = None;
         self.tags = 0..0;
         self.globs.clear();
-    }
-}
-
-impl<'a> Default for DirData<'a> {
-    fn default() -> Self {
-        Self {
-            alltags: Default::default(),
-            desc: Default::default(),
-            tags: Default::default(),
-            globs: Default::default(),
-        }
     }
 }
 
@@ -537,7 +527,9 @@ impl Loader {
                 desc,
                 tags,
                 globs,
-            } = unsafe { std::mem::transmute::<_, &'a mut DirData<'a>>(&mut self.parsed) };
+            } = unsafe {
+                std::mem::transmute::<&mut DirData<'static>, &'a mut DirData<'a>>(&mut self.parsed)
+            };
             load_impl(
                 self.raw_text.trim(),
                 filepath,
