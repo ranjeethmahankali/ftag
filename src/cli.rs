@@ -2,7 +2,7 @@ use clap::{command, value_parser, Arg};
 use ftag::{
     core::{self, get_all_tags, search, untracked_files, Error},
     load::get_ftag_path,
-    query::{count_files_tags, run_query, DenseTagTable},
+    query::{count_files_tags, run_query, TagTable},
 };
 use std::path::PathBuf;
 
@@ -42,7 +42,7 @@ fn main() -> Result<(), Error> {
                 .ok_or(Error::InvalidArgs)?,
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
-        return ftag::tui::start(DenseTagTable::from_dir(current_dir)?)
+        return ftag::tui::start(TagTable::from_dir(current_dir)?)
             .map_err(|err| Error::TUIFailure(format!("{:?}", err)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);

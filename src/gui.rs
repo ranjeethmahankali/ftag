@@ -3,7 +3,7 @@ use egui::text::{CCursor, CCursorRange};
 use ftag::{
     core::Error,
     interactive::{InteractiveSession, State},
-    query::DenseTagTable,
+    query::TagTable,
 };
 use std::path::{Path, PathBuf};
 
@@ -24,7 +24,7 @@ fn main() -> Result<(), Error> {
     } else {
         std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?
     };
-    let table = DenseTagTable::from_dir(current_dir)?;
+    let table = TagTable::from_dir(current_dir)?;
     let options = eframe::NativeOptions {
         follow_system_theme: true,
         viewport: egui::ViewportBuilder::default().with_maximized(true),

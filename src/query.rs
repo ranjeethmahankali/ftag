@@ -51,120 +51,6 @@ impl InheritedTags {
     }
 }
 
-/// Table of all files and tags, that can be loaded recursively from any path.
-pub(crate) struct TagTable {
-    root: PathBuf,
-    tag_index: AHashMap<String, usize>,
-    files: Vec<PathBuf>,
-    table: AHashSet<(usize, usize)>,
-}
-
-impl TagTable {
-    /// Create a new tag table by recursively traversing directories
-    /// from `dirpath`.
-    pub(crate) fn from_dir(dirpath: PathBuf) -> Result<Self, Error> {
-        let mut table = TagTable {
-            root: dirpath,
-            tag_index: AHashMap::new(),
-            files: Vec::new(),
-            table: AHashSet::new(),
-        };
-        let mut inherited = InheritedTags {
-            tag_indices: Vec::new(),
-            offsets: Vec::new(),
-            depth: 0,
-        };
-        let mut matcher = GlobMatches::new();
-        let mut filetags: Vec<String> = Vec::new();
-        let mut dir = DirTree::new(
-            table.root.clone(),
-            LoaderOptions::new(
-                true,
-                false,
-                FileLoadingOptions::Load {
-                    file_tags: true,
-                    file_desc: false,
-                },
-            ),
-        )?;
-        while let Some(VisitedDir {
-            traverse_depth,
-            abs_dir_path,
-            rel_dir_path,
-            files,
-            metadata,
-        }) = dir.walk()
-        {
-            inherited.update(traverse_depth)?;
-            let data = match metadata {
-                MetaData::Ok(d) => d,
-                MetaData::NotFound => continue,
-                MetaData::FailedToLoad(e) => return Err(e),
-            };
-            // Push directory tags.
-            inherited.tag_indices.extend(
-                data.tags()
-                    .iter()
-                    .map(|t| t.to_string())
-                    .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
-                    .map(|tag| Self::get_tag_index(tag, &mut table.tag_index)),
-            );
-            // Process all files in the directory.
-            matcher.find_matches(files, &data.globs, false);
-            table.files.reserve(files.len());
-            for (fi, file) in files
-                .iter()
-                .enumerate()
-                // Only interested in tracked files.
-                .filter(|(fi, _)| matcher.is_file_matched(*fi))
-            {
-                filetags.clear();
-                filetags.extend(
-                    matcher
-                        .matched_globs(fi) // Tags associated with matching globs.
-                        .flat_map(|gi| {
-                            data.globs[gi]
-                                .tags(&data.alltags)
-                                .iter()
-                                .map(|t| t.to_string())
-                        })
-                        // Implicit tags.
-                        .chain(implicit_tags_str(
-                            file.name()
-                                .to_str()
-                                .ok_or(Error::InvalidPath(file.name().into()))?,
-                        )),
-                );
-                table.add_file(
-                    {
-                        let mut relpath = rel_dir_path.to_path_buf();
-                        relpath.push(file.name());
-                        relpath
-                    },
-                    &mut filetags,
-                    &inherited.tag_indices,
-                );
-            }
-        }
-        Ok(table)
-    }
-
-    fn get_tag_index(tag: String, map: &mut AHashMap<String, usize>) -> usize {
-        let size = map.len();
-        *(map.entry(tag).or_insert(size))
-    }
-
-    fn add_file(&mut self, path: PathBuf, tags: &mut Vec<String>, inherited: &[usize]) {
-        let fi = self.files.len();
-        self.files.push(path);
-        self.table.extend(
-            tags.drain(..)
-                .map(|tag| (fi, Self::get_tag_index(tag, &mut self.tag_index))) // This file's explicit tags.
-                .chain(inherited.iter().map(|ti| (fi, *ti))), // Inherited tags.
-        );
-    }
-}
-
 /// Returns the number of files and the number of tags.
 pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let mut matcher = GlobMatches::new();
@@ -337,7 +223,7 @@ impl BoolTable {
 /// This is similar to a `TagTable`, but the flags indicating in which
 /// file has which tags are stored in a dense 2d array rather than a
 /// sparse hash-map of vectors.
-pub struct DenseTagTable {
+pub struct TagTable {
     root: PathBuf,
     flags: BoolTable,
     files: Box<[String]>,
@@ -345,34 +231,115 @@ pub struct DenseTagTable {
     tag_index: AHashMap<String, usize>,
 }
 
-impl DenseTagTable {
-    pub fn from_dir(dirpath: PathBuf) -> Result<DenseTagTable, Error> {
-        let TagTable {
-            root,
-            tag_index,
-            mut files,
-            table,
-        } = TagTable::from_dir(dirpath)?;
-        let tags: Box<[String]> = {
-            // Vec of tags sorted by their indices.
-            let mut pairs: Vec<_> = tag_index.iter().collect();
-            pairs.sort_unstable_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
-            pairs.into_iter().map(|(t, _i)| t.clone()).collect()
+impl TagTable {
+    fn get_tag_index(tag: String, map: &mut AHashMap<String, usize>) -> usize {
+        let size = map.len();
+        *(map.entry(tag).or_insert(size))
+    }
+
+    pub fn from_dir(dirpath: PathBuf) -> Result<TagTable, Error> {
+        let mut tag_index = AHashMap::new();
+        let mut allfiles = Vec::new();
+        let mut table = AHashSet::<(usize, usize)>::new();
+        let mut inherited = InheritedTags {
+            tag_indices: Vec::new(),
+            offsets: Vec::new(),
+            depth: 0,
         };
-        let files: Box<[String]> = files
-            .drain(..)
-            .map(|f| format!("{}", f.display()))
-            .collect();
+        let mut matcher = GlobMatches::new();
+        let mut filetags: Vec<String> = Vec::new();
+        let mut dir = DirTree::new(
+            dirpath.clone(),
+            LoaderOptions::new(
+                true,
+                false,
+                FileLoadingOptions::Load {
+                    file_tags: true,
+                    file_desc: false,
+                },
+            ),
+        )?;
+        while let Some(VisitedDir {
+            traverse_depth,
+            abs_dir_path,
+            rel_dir_path,
+            files: dirfiles,
+            metadata,
+        }) = dir.walk()
+        {
+            inherited.update(traverse_depth)?;
+            let data = match metadata {
+                MetaData::Ok(d) => d,
+                MetaData::NotFound => continue,
+                MetaData::FailedToLoad(e) => return Err(e),
+            };
+            // Push directory tags.
+            inherited.tag_indices.extend(
+                data.tags()
+                    .iter()
+                    .map(|t| t.to_string())
+                    .chain(implicit_tags_str(get_filename_str(abs_dir_path)?))
+                    .map(|tag| Self::get_tag_index(tag, &mut tag_index)),
+            );
+            // Process all files in the directory.
+            matcher.find_matches(dirfiles, &data.globs, false);
+            allfiles.reserve(dirfiles.len());
+            for (fi, file) in dirfiles
+                .iter()
+                .enumerate()
+                // Only interested in tracked files.
+                .filter(|(fi, _)| matcher.is_file_matched(*fi))
+            {
+                filetags.clear();
+                filetags.extend(
+                    matcher
+                        .matched_globs(fi) // Tags associated with matching globs.
+                        .flat_map(|gi| {
+                            data.globs[gi]
+                                .tags(&data.alltags)
+                                .iter()
+                                .map(|t| t.to_string())
+                        })
+                        // Implicit tags.
+                        .chain(implicit_tags_str(
+                            file.name()
+                                .to_str()
+                                .ok_or(Error::InvalidPath(file.name().into()))?,
+                        )),
+                );
+                let file_index = allfiles.len();
+                allfiles.push(format!(
+                    "{}",
+                    {
+                        let mut relpath = rel_dir_path.to_path_buf();
+                        relpath.push(file.name());
+                        relpath
+                    }
+                    .display()
+                ));
+                table.extend(
+                    filetags
+                        .drain(..)
+                        .map(|tag| (file_index, Self::get_tag_index(tag, &mut tag_index))) // This file's explicit tags.
+                        .chain(inherited.tag_indices.iter().map(|ti| (file_index, *ti))), // Inherited tags.
+                );
+            }
+        }
         // Construct the bool-table.
-        let mut flags = BoolTable::new(files.len(), tags.len());
+        let mut flags = BoolTable::new(allfiles.len(), tag_index.len());
         for (fi, ti) in table.into_iter() {
             flags.row_mut(fi)[ti] = true;
         }
-        Ok(DenseTagTable {
-            root,
+        Ok(TagTable {
+            root: dirpath,
             flags,
-            files,
-            tags,
+            files: allfiles.into_boxed_slice(),
+            tags: {
+                // Vec of tags sorted by their indices.
+                let mut pairs: Vec<_> = tag_index.iter().collect();
+                pairs.sort_unstable_by(|(_t1, i1), (_t2, i2)| i1.cmp(i2));
+                pairs.into_iter().map(|(t, _i)| t.clone()).collect()
+            },
             tag_index,
         })
     }

@@ -1,7 +1,7 @@
 use crate::{
     core::what_is,
     filter::{Filter, FilterParseError},
-    query::DenseTagTable,
+    query::TagTable,
 };
 use std::{fmt::Debug, path::PathBuf, time::Instant};
 
@@ -36,7 +36,7 @@ impl Debug for Error {
 }
 
 pub struct InteractiveSession {
-    table: DenseTagTable,
+    table: TagTable,
     // State management.
     command: String,
     echo: String,
@@ -53,7 +53,7 @@ pub struct InteractiveSession {
 }
 
 impl InteractiveSession {
-    pub fn init(table: DenseTagTable) -> InteractiveSession {
+    pub fn init(table: TagTable) -> InteractiveSession {
         let taglist = table.tags().to_vec();
         let ntags = table.tags().len();
         let nfiles = table.files().len();
@@ -147,7 +147,7 @@ impl InteractiveSession {
     fn update_tag_list(
         indices: &[usize],
         tags: &[String],
-        table: &DenseTagTable,
+        table: &TagTable,
         active: &mut [bool],
         dst: &mut Vec<String>,
     ) {
@@ -195,7 +195,7 @@ impl InteractiveSession {
             .unwrap_or(0)
     }
 
-    pub fn table(&self) -> &DenseTagTable {
+    pub fn table(&self) -> &TagTable {
         &self.table
     }
 
