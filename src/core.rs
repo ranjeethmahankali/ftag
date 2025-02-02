@@ -424,9 +424,9 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
                 untracked.extend(files.iter().enumerate().filter_map(|(fi, file)| {
                     // Skip the files that matched with at least one glob. Copy the
                     // paths of files that didn't match with any glob.
-                    match matcher.matched_globs(fi).next() {
-                        Some(_) => None,
-                        None => {
+                    match matcher.is_file_matched(fi) {
+                        true => None,
+                        false => {
                             let mut relpath = rel_dir_path.to_path_buf();
                             relpath.push(file.name());
                             Some(relpath)
