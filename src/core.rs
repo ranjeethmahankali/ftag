@@ -350,7 +350,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
         .map(|t| t.to_string())
         .collect::<Vec<_>>();
     if let Some(parent) = path.parent() {
-        outtags.extend(infer_implicit_tags(get_filename_str(parent)?));
+        outtags.extend(infer_implicit_tags(get_filename_str(parent)?).map(|t| t.to_string()));
     }
     let filenamestr = path
         .file_name()
@@ -363,7 +363,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
                 g.tags(&data.alltags)
                     .iter()
                     .map(|t| t.to_string())
-                    .chain(infer_implicit_tags(filenamestr)),
+                    .chain(infer_implicit_tags(filenamestr).map(|t| t.to_string())),
             );
             if let Some(fdesc) = g.desc {
                 outdesc = format!("{}\n{}", fdesc, outdesc);
@@ -389,7 +389,7 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
         .tags()
         .iter()
         .map(|t| t.to_string())
-        .chain(infer_implicit_tags(get_filename_str(path)?))
+        .chain(infer_implicit_tags(get_filename_str(path)?).map(|t| t.to_string()))
         .collect::<Vec<_>>();
     Ok(full_description(tags, desc))
 }
@@ -476,11 +476,9 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                 globs,
                 ..
             }) => {
-                alltags.extend(
-                    tags.iter()
-                        .map(|t| t.to_string())
-                        .chain(infer_implicit_tags(get_filename_str(abs_dir_path)?)),
-                );
+                alltags.extend(tags.iter().map(|t| t.to_string()).chain(
+                    infer_implicit_tags(get_filename_str(abs_dir_path)?).map(|t| t.to_string()),
+                ));
                 matcher.find_matches(files, globs, false);
                 alltags.extend(
                     files
@@ -488,7 +486,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                         .enumerate()
                         .filter(|(fi, _f)| matcher.is_file_matched(*fi))
                         .filter_map(|(_fi, f)| f.name().to_str())
-                        .flat_map(infer_implicit_tags),
+                        .flat_map(|t| infer_implicit_tags(t).map(|t| t.to_string())),
                 );
             }
             MetaData::NotFound => continue, // No metadata, just pass on the tags to the next dir.

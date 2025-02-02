@@ -7,12 +7,28 @@ use fast_glob::glob_match;
 use smallvec::SmallVec;
 use std::{
     ffi::OsStr,
+    fmt::Display,
     fs::File,
     io::Read,
     ops::Range,
     path::{Path, PathBuf},
     sync::LazyLock,
 };
+
+pub(crate) enum Tag<'a> {
+    Text(&'a str),
+    Year(u16),
+    Format(&'a str),
+}
+
+impl<'a> Display for Tag<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Tag::Text(t) | Tag::Format(t) => write!(f, "{}", t),
+            Tag::Year(y) => write!(f, "{}", y),
+        }
+    }
+}
 
 /// Try to infer a range of years from the name of a document or file.
 fn infer_year_range(mut input: &str) -> Option<Range<u16>> {
@@ -52,7 +68,7 @@ fn infer_year_range(mut input: &str) -> Option<Range<u16>> {
 
 /// Get an iterator over tags inferred from the format of the file. The input is
 /// expected to be the path / name of the file.
-fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
+fn infer_format_tag(input: &str) -> impl Iterator<Item = Tag> + use<'_> {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
         (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
         (&[".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif"], "image"),
@@ -62,7 +78,7 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
             .iter()
             .any(|ext| input[input.len().saturating_sub(ext.len())..].eq_ignore_ascii_case(ext))
         {
-            Some(tag.to_string())
+            Some(Tag::Format(&tag))
         } else {
             None
         }
@@ -71,11 +87,11 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
 
 /// Get an iterator over all the implicit tags that can be inferred
 /// from the name of the file or directory.
-pub(crate) fn infer_implicit_tags(name: &str) -> impl Iterator<Item = String> + use<'_> {
+pub(crate) fn infer_implicit_tags(name: &str) -> impl Iterator<Item = Tag> + use<'_> {
     // TODO: Try avoid allocating strings, and return &str instead.
     infer_year_range(name)
         .unwrap_or(0..0)
-        .map(|y| y.to_string())
+        .map(|y| Tag::Year(y))
         .chain(infer_format_tag(name))
 }
 
@@ -522,13 +538,13 @@ mod test {
         let inputs = vec!["2021_to_2023", "2021_2023"];
         let expected = vec!["2021", "2022", "2023"];
         for input in inputs {
-            let actual: Vec<_> = infer_implicit_tags(input).collect();
+            let actual: Vec<_> = infer_implicit_tags(input).map(|t| t.to_string()).collect();
             assert_eq!(actual, expected);
         }
         let inputs = vec!["1998_MyDirectory", "1998_MyFile.pdf"];
         let expected = vec!["1998"];
         for input in inputs {
-            let actual: Vec<_> = infer_implicit_tags(input).collect();
+            let actual: Vec<_> = infer_implicit_tags(input).map(|t| t.to_string()).collect();
             assert_eq!(actual, expected);
         }
     }
@@ -538,7 +554,7 @@ mod test {
         let inputs = &["test.gif", "ex", "test2.png", "myvid.mov"];
         let expected: &[&[&str]] = &[&["image"], &[], &["image"], &["video"]];
         for (input, expected) in inputs.iter().zip(expected.iter()) {
-            let actual: Vec<_> = infer_format_tag(input).collect();
+            let actual: Vec<_> = infer_format_tag(input).map(|t| t.to_string()).collect();
             assert_eq!(&actual, expected);
         }
     }
