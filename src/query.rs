@@ -124,18 +124,20 @@ impl TagTable {
             for (fi, file) in files
                 .iter()
                 .enumerate()
+                // Only interested in tracked files.
                 .filter(|(fi, _)| matcher.is_file_matched(*fi))
             {
                 filetags.clear();
                 filetags.extend(
                     matcher
-                        .matched_globs(fi)
+                        .matched_globs(fi) // Tags associated with matching globs.
                         .flat_map(|gi| {
                             data.globs[gi]
                                 .tags(&data.alltags)
                                 .iter()
                                 .map(|t| t.to_string())
                         })
+                        // Implicit tags.
                         .chain(implicit_tags_str(
                             file.name()
                                 .to_str()
