@@ -255,8 +255,7 @@ tag.";
     pub const SEARCH_STR: &str = "A string of keywords to search for.";
     pub const SEARCH_STR_LONG: &str = "Any file that contains any of the keywords in this string in either it's tags or description will included in the output.";
     pub const INTERACTIVE: &str = "\
-Launch interactive mode in the working directory.
-// TODO Add more docs later after the interactive mode is implemented.";
+Launch interactive mode in the working directory. Interactive mode loads all the files and tags, and let's you incrementally refine your search criteria inside a TUI. More documentation on the interactive mode can be found here: https://github.com/ranjeethmahankali/ftag/blob/no-table/README.md";
     pub const CHECK: &str = "Recursively traverse directories starting from the working directory and check to see if all the files listed in every .ftag file is exists.";
     pub const CHECK_PATH:&str = "The directory path where to start checking recursively. If ommitted, the workind directory is assumed.";
     pub const WHATIS: &str = "Get the tags and description (if found) of the given file.";

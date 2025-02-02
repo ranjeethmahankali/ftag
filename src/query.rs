@@ -5,7 +5,6 @@ use crate::{
     walk::{DirTree, MetaData, VisitedDir},
 };
 use ahash::{AHashMap, AHashSet};
-use bitvec::{bitvec, boxed::BitBox, slice::BitSlice};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -136,6 +135,7 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
             },
         ),
     )?;
+    let mut filetags = vec![false; tag_index.len()].into_boxed_slice();
     while let Some(VisitedDir {
         traverse_depth,
         abs_dir_path,
@@ -160,7 +160,6 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
         );
         // Process all files in the directory.
         matcher.find_matches(files, &data.globs, false);
-        let mut filetags = vec![false; tag_index.len()].into_boxed_slice(); // TODO: Consider using a bitset or a bit vec.
         for (fi, file) in files
             .iter()
             .enumerate()
@@ -198,19 +197,19 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
 
 /// 2d array of bools.
 pub(crate) struct BoolTable {
-    data: BitBox, // Boxed, so that it cannot be resized by accident.
+    data: Box<[bool]>, // Boxed, so that it cannot be resized by accident.
     ncols: usize,
 }
 
 impl BoolTable {
     pub fn new(nrows: usize, ncols: usize) -> Self {
         BoolTable {
-            data: bitvec![0; nrows * ncols].into_boxed_bitslice(),
+            data: vec![false; nrows * ncols].into_boxed_slice(),
             ncols,
         }
     }
 
-    pub fn row(&self, r: usize) -> &BitSlice {
+    pub fn row(&self, r: usize) -> &[bool] {
         let start = r * self.ncols;
         &self.data[start..(start + self.ncols)]
     }
@@ -325,7 +324,7 @@ impl TagTable {
         let ntags = tag_index.len();
         let mut flags = BoolTable::new(allfiles.len(), ntags);
         for i in table.into_iter().map(move |(fi, ti)| fi * ntags + ti) {
-            flags.data.set(i, true);
+            flags.data[i] = true;
         }
         Ok(TagTable {
             root: dirpath,
@@ -345,7 +344,7 @@ impl TagTable {
         &self.root
     }
 
-    pub fn flags(&self, file: usize) -> &BitSlice {
+    pub fn flags(&self, file: usize) -> &[bool] {
         self.flags.row(file)
     }
 

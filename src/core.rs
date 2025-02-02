@@ -252,7 +252,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         write_desc(data.desc.as_ref(), &mut writer)
             .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
         // Write out the file data in groups that share the same tags and description.
-        if let Some(last) = valid // TODO: Try to simplify this by making better use of iterators.
+        if let Some(last) = valid
             .drain(..)
             .try_fold(
                 None,

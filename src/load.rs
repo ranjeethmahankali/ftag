@@ -349,7 +349,6 @@ fn load_impl<'text>(
         globs: files,
     } = dst;
     let mut headers = AC_PARSER.find_iter(input);
-    // TODO: Consider checking if the file begins with a header.
     // We store the data of the file we're currently parsing as:
     // (list of globs, list of tags, optional description).
     let mut current_unit: Option<(&str, Range<usize>, Option<&str>)> = None;
