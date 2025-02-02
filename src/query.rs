@@ -5,6 +5,7 @@ use crate::{
     walk::{DirTree, MetaData, VisitedDir},
 };
 use ahash::{AHashMap, AHashSet};
+use bitvec::{bitvec, boxed::BitBox, slice::BitSlice};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -185,7 +186,7 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
             {
                 filetags[index] = true;
             }
-            if filter.eval(&|ti| filetags[ti]) {
+            if filter.eval(|ti| filetags[ti]) {
                 let mut path = rel_dir_path.to_path_buf();
                 path.push(file.name());
                 println!("{}", path.display());
@@ -197,26 +198,21 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
 
 /// 2d array of bools.
 pub(crate) struct BoolTable {
-    data: Box<[bool]>, // Cannot be resized by accident.
+    data: BitBox, // Boxed, so that it cannot be resized by accident.
     ncols: usize,
 }
 
 impl BoolTable {
     pub fn new(nrows: usize, ncols: usize) -> Self {
         BoolTable {
-            data: vec![false; nrows * ncols].into_boxed_slice(),
+            data: bitvec![0; nrows * ncols].into_boxed_bitslice(),
             ncols,
         }
     }
 
-    pub fn row(&self, r: usize) -> &[bool] {
+    pub fn row(&self, r: usize) -> &BitSlice {
         let start = r * self.ncols;
         &self.data[start..(start + self.ncols)]
-    }
-
-    pub fn row_mut(&mut self, r: usize) -> &mut [bool] {
-        let start = r * self.ncols;
-        &mut self.data[start..(start + self.ncols)]
     }
 }
 
@@ -326,9 +322,10 @@ impl TagTable {
             }
         }
         // Construct the bool-table.
-        let mut flags = BoolTable::new(allfiles.len(), tag_index.len());
-        for (fi, ti) in table.into_iter() {
-            flags.row_mut(fi)[ti] = true;
+        let ntags = tag_index.len();
+        let mut flags = BoolTable::new(allfiles.len(), ntags);
+        for i in table.into_iter().map(move |(fi, ti)| fi * ntags + ti) {
+            flags.data.set(i, true);
         }
         Ok(TagTable {
             root: dirpath,
@@ -348,8 +345,8 @@ impl TagTable {
         &self.root
     }
 
-    pub fn flags(&self, row: usize) -> &[bool] {
-        self.flags.row(row)
+    pub fn flags(&self, file: usize) -> &BitSlice {
+        self.flags.row(file)
     }
 
     pub fn tags(&self) -> &[String] {
@@ -360,7 +357,10 @@ impl TagTable {
         &self.files
     }
 
-    pub fn tag_index(&self) -> &AHashMap<String, usize> {
-        &self.tag_index
+    pub fn tag_parse_fn<'a>(&'a self) -> impl Fn(&str) -> Filter<usize> + use<'a> {
+        |tag| match self.tag_index.get(tag) {
+            Some(i) => Filter::Tag(*i),
+            None => Filter::FalseTag,
+        }
     }
 }

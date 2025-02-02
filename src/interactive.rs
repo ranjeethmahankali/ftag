@@ -123,12 +123,10 @@ impl InteractiveSession {
                 _ => Err(Error::InvalidCommand(cmd.to_string())),
             },
             None => Ok(Command::Filter(
-                Filter::<usize>::parse(&format!("{} {cmd}", self.filter_str), |tag| {
-                    match self.table.tag_index().get(tag) {
-                        Some(i) => Filter::Tag(*i),
-                        None => Filter::FalseTag,
-                    }
-                })
+                Filter::<usize>::parse(
+                    &format!("{} {cmd}", self.filter_str),
+                    self.table.tag_parse_fn(),
+                )
                 .map_err(Error::InvalidFilter)?,
             )),
         }
@@ -251,12 +249,10 @@ impl InteractiveSession {
                         Command::Filter(filter) => {
                             self.filtered_indices.clear();
                             let t0 = Instant::now();
-                            self.filtered_indices
-                                .extend((0..self.num_files()).filter(|fi| {
-                                    filter.eval(&|ti| {
-                                        *self.table.flags(*fi).get(ti).unwrap_or(&false)
-                                    })
-                                }));
+                            self.filtered_indices.extend(
+                                (0..self.num_files())
+                                    .filter(|fi| filter.eval(|ti| self.table.flags(*fi)[ti])),
+                            );
                             let t1 = Instant::now();
                             self.echo = format!("Query time: {}us", (t1 - t0).as_micros());
                             self.update_lists();

@@ -61,15 +61,22 @@ impl<T: TagData> Filter<T> {
 }
 
 impl Filter<usize> {
-    pub fn eval<F>(&self, checker: &F) -> bool
+    pub fn eval<F>(&self, checker: F) -> bool
+    where
+        F: Fn(usize) -> bool,
+    {
+        self.eval_impl(&checker)
+    }
+
+    fn eval_impl<F>(&self, checker: &F) -> bool
     where
         F: Fn(usize) -> bool,
     {
         match self {
             Tag(ti) => checker(*ti),
-            And(lhs, rhs) => lhs.eval(checker) && rhs.eval(checker),
-            Or(lhs, rhs) => lhs.eval(checker) || rhs.eval(checker),
-            Not(input) => !input.eval(checker),
+            And(lhs, rhs) => lhs.eval_impl(checker) && rhs.eval_impl(checker),
+            Or(lhs, rhs) => lhs.eval_impl(checker) || rhs.eval_impl(checker),
+            Not(input) => !input.eval_impl(checker),
             FalseTag => false,
             TrueTag => true,
         }
