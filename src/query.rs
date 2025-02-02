@@ -369,7 +369,7 @@ impl TagTable {
         &self.files
     }
 
-    pub fn tag_parse_fn<'a>(&'a self) -> impl Fn(&str) -> Filter<usize> + use<'a> {
+    pub fn tag_parse_fn(&self) -> impl Fn(&str) -> Filter<usize> + use<'_> {
         |tag| match self.tag_index.get(tag) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,

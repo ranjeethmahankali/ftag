@@ -21,7 +21,7 @@ pub(crate) enum Tag<'a> {
     Format(&'a str),
 }
 
-impl<'a> Display for Tag<'a> {
+impl Display for Tag<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Tag::Text(t) | Tag::Format(t) => write!(f, "{}", t),
@@ -78,7 +78,7 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = Tag> + use<'_> {
             .iter()
             .any(|ext| input[input.len().saturating_sub(ext.len())..].eq_ignore_ascii_case(ext))
         {
-            Some(Tag::Format(&tag))
+            Some(Tag::Format(tag))
         } else {
             None
         }
@@ -91,7 +91,7 @@ pub(crate) fn infer_implicit_tags(name: &str) -> impl Iterator<Item = Tag> + use
     // TODO: Try avoid allocating strings, and return &str instead.
     infer_year_range(name)
         .unwrap_or(0..0)
-        .map(|y| Tag::Year(y))
+        .map(Tag::Year)
         .chain(infer_format_tag(name))
 }
 
