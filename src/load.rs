@@ -94,8 +94,8 @@ pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
 /// files on disk, and globs listed in the ftag file. This can be
 /// reused for multiple folders to avoid reallocations.
 pub(crate) struct GlobMatches {
-    file_matches: Vec<SmallVec<[usize; 8]>>,
-    glob_matches: Vec<SmallVec<[usize; 8]>>,
+    file_matches: Vec<SmallVec<[usize; 4]>>,
+    glob_matches: Vec<bool>,
 }
 
 impl GlobMatches {
@@ -120,7 +120,7 @@ impl GlobMatches {
         self.file_matches.clear();
         self.file_matches.resize(files.len(), SmallVec::new());
         self.glob_matches.clear();
-        self.glob_matches.resize(globs.len(), SmallVec::new());
+        self.glob_matches.resize(globs.len(), false);
         'globs: for (gi, g) in globs.iter().enumerate() {
             /* A glob can either directly be a filename or a glob that matches
              * one or more files. Checking for glob matches is MUCH more
@@ -134,13 +134,13 @@ impl GlobMatches {
             let gpath = OsStr::new(g.path);
             if let Ok(fi) = files.binary_search_by(move |f| f.name().cmp(gpath)) {
                 self.file_matches[fi].push(gi);
-                self.glob_matches[gi].push(fi);
+                self.glob_matches[gi] = true;
                 continue 'globs;
             }
             for (fi, f) in files.iter().enumerate() {
                 if glob_match(g.path.as_bytes(), f.name().as_encoded_bytes()) {
                     self.file_matches[fi].push(gi);
-                    self.glob_matches[gi].push(fi);
+                    self.glob_matches[gi] = true;
                     if short_circuit_globs {
                         break;
                     }
@@ -157,7 +157,7 @@ impl GlobMatches {
 
     /// Check if the glob at `glob_index` matched at least one file.
     pub fn is_glob_matched(&self, glob_index: usize) -> bool {
-        !self.glob_matches[glob_index].is_empty()
+        self.glob_matches[glob_index]
     }
 
     pub fn is_file_matched(&self, file_index: usize) -> bool {
