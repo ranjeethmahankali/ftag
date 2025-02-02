@@ -106,7 +106,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
             MetaData::FailedToLoad(e) => return Err(e),
             MetaData::NotFound => continue, // No metadata.
             MetaData::Ok(DirData { globs, .. }) => {
-                matcher.find_matches(files, &globs, true);
+                matcher.find_matches(files, globs, true);
                 missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
                     if !matcher.is_glob_matched(i) {
                         Some(GlobInfo {
@@ -357,7 +357,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
         .ok_or(Error::InvalidPath(path.to_path_buf()))?
         .to_str()
         .ok_or(Error::InvalidPath(path.to_path_buf()))?;
-    for g in data.globs {
+    for g in data.globs.iter() {
         if glob_match(g.path, filenamestr) {
             outtags.extend(
                 g.tags(&data.alltags)
@@ -420,7 +420,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
         match metadata {
             MetaData::FailedToLoad(e) => return Err(e),
             MetaData::Ok(DirData { globs, .. }) => {
-                matcher.find_matches(files, &globs, false);
+                matcher.find_matches(files, globs, false);
                 untracked.extend(files.iter().enumerate().filter_map(|(fi, file)| {
                     // Skip the files that matched with at least one glob. Copy the
                     // paths of files that didn't match with any glob.
@@ -477,11 +477,11 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                 ..
             }) => {
                 alltags.extend(
-                    tags.into_iter()
+                    tags.iter()
                         .map(|t| t.to_string())
                         .chain(implicit_tags_str(get_filename_str(abs_dir_path)?)),
                 );
-                matcher.find_matches(files, &globs, false);
+                matcher.find_matches(files, globs, false);
                 alltags.extend(
                     files
                         .iter()

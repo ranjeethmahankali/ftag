@@ -83,7 +83,7 @@ impl TagTable {
             offsets: Vec::new(),
             depth: 0,
         };
-        let mut gmatcher = GlobMatches::new();
+        let mut matcher = GlobMatches::new();
         let mut filetags: Vec<String> = Vec::new();
         let mut dir = DirTree::new(
             table.root.clone(),
@@ -119,27 +119,31 @@ impl TagTable {
                     .map(|tag| Self::get_tag_index(tag, &mut table.tag_index)),
             );
             // Process all files in the directory.
-            gmatcher.find_matches(files, &data.globs, false);
+            matcher.find_matches(files, &data.globs, false);
             table.files.reserve(files.len());
-            for (fi, file) in files.iter().enumerate() {
+            for (fi, file) in files
+                .iter()
+                .enumerate()
+                // Only interested in tracked files.
+                .filter(|(fi, _)| matcher.is_file_matched(*fi))
+            {
                 filetags.clear();
-                // Simultaneously check if this file is tracked, and collect all it's tags.
-                if !gmatcher.matched_globs(fi).fold(false, |_, gi| {
-                    filetags.extend(
-                        data.globs[gi]
-                            .tags(&data.alltags)
-                            .iter()
-                            .map(|t| t.to_string()),
-                    );
-                    true
-                }) {
-                    continue; // None of the globs matched this file. This is not tracked.
-                }
-                filetags.extend(implicit_tags_str(
-                    file.name()
-                        .to_str()
-                        .ok_or(Error::InvalidPath(file.name().into()))?,
-                ));
+                filetags.extend(
+                    matcher
+                        .matched_globs(fi) // Tags associated with matching globs.
+                        .flat_map(|gi| {
+                            data.globs[gi]
+                                .tags(&data.alltags)
+                                .iter()
+                                .map(|t| t.to_string())
+                        })
+                        // Implicit tags.
+                        .chain(implicit_tags_str(
+                            file.name()
+                                .to_str()
+                                .ok_or(Error::InvalidPath(file.name().into()))?,
+                        )),
+                );
                 table.add_file(
                     {
                         let mut relpath = rel_dir_path.to_path_buf();
@@ -210,7 +214,7 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                 // Collect all tags.
                 alltags.extend(
                     data.alltags
-                        .into_iter()
+                        .iter()
                         .map(|t| t.to_string())
                         .chain(implicit_tags_str(get_filename_str(rel_dir_path)?)),
                 );
