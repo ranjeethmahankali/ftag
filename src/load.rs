@@ -521,26 +521,19 @@ impl Loader {
             .read_to_string(&mut self.raw_text)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
         self.parsed.reset();
-        {
-            let DirData {
-                alltags,
-                desc,
-                tags,
-                globs,
-            } = unsafe {
-                std::mem::transmute::<&mut DirData<'static>, &'a mut DirData<'a>>(&mut self.parsed)
-            };
-            load_impl(
-                self.raw_text.trim(),
-                filepath,
-                &self.options,
-                alltags,
-                desc,
-                tags,
-                globs,
-            )?;
-        }
-        Ok(&self.parsed)
+        let borrowed = unsafe {
+            std::mem::transmute::<&'a mut DirData<'static>, &'a mut DirData<'a>>(&mut self.parsed)
+        };
+        load_impl(
+            self.raw_text.trim(),
+            filepath,
+            &self.options,
+            &mut borrowed.alltags,
+            &mut borrowed.desc,
+            &mut borrowed.tags,
+            &mut borrowed.globs,
+        )?;
+        Ok(borrowed)
     }
 }
 
