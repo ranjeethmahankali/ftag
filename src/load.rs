@@ -335,15 +335,18 @@ impl Header {
     }
 }
 
-fn load_impl<'a>(
-    input: &'a str,
+fn load_impl<'text, 'temp>(
+    input: &'text str,
     filepath: &Path,
     options: &LoaderOptions,
-    alltags: &mut Vec<&'a str>,
-    desc: &mut Option<&'a str>,
-    dirtags: &mut Range<usize>,
-    files: &mut Vec<GlobData<'a>>,
+    dst: &'temp mut DirData<'text>,
 ) -> Result<(), Error> {
+    let DirData {
+        alltags,
+        desc,
+        tags: dirtags,
+        globs: files,
+    } = dst;
     let mut headers = AC_PARSER.find_iter(input);
     // TODO: Consider checking if the file begins with a header.
     // We store the data of the file we're currently parsing as:
@@ -510,15 +513,7 @@ impl Loader {
         let borrowed = unsafe {
             std::mem::transmute::<&'a mut DirData<'static>, &'a mut DirData<'a>>(&mut self.parsed)
         };
-        load_impl(
-            self.raw_text.trim(),
-            filepath,
-            &self.options,
-            &mut borrowed.alltags,
-            &mut borrowed.desc,
-            &mut borrowed.tags,
-            &mut borrowed.globs,
-        )?;
+        load_impl(self.raw_text.trim(), filepath, &self.options, borrowed)?;
         Ok(borrowed)
     }
 }
