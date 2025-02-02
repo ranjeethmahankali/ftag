@@ -72,6 +72,7 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
 /// Get an iterator over all the implicit tags that can be inferred
 /// from the name of the file or directory.
 pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> + '_ {
+    // TODO: Try avoid allocating strings, and return &str instead.
     infer_year_range_str(name)
         .unwrap_or(0..0)
         .map(|y| y.to_string())
