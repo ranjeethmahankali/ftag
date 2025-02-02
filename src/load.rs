@@ -390,14 +390,12 @@ fn load_impl<'text>(
                     Some((globs, tags, desc)) => {
                         let desc = desc.take();
                         let tags = std::mem::replace(tags, 0..0);
-                        for g in globs.lines() {
-                            files.push(GlobData {
-                                desc,
-                                path: g,
-                                tags: tags.clone(),
-                            })
-                        }
-                        *globs = content;
+                        let lines = std::mem::replace(globs, content).lines();
+                        files.extend(lines.map(|g| GlobData {
+                            desc,
+                            path: g.trim(),
+                            tags: tags.clone(),
+                        }));
                     }
                     None => current_unit = Some((content, 0..0, None)),
                 }
@@ -481,13 +479,11 @@ fn load_impl<'text>(
         }
     }
     if let Some((globs, tags, desc)) = current_unit {
-        for g in globs.lines() {
-            files.push(GlobData {
-                desc,
-                path: g,
-                tags: tags.clone(),
-            })
-        }
+        files.extend(globs.lines().map(|g| GlobData {
+            desc,
+            path: g.trim(),
+            tags: tags.clone(),
+        }));
     }
     Ok(())
 }
