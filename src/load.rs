@@ -89,7 +89,8 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = Tag> + use<'_> {
 /// from the name of the file or directory.
 pub(crate) fn infer_implicit_tags(name: &str) -> impl Iterator<Item = Tag> + use<'_> {
     infer_year_range(name)
-        .unwrap_or(0..0)
+        .into_iter()
+        .flatten()
         .map(Tag::Year)
         .chain(infer_format_tag(name))
 }
