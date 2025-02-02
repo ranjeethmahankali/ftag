@@ -463,7 +463,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
         ),
     )?;
     while let Some(VisitedDir {
-        abs_dir_path,
+        rel_dir_path,
         metadata,
         files,
         ..
@@ -477,7 +477,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                 ..
             }) => {
                 alltags.extend(tags.iter().map(|t| t.to_string()).chain(
-                    infer_implicit_tags(get_filename_str(abs_dir_path)?).map(|t| t.to_string()),
+                    infer_implicit_tags(get_filename_str(rel_dir_path)?).map(|t| t.to_string()),
                 ));
                 matcher.find_matches(files, globs, false);
                 alltags.extend(

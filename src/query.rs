@@ -137,10 +137,10 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let mut filetags = vec![false; tag_index.len()].into_boxed_slice();
     while let Some(VisitedDir {
         traverse_depth,
-        abs_dir_path,
         rel_dir_path,
         files,
         metadata,
+        ..
     }) = dir.walk()
     {
         inherited.update(traverse_depth)?;
@@ -154,7 +154,7 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
             data.tags()
                 .iter()
                 .map(|t| Tag::Text(t))
-                .chain(infer_implicit_tags(get_filename_str(abs_dir_path)?))
+                .chain(infer_implicit_tags(get_filename_str(rel_dir_path)?))
                 .filter_map(|tag| match tag {
                     Tag::Text(t) | Tag::Format(t) => tag_index.get(t).copied(),
                     Tag::Year(y) => tag_index.get(&y.to_string()).copied(),
@@ -261,10 +261,10 @@ impl TagTable {
         )?;
         while let Some(VisitedDir {
             traverse_depth,
-            abs_dir_path,
             rel_dir_path,
             files: dirfiles,
             metadata,
+            ..
         }) = dir.walk()
         {
             inherited.update(traverse_depth)?;
@@ -278,7 +278,7 @@ impl TagTable {
                 data.tags()
                     .iter()
                     .map(|t| Tag::Text(t))
-                    .chain(infer_implicit_tags(get_filename_str(abs_dir_path)?))
+                    .chain(infer_implicit_tags(get_filename_str(rel_dir_path)?))
                     .map(|tag| match tag {
                         Tag::Text(t) | Tag::Format(t) => {
                             Self::get_tag_index(t.to_string(), &mut tag_index)
