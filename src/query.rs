@@ -234,7 +234,7 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
                 numfiles += files
                     .iter()
                     .enumerate()
-                    .filter(|(fi, _file)| matcher.matched_globs(*fi).next().is_some())
+                    .filter(|(fi, _file)| matcher.is_file_matched(*fi))
                     .count();
             }
         }
