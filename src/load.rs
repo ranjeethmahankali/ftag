@@ -351,7 +351,7 @@ fn load_impl<'text, 'temp>(
     // TODO: Consider checking if the file begins with a header.
     // We store the data of the file we're currently parsing as:
     // (list of globs, list of tags, optional description).
-    let mut current_unit: Option<(Vec<&str>, Range<usize>, Option<&str>)> = None;
+    let mut current_unit: Option<(&str, Range<usize>, Option<&str>)> = None;
     // Begin parsing.
     let (mut header, mut content, mut next_header) = match headers.next() {
         Some(mat) => {
@@ -386,21 +386,20 @@ fn load_impl<'text, 'temp>(
                 if let FileLoadingOptions::Skip = options.file_options {
                     break; // Stop parsing the file.
                 }
-                let globiter = content.lines().map(|l| l.trim());
                 match current_unit.as_mut() {
                     Some((globs, tags, desc)) => {
                         let desc = desc.take();
                         let tags = std::mem::replace(tags, 0..0);
-                        for g in globs.drain(..) {
+                        for g in globs.lines() {
                             files.push(GlobData {
                                 desc,
                                 path: g,
                                 tags: tags.clone(),
                             })
                         }
-                        globs.extend(globiter);
+                        *globs = content;
                     }
-                    None => current_unit = Some((globiter.collect(), 0..0, None)),
+                    None => current_unit = Some((content, 0..0, None)),
                 }
             }
             HeaderType::Tags => {
@@ -416,7 +415,7 @@ fn load_impl<'text, 'temp>(
                                 filepath.to_path_buf(),
                                 format!(
                                     "The following globs have more than one 'tags' header:\n{}.",
-                                    globs.join("\n")
+                                    globs
                                 ),
                             ));
                         }
@@ -444,7 +443,7 @@ fn load_impl<'text, 'temp>(
                                 filepath.to_path_buf(),
                                 format!(
                                     "Following globs have more than one description:\n{}.",
-                                    globs.join("\n")
+                                    globs
                                 ),
                             ));
                         } else {
@@ -482,7 +481,7 @@ fn load_impl<'text, 'temp>(
         }
     }
     if let Some((globs, tags, desc)) = current_unit {
-        for g in globs.into_iter() {
+        for g in globs.lines() {
             files.push(GlobData {
                 desc,
                 path: g,
