@@ -20,7 +20,6 @@ impl Debug for FilterParseError {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
 pub enum Filter {
     Tag(usize),
     And(Box<Filter>, Box<Filter>),
@@ -30,6 +29,20 @@ pub enum Filter {
     TrueTag,  // Always true.
 }
 use Filter::*;
+
+fn eval_impl<F>(filter: &Filter, checker: &F) -> bool
+where
+    F: Fn(usize) -> bool,
+{
+    match filter {
+        Tag(ti) => checker(*ti),
+        And(lhs, rhs) => eval_impl(lhs, checker) && eval_impl(rhs, checker),
+        Or(lhs, rhs) => eval_impl(lhs, checker) || eval_impl(rhs, checker),
+        Not(input) => !eval_impl(input, checker),
+        FalseTag => false,
+        TrueTag => true,
+    }
+}
 
 impl Filter {
     pub fn parse<F>(input: &str, mut tagmaker: F) -> Result<Self, FilterParseError>
@@ -50,26 +63,15 @@ impl Filter {
     where
         F: Fn(usize) -> bool,
     {
-        self.eval_impl(&checker)
+        eval_impl(self, &checker)
     }
 
-    fn eval_impl<F>(&self, checker: &F) -> bool
+    pub fn text<T>(&self, tagnames: &[T]) -> String
     where
-        F: Fn(usize) -> bool,
+        T: Display,
     {
         match self {
-            Tag(ti) => checker(*ti),
-            And(lhs, rhs) => lhs.eval_impl(checker) && rhs.eval_impl(checker),
-            Or(lhs, rhs) => lhs.eval_impl(checker) || rhs.eval_impl(checker),
-            Not(input) => !input.eval_impl(checker),
-            FalseTag => false,
-            TrueTag => true,
-        }
-    }
-
-    pub fn text(&self, tagnames: &[String]) -> String {
-        match self {
-            Tag(i) => tagnames[*i].clone(),
+            Tag(i) => tagnames[*i].to_string(),
             And(lhs, rhs) => format!(
                 "{} & {}",
                 Self::maybe_parens(self, lhs, lhs.text(tagnames)),
