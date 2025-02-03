@@ -290,7 +290,11 @@ mod test {
                 Filter::Tag(idx)
             })
             .unwrap();
-            let tagnames: Box<[_]> = map.keys().map(|t| t.to_string()).collect();
+            let tagnames: Box<[_]> = {
+                let mut pairs: Vec<_> = map.into_iter().collect();
+                pairs.sort_by(|(_ta, ia), (_tb, ib)| ia.cmp(ib));
+                pairs.into_iter().map(|(t, _i)| t).collect()
+            };
             assert_eq!(filter.text(&tagnames), fstr);
         }
     }
@@ -312,7 +316,11 @@ mod test {
                 Filter::Tag(*map.entry(tag.to_string()).or_insert(size))
             })
             .unwrap();
-            let tagnames: Box<[_]> = map.keys().map(|t| t.to_string()).collect();
+            let tagnames: Box<[_]> = {
+                let mut pairs: Vec<_> = map.into_iter().collect();
+                pairs.sort_by(|(_ta, ia), (_tb, ib)| ia.cmp(ib));
+                pairs.into_iter().map(|(t, _i)| t).collect()
+            };
             assert_eq!(filter.text(&tagnames), after);
         }
     }
