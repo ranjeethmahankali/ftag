@@ -4,7 +4,7 @@ use ftag::{
     load::get_ftag_path,
     query::{count_files_tags, run_query, TagTable},
 };
-use std::{path::PathBuf, time::Instant};
+use std::path::PathBuf;
 
 fn main() -> Result<(), Error> {
     let matches = parse_args();
@@ -42,12 +42,8 @@ fn main() -> Result<(), Error> {
                 .ok_or(Error::InvalidArgs)?,
         );
     } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
-        let t0 = Instant::now();
-        let table = TagTable::from_dir(current_dir)?;
-        let t1 = Instant::now();
-        let result = ftag::tui::start(table).map_err(|err| Error::TUIFailure(format!("{:?}", err)));
-        println!("Table construction took {}us", (t1 - t0).as_micros());
-        result
+        return ftag::tui::start(TagTable::from_dir(current_dir)?)
+            .map_err(|err| Error::TUIFailure(format!("{:?}", err)));
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
         return core::check(current_dir);
     } else if let Some(matches) = matches.subcommand_matches(cmd::WHATIS) {
