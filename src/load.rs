@@ -221,7 +221,11 @@ pub fn get_ftag_backup_path(path: &Path) -> PathBuf {
 
 /// Loads and parses an ftag file. Reuse this to avoid allocations.
 pub(crate) struct Loader {
-    parsed: DirData<'static>, // This MUST be the first member of the struct, because it holds references to `raw_text`.
+    // IMPORTANT: This MUST be the first member of the struct, because it holds
+    // references to `raw_text`. Members are dropped in the order they are
+    // listed here, so this ensures the references are dropped before the actual
+    // data.
+    parsed: DirData<'static>,
     raw_text: String,
     options: LoaderOptions,
 }
@@ -522,6 +526,11 @@ impl Loader {
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
         self.parsed.reset();
         let borrowed = unsafe {
+            /*
+             * This is safe because the returned `DirData` borrows `self`, and
+             * won't let anyone modify or borrow `self` until that `DirData` is
+             * dropped.
+             */
             std::mem::transmute::<&'a mut DirData<'static>, &'a mut DirData<'a>>(&mut self.parsed)
         };
         load_impl(self.raw_text.trim(), filepath, &self.options, borrowed)?;
