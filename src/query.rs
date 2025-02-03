@@ -110,7 +110,7 @@ pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
 
 pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
     let mut tag_index = BTreeMap::<String, usize>::new();
-    let filter = Filter::<usize>::parse(filter, |tag| {
+    let filter = Filter::parse(filter, |tag| {
         let size = tag_index.len();
         let index = *tag_index.entry(tag.to_string()).or_insert(size);
         Filter::Tag(index)
@@ -369,7 +369,7 @@ impl TagTable {
         &self.files
     }
 
-    pub fn tag_parse_fn(&self) -> impl Fn(&str) -> Filter<usize> + use<'_> {
+    pub fn tag_parse_fn(&self) -> impl Fn(&str) -> Filter + use<'_> {
         |tag| match self.tag_index.get(tag) {
             Some(i) => Filter::Tag(*i),
             None => Filter::FalseTag,

@@ -16,7 +16,7 @@ pub enum State {
 enum Command {
     Exit,
     Reset,
-    Filter(Filter<usize>),
+    Filter(Filter),
     WhatIs(PathBuf),
     Open(PathBuf),
 }
@@ -123,7 +123,7 @@ impl InteractiveSession {
                 _ => Err(Error::InvalidCommand(cmd.to_string())),
             },
             None => Ok(Command::Filter(
-                Filter::<usize>::parse(
+                Filter::parse(
                     &format!("{} {cmd}", self.filter_str),
                     self.table.tag_parse_fn(),
                 )
