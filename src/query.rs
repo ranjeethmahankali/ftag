@@ -6,9 +6,8 @@ use crate::{
     },
     walk::{DirTree, MetaData, VisitedDir},
 };
-use ahash::{AHashMap, AHashSet};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -56,7 +55,7 @@ impl InheritedTags {
 /// Returns the number of files and the number of tags.
 pub fn count_files_tags(path: PathBuf) -> Result<(usize, usize), Error> {
     let mut matcher = GlobMatches::new();
-    let mut alltags = AHashSet::new();
+    let mut alltags = HashSet::new();
     let mut numfiles = 0usize;
     let mut dir = DirTree::new(
         path,
@@ -228,19 +227,19 @@ pub struct TagTable {
     flags: BoolTable,
     files: Box<[String]>,
     tags: Box<[String]>,
-    tag_index: AHashMap<String, usize>,
+    tag_index: HashMap<String, usize>,
 }
 
 impl TagTable {
-    fn get_tag_index(tag: String, map: &mut AHashMap<String, usize>) -> usize {
+    fn get_tag_index(tag: String, map: &mut HashMap<String, usize>) -> usize {
         let size = map.len();
         *(map.entry(tag).or_insert(size))
     }
 
     pub fn from_dir(dirpath: PathBuf) -> Result<TagTable, Error> {
-        let mut tag_index = AHashMap::new();
+        let mut tag_index = HashMap::new();
         let mut allfiles = Vec::new();
-        let mut table = AHashSet::<(usize, usize)>::new();
+        let mut table = HashSet::<(usize, usize)>::new();
         let mut inherited = InheritedTags {
             tag_indices: Vec::new(),
             offsets: Vec::new(),
