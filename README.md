@@ -16,12 +16,14 @@ more flexible and powerful way of organizing files. This allows you to search
 for files using any combination of tags. This also lets you have a relatively
 flat directory structure and make it easy to find the files you're looking for.
 
-While there are other tools providing similar features, `ftag` is designed to be
-simple, reliable and suitable for long term archiving. All your tags and
-metadata are stored in plain text files. If you move or copy a directory, the
-plain text file(s) containing the metadata for that directory and all the files
-within get moved or copied with it. Because ftag uses plain text files, it is
-perfect for long term archives, as it gives you full ownership of your data.
+While there are other tools providing similar features, some are built in to
+operating systems, `ftag` is designed to be simple, reliable and suitable for
+long term archiving. All your tags and metadata are stored in plain text
+files. If you move or copy a directory, the plain text file(s) containing the
+metadata for that directory and all the files within get moved or copied with
+it. Because ftag uses plain text files, it is perfect for long term archives, as
+it gives you full ownership of your data. And obviously, metadata is platform
+agnostic.
 
 ## Installation
 
@@ -49,13 +51,15 @@ directories. The nested directories should use their own `.ftag` files. It is
 important to keep the metadata decentralized in this way, so that when you move
 or copy the directories, you don't invalidate the metadata.
 
-By design, `ftag` never modifies the `.ftag` files. `.ftag` files are meant to
-be authored by the user, and only consumed and queried by `ftag`. As an Emacs
-user myself, I wrote [this major mode](https://github.com/ranjeethmahankali/ftag-mode)
-which provides autocompletion, file preview etc. and makes authoring `.ftag`
-files a breeze (I haven't written plugins for any other editor but if you like
-`ftag`, feel free to contribute!). Further details of `.ftag` files are
-discussed later.
+By design, `ftag` never modifies the `.ftag` files. The only exception to this
+principle is the `clean` command, but even that just reorganizes the data
+authored by the user and makes a backup of the original file. Generally, `.ftag`
+files are meant to be authored by the user, and only consumed and queried by
+`ftag`. As an Emacs user myself, I wrote [this major
+mode](https://github.com/ranjeethmahankali/ftag-mode) which provides
+autocompletion, file preview etc. and makes authoring `.ftag` files a breeze (I
+haven't written plugins for any other editor but if you like `ftag`, feel free
+to contribute!). Further details of `.ftag` files are discussed later.
 
 ### `ftag` CLI tool
 
@@ -124,17 +128,19 @@ command will produce a list of untracked files.
 ftag untracked
 ```
 
-This command will traverse the directories recursively and produce a list of all
+Below command will traverse the directories recursively and produce a list of all
 tags. As this command walks the directories recursively, if a directory doesn't
 contain a `.ftag` file, it is ignored. It is assumed that you don't wish to
-track the files in that directory and they are not reported as untracked.
+track the files in that directory and they are not reported as untracked. The
+tags are sorted lexicographically.
 
 ```bash
 ftag tags
 ```
 
-If you want to know the number of files tracked by ftag from your current
-working directory recursively, use this command:
+If you want to know the number of files tracked by ftag, and the total number of
+tags associated with said files, from your current working directory
+recursively, use this command:
 
 ```bash
 ftag count
@@ -282,3 +288,23 @@ in `ftagui` are designed to be very similar to the interactive TUI mode of
 - Hovering the mouse on an image will show you the tags and the description of
   the image in a tooltip.
 - Double clicking the image will open it in the default application.
+
+## Performance and Memory Usage
+
+A lot of care and thought went into making `ftag` fast and efficient, and is
+constantly being improved in this regard. Everything is designed to run on a
+single thread, and run as fast as possible so as not to require threads or
+asynchronous tasks. For example, if you're using the CLI you can expect various
+commands to run in a few milliseconds for archives managing tens of thousands of
+files. Starting a TUI interactive session may take tens of milliseconds for an
+archive of that size.
+
+A lot of care also went into minimizing the memory usage. Wherever possible,
+`ftag` will avoid allocating large data structures, and instead walk the
+directory tree performing various tasks on the files / directories as it
+goes. So if you run a query on a large directory tree with an extraordinary
+total number of files, the resource usage should only be as large as required by
+the largest single directory in the directory tree. Obviously this is not true
+for the commands that launch an interactive session (TUI and GUI), because they
+have to load all the metadata of the entire archive into memory to start the
+session. But this is true for all the CLI commands wherever possible.

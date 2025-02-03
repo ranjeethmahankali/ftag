@@ -1,7 +1,7 @@
 use crate::{
     core::what_is,
     filter::{Filter, FilterParseError},
-    query::DenseTagTable,
+    query::TagTable,
 };
 use std::{fmt::Debug, path::PathBuf};
 
@@ -16,7 +16,7 @@ pub enum State {
 enum Command {
     Exit,
     Reset,
-    Filter(Filter<usize>),
+    Filter(Filter),
     WhatIs(PathBuf),
     Open(PathBuf),
 }
@@ -36,7 +36,7 @@ impl Debug for Error {
 }
 
 pub struct InteractiveSession {
-    table: DenseTagTable,
+    table: TagTable,
     // State management.
     command: String,
     echo: String,
@@ -53,7 +53,7 @@ pub struct InteractiveSession {
 }
 
 impl InteractiveSession {
-    pub fn init(table: DenseTagTable) -> InteractiveSession {
+    pub fn init(table: TagTable) -> InteractiveSession {
         let taglist = table.tags().to_vec();
         let ntags = table.tags().len();
         let nfiles = table.files().len();
@@ -123,8 +123,11 @@ impl InteractiveSession {
                 _ => Err(Error::InvalidCommand(cmd.to_string())),
             },
             None => Ok(Command::Filter(
-                Filter::<usize>::parse(&format!("{} {cmd}", self.filter_str), &self.table)
-                    .map_err(Error::InvalidFilter)?,
+                Filter::parse(
+                    &format!("{} {cmd}", self.filter_str),
+                    self.table.tag_parse_fn(),
+                )
+                .map_err(Error::InvalidFilter)?,
             )),
         }
     }
@@ -142,7 +145,7 @@ impl InteractiveSession {
     fn update_tag_list(
         indices: &[usize],
         tags: &[String],
-        table: &DenseTagTable,
+        table: &TagTable,
         active: &mut [bool],
         dst: &mut Vec<String>,
     ) {
@@ -190,7 +193,7 @@ impl InteractiveSession {
             .unwrap_or(0)
     }
 
-    pub fn table(&self) -> &DenseTagTable {
+    pub fn table(&self) -> &TagTable {
         &self.table
     }
 
@@ -245,12 +248,10 @@ impl InteractiveSession {
                         }
                         Command::Filter(filter) => {
                             self.filtered_indices.clear();
-                            self.filtered_indices
-                                .extend((0..self.num_files()).filter(|fi| {
-                                    filter.eval(&|ti| {
-                                        *self.table.flags(*fi).get(ti).unwrap_or(&false)
-                                    })
-                                }));
+                            self.filtered_indices.extend(
+                                (0..self.num_files())
+                                    .filter(|fi| filter.eval(|ti| self.table.flags(*fi)[ti])),
+                            );
                             self.update_lists();
                             self.filter_str = filter.text(self.table.tags());
                             self.state = State::ListsUpdated;

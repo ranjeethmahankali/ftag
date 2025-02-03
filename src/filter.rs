@@ -20,69 +20,58 @@ impl Debug for FilterParseError {
     }
 }
 
-/// Data representing a tag. Tags are usually strings, so this can be
-/// a string. But sometimes it can be more efficient to represent tags
-/// as indices into a list / table of strings.
-pub trait TagData: std::fmt::Display + Clone + Default {}
-
-impl TagData for usize {}
-
-/// The user always supplies tags as strings. But `TagData` can be
-/// other things such as indices. A class that implements this trait
-/// should know how to convert a user supplied tag string into a
-/// filter that wraps `TagData`.
-pub trait TagMaker<T: TagData> {
-    fn create_tag(&self, input: &str) -> Filter<T>;
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Filter<T: TagData> {
-    Tag(T),
-    And(Box<Filter<T>>, Box<Filter<T>>),
-    Or(Box<Filter<T>>, Box<Filter<T>>),
-    Not(Box<Filter<T>>),
+pub enum Filter {
+    Tag(usize),
+    And(Box<Filter>, Box<Filter>),
+    Or(Box<Filter>, Box<Filter>),
+    Not(Box<Filter>),
     FalseTag, // always false.
     TrueTag,  // Always true.
 }
 use Filter::*;
 
-impl<T: TagData> Default for Filter<T> {
-    fn default() -> Self {
-        Tag(T::default())
+fn eval_impl<F>(filter: &Filter, checker: &F) -> bool
+where
+    F: Fn(usize) -> bool,
+{
+    match filter {
+        Tag(ti) => checker(*ti),
+        And(lhs, rhs) => eval_impl(lhs, checker) && eval_impl(rhs, checker),
+        Or(lhs, rhs) => eval_impl(lhs, checker) || eval_impl(rhs, checker),
+        Not(input) => !eval_impl(input, checker),
+        FalseTag => false,
+        TrueTag => true,
     }
 }
 
-impl<T: TagData> Filter<T> {
-    pub fn parse(input: &str, tagmaker: &impl TagMaker<T>) -> Result<Self, FilterParseError> {
-        parse_filter(input, tagmaker)
+impl Filter {
+    pub fn parse<F>(input: &str, mut tagmaker: F) -> Result<Self, FilterParseError>
+    where
+        F: FnMut(&str) -> Filter,
+    {
+        parse_filter(input, &mut tagmaker)
     }
 
-    fn maybe_parens(parent: &Filter<T>, child: &Filter<T>, childstr: String) -> String {
+    fn maybe_parens(parent: &Filter, child: &Filter, childstr: String) -> String {
         match (child, parent) {
             (Tag(_), _) | (Not(_), _) | (And(_, _), And(_, _)) | (Or(_, _), Or(_, _)) => childstr,
             _ => format!("({})", childstr),
         }
     }
-}
 
-impl Filter<usize> {
-    pub fn eval<F>(&self, checker: &F) -> bool
+    pub fn eval<F>(&self, checker: F) -> bool
     where
         F: Fn(usize) -> bool,
     {
-        match self {
-            Tag(ti) => checker(*ti),
-            And(lhs, rhs) => lhs.eval(checker) && rhs.eval(checker),
-            Or(lhs, rhs) => lhs.eval(checker) || rhs.eval(checker),
-            Not(input) => !input.eval(checker),
-            FalseTag => false,
-            TrueTag => true,
-        }
+        eval_impl(self, &checker)
     }
 
-    pub fn text(&self, tagnames: &[String]) -> String {
+    pub fn text<T>(&self, tagnames: &[T]) -> String
+    where
+        T: Display,
+    {
         match self {
-            Tag(i) => tagnames[*i].clone(),
+            Tag(i) => tagnames[*i].to_string(),
             And(lhs, rhs) => format!(
                 "{} & {}",
                 Self::maybe_parens(self, lhs, lhs.text(tagnames)),
@@ -103,7 +92,7 @@ impl Filter<usize> {
     }
 }
 
-impl<T: TagData> Display for Filter<T> {
+impl Display for Filter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Tag(tag) => write!(f, "{}", tag),
@@ -130,14 +119,14 @@ impl<T: TagData> Display for Filter<T> {
     }
 }
 
-enum Token<T: TagData> {
+enum Token {
     And,
     Or,
     Not,
-    Parsed(Filter<T>),
+    Parsed(Filter),
 }
 
-impl<T: TagData> Display for Token<T> {
+impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::And => write!(f, "&"),
@@ -150,14 +139,14 @@ impl<T: TagData> Display for Token<T> {
 
 /// Parse filter from a string. The tagmaker is used to create tag-data from
 /// strings corresponding to the tags.
-fn parse_filter<T: TagData>(
-    input: &str,
-    tagmaker: &impl TagMaker<T>,
-) -> Result<Filter<T>, FilterParseError> {
+fn parse_filter<F>(input: &str, tagmaker: &mut F) -> Result<Filter, FilterParseError>
+where
+    F: FnMut(&str) -> Filter,
+{
     if input.is_empty() {
         return Err(FilterParseError::EmptyQuery);
     }
-    let mut stack: Vec<Token<T>> = Vec::new();
+    let mut stack: Vec<Token> = Vec::new();
     let mut parens: Vec<usize> = Vec::new();
     let mut begin: usize = 0;
     let mut end = 0;
@@ -210,9 +199,7 @@ fn parse_filter<T: TagData>(
 }
 
 /// Reduce the iterator of tokens into a filter.
-fn parse_tokens<T: TagData, I: Iterator<Item = Token<T>>>(
-    mut iter: I,
-) -> Result<Filter<T>, FilterParseError> {
+fn parse_tokens<I: Iterator<Item = Token>>(mut iter: I) -> Result<Filter, FilterParseError> {
     let mut filter = next_filter(&mut iter)?;
     while let Some(t) = iter.next() {
         filter = match t {
@@ -225,9 +212,7 @@ fn parse_tokens<T: TagData, I: Iterator<Item = Token<T>>>(
 }
 
 /// Get the next filter from a list of tokens.
-fn next_filter<T: TagData, I: Iterator<Item = Token<T>>>(
-    iter: &mut I,
-) -> Result<Filter<T>, FilterParseError> {
+fn next_filter<I: Iterator<Item = Token>>(iter: &mut I) -> Result<Filter, FilterParseError> {
     match iter.next() {
         Some(t) => match t {
             Token::And | Token::Or => {
@@ -243,7 +228,7 @@ fn next_filter<T: TagData, I: Iterator<Item = Token<T>>>(
 /// Instead of simply wrapping a filter in a `not` filter, this will
 /// check if the given filter is already a not filter and fold
 /// `!!something` into `something`.
-fn not_filter<T: TagData>(filter: Filter<T>) -> Filter<T> {
+fn not_filter(filter: Filter) -> Filter {
     match filter {
         Tag(_) | And(_, _) | Or(_, _) => Filter::Not(Box::new(filter)),
         Not(inner) => *inner,
@@ -254,48 +239,46 @@ fn not_filter<T: TagData>(filter: Filter<T>) -> Filter<T> {
 
 /// Push the tag into the vector of tokens. The tag-data is created using the
 /// tag maker.
-fn push_tag<T: TagData>(
-    input: &str,
-    from: usize,
-    to: usize,
-    tokens: &mut Vec<Token<T>>,
-    tagmaker: &impl TagMaker<T>,
-) {
+fn push_tag<F>(input: &str, from: usize, to: usize, tokens: &mut Vec<Token>, tagmaker: &mut F)
+where
+    F: FnMut(&str) -> Filter,
+{
     if to > from {
-        tokens.push(Token::Parsed(tagmaker.create_tag(&input[from..to])));
+        tokens.push(Token::Parsed(tagmaker(&input[from..to])));
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-
-    struct StringMaker;
-
-    impl TagData for String {}
-
-    impl TagMaker<String> for StringMaker {
-        fn create_tag(&self, input: &str) -> Filter<String> {
-            Tag(input.to_string())
-        }
-    }
+    use std::collections::BTreeMap;
 
     #[test]
     fn t_filter_parse_round_trip() {
-        let maker = StringMaker;
         for fstr in [
             "apple & banana",
             "(apple & mango) | banana",
             "(apple & mango) | !banana",
             "(apple & pear) | !(banana & !pear) | (fig & grape)",
         ] {
-            assert_eq!(Filter::parse(fstr, &maker).unwrap().to_string(), fstr);
+            let mut map = BTreeMap::<String, usize>::new();
+            let filter = Filter::parse(fstr, |tag| {
+                let size = map.len();
+                let idx = *map.entry(tag.to_string()).or_insert(size);
+                Filter::Tag(idx)
+            })
+            .unwrap();
+            let tagnames: Box<[_]> = {
+                let mut pairs: Vec<_> = map.into_iter().collect();
+                pairs.sort_by(|(_ta, ia), (_tb, ib)| ia.cmp(ib));
+                pairs.into_iter().map(|(t, _i)| t).collect()
+            };
+            assert_eq!(filter.text(&tagnames), fstr);
         }
     }
 
     #[test]
     fn t_not_not_filter() {
-        let maker = StringMaker;
         for (before, after) in [
             ("!apple", "!apple"),
             ("!!apple", "apple"),
@@ -305,7 +288,18 @@ mod test {
             ("!!(!!(!apple))", "!apple"),
             ("!!(!!(!(!apple)))", "apple"),
         ] {
-            assert_eq!(Filter::parse(before, &maker).unwrap().to_string(), after);
+            let mut map = BTreeMap::<String, usize>::new();
+            let filter = Filter::parse(before, |tag| {
+                let size = map.len();
+                Filter::Tag(*map.entry(tag.to_string()).or_insert(size))
+            })
+            .unwrap();
+            let tagnames: Box<[_]> = {
+                let mut pairs: Vec<_> = map.into_iter().collect();
+                pairs.sort_by(|(_ta, ia), (_tb, ib)| ia.cmp(ib));
+                pairs.into_iter().map(|(t, _i)| t).collect()
+            };
+            assert_eq!(filter.text(&tagnames), after);
         }
     }
 }

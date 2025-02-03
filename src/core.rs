@@ -1,13 +1,13 @@
 use crate::{
     filter::FilterParseError,
     load::{
-        get_filename_str, get_ftag_backup_path, get_ftag_path, implicit_tags_str, DirData,
+        get_filename_str, get_ftag_backup_path, get_ftag_path, infer_implicit_tags, DirData,
         FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
     },
     walk::{DirTree, MetaData, VisitedDir},
 };
-use ahash::AHashSet;
 use std::{
+    collections::HashSet,
     fmt::Debug,
     fs::OpenOptions,
     io,
@@ -252,7 +252,7 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
         write_desc(data.desc.as_ref(), &mut writer)
             .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
         // Write out the file data in groups that share the same tags and description.
-        if let Some(last) = valid // TODO: Try to simplify this by making better use of iterators.
+        if let Some(last) = valid
             .drain(..)
             .try_fold(
                 None,
@@ -350,7 +350,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
         .map(|t| t.to_string())
         .collect::<Vec<_>>();
     if let Some(parent) = path.parent() {
-        outtags.extend(implicit_tags_str(get_filename_str(parent)?));
+        outtags.extend(infer_implicit_tags(get_filename_str(parent)?).map(|t| t.to_string()));
     }
     let filenamestr = path
         .file_name()
@@ -363,7 +363,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
                 g.tags(&data.alltags)
                     .iter()
                     .map(|t| t.to_string())
-                    .chain(implicit_tags_str(filenamestr)),
+                    .chain(infer_implicit_tags(filenamestr).map(|t| t.to_string())),
             );
             if let Some(fdesc) = g.desc {
                 outdesc = format!("{}\n{}", fdesc, outdesc);
@@ -389,7 +389,7 @@ fn what_is_dir(path: &Path) -> Result<String, Error> {
         .tags()
         .iter()
         .map(|t| t.to_string())
-        .chain(implicit_tags_str(get_filename_str(path)?))
+        .chain(infer_implicit_tags(get_filename_str(path)?).map(|t| t.to_string()))
         .collect::<Vec<_>>();
     Ok(full_description(tags, desc))
 }
@@ -449,7 +449,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
 
 /// Recursively traverse the directories from `path` and get all tags.
 pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error> {
-    let mut alltags = AHashSet::new();
+    let mut alltags = HashSet::new();
     let mut matcher = GlobMatches::new();
     let mut dir = DirTree::new(
         path,
@@ -463,7 +463,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
         ),
     )?;
     while let Some(VisitedDir {
-        abs_dir_path,
+        rel_dir_path,
         metadata,
         files,
         ..
@@ -476,11 +476,9 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                 globs,
                 ..
             }) => {
-                alltags.extend(
-                    tags.iter()
-                        .map(|t| t.to_string())
-                        .chain(implicit_tags_str(get_filename_str(abs_dir_path)?)),
-                );
+                alltags.extend(tags.iter().map(|t| t.to_string()).chain(
+                    infer_implicit_tags(get_filename_str(rel_dir_path)?).map(|t| t.to_string()),
+                ));
                 matcher.find_matches(files, globs, false);
                 alltags.extend(
                     files
@@ -488,7 +486,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                         .enumerate()
                         .filter(|(fi, _f)| matcher.is_file_matched(*fi))
                         .filter_map(|(_fi, f)| f.name().to_str())
-                        .flat_map(implicit_tags_str),
+                        .flat_map(|t| infer_implicit_tags(t).map(|t| t.to_string())),
                 );
             }
             MetaData::NotFound => continue, // No metadata, just pass on the tags to the next dir.

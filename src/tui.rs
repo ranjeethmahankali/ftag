@@ -1,6 +1,6 @@
 use crate::{
     interactive::{InteractiveSession, State},
-    query::DenseTagTable,
+    query::TagTable,
 };
 use crossterm::{
     event::{self, KeyCode, KeyEvent, KeyEventKind},
@@ -39,7 +39,7 @@ struct TuiApp {
 }
 
 impl TuiApp {
-    fn init(table: DenseTagTable) -> Self {
+    fn init(table: TagTable) -> Self {
         let ntags = table.tags().len();
         let nfiles = table.files().len();
         TuiApp {
@@ -97,7 +97,7 @@ impl TuiApp {
 }
 
 /// Start the interactive TUI mode of ftag.
-pub fn start(table: DenseTagTable) -> std::io::Result<()> {
+pub fn start(table: TagTable) -> std::io::Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;

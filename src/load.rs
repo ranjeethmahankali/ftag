@@ -7,6 +7,7 @@ use fast_glob::glob_match;
 use smallvec::SmallVec;
 use std::{
     ffi::OsStr,
+    fmt::Display,
     fs::File,
     io::Read,
     ops::Range,
@@ -14,8 +15,23 @@ use std::{
     sync::LazyLock,
 };
 
+pub(crate) enum Tag<'a> {
+    Text(&'a str),
+    Year(u16),
+    Format(&'a str),
+}
+
+impl Display for Tag<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Tag::Text(t) | Tag::Format(t) => write!(f, "{}", t),
+            Tag::Year(y) => write!(f, "{}", y),
+        }
+    }
+}
+
 /// Try to infer a range of years from the name of a document or file.
-fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
+fn infer_year_range(mut input: &str) -> Option<Range<u16>> {
     if input.len() < 4 {
         return None;
     }
@@ -52,7 +68,7 @@ fn infer_year_range_str(mut input: &str) -> Option<Range<u16>> {
 
 /// Get an iterator over tags inferred from the format of the file. The input is
 /// expected to be the path / name of the file.
-fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
+fn infer_format_tag(input: &str) -> impl Iterator<Item = Tag> + use<'_> {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
         (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
         (&[".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif"], "image"),
@@ -62,7 +78,7 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
             .iter()
             .any(|ext| input[input.len().saturating_sub(ext.len())..].eq_ignore_ascii_case(ext))
         {
-            Some(tag.to_string())
+            Some(Tag::Format(tag))
         } else {
             None
         }
@@ -71,10 +87,11 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = String> + use<'_> {
 
 /// Get an iterator over all the implicit tags that can be inferred
 /// from the name of the file or directory.
-pub(crate) fn implicit_tags_str(name: &str) -> impl Iterator<Item = String> + '_ {
-    infer_year_range_str(name)
-        .unwrap_or(0..0)
-        .map(|y| y.to_string())
+pub(crate) fn infer_implicit_tags(name: &str) -> impl Iterator<Item = Tag> + use<'_> {
+    infer_year_range(name)
+        .into_iter()
+        .flatten()
+        .map(Tag::Year)
         .chain(infer_format_tag(name))
 }
 
@@ -204,7 +221,11 @@ pub fn get_ftag_backup_path(path: &Path) -> PathBuf {
 
 /// Loads and parses an ftag file. Reuse this to avoid allocations.
 pub(crate) struct Loader {
-    parsed: DirData<'static>, // This MUST be the first member of the struct, because it holds references to `raw_text`.
+    // IMPORTANT: This MUST be the first member of the struct, because it holds
+    // references to `raw_text`. Members are dropped in the order they are
+    // listed here, so this ensures the references are dropped before the actual
+    // data.
+    parsed: DirData<'static>,
     raw_text: String,
     options: LoaderOptions,
 }
@@ -348,7 +369,6 @@ fn load_impl<'text>(
         globs: files,
     } = dst;
     let mut headers = AC_PARSER.find_iter(input);
-    // TODO: Consider checking if the file begins with a header.
     // We store the data of the file we're currently parsing as:
     // (list of globs, list of tags, optional description).
     let mut current_unit: Option<(&str, Range<usize>, Option<&str>)> = None;
@@ -506,6 +526,11 @@ impl Loader {
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
         self.parsed.reset();
         let borrowed = unsafe {
+            /*
+             * This is safe because the returned `DirData` borrows `self`, and
+             * won't let anyone modify or borrow `self` until that `DirData` is
+             * dropped.
+             */
             std::mem::transmute::<&'a mut DirData<'static>, &'a mut DirData<'a>>(&mut self.parsed)
         };
         load_impl(self.raw_text.trim(), filepath, &self.options, borrowed)?;
@@ -522,13 +547,13 @@ mod test {
         let inputs = vec!["2021_to_2023", "2021_2023"];
         let expected = vec!["2021", "2022", "2023"];
         for input in inputs {
-            let actual: Vec<_> = implicit_tags_str(input).collect();
+            let actual: Vec<_> = infer_implicit_tags(input).map(|t| t.to_string()).collect();
             assert_eq!(actual, expected);
         }
         let inputs = vec!["1998_MyDirectory", "1998_MyFile.pdf"];
         let expected = vec!["1998"];
         for input in inputs {
-            let actual: Vec<_> = implicit_tags_str(input).collect();
+            let actual: Vec<_> = infer_implicit_tags(input).map(|t| t.to_string()).collect();
             assert_eq!(actual, expected);
         }
     }
@@ -538,7 +563,7 @@ mod test {
         let inputs = &["test.gif", "ex", "test2.png", "myvid.mov"];
         let expected: &[&[&str]] = &[&["image"], &[], &["image"], &["video"]];
         for (input, expected) in inputs.iter().zip(expected.iter()) {
-            let actual: Vec<_> = infer_format_tag(input).collect();
+            let actual: Vec<_> = infer_format_tag(input).map(|t| t.to_string()).collect();
             assert_eq!(&actual, expected);
         }
     }
