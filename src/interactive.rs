@@ -3,7 +3,7 @@ use crate::{
     filter::{Filter, FilterParseError},
     query::TagTable,
 };
-use std::{fmt::Debug, path::PathBuf, time::Instant};
+use std::{fmt::Debug, path::PathBuf};
 
 /// State of the app.
 pub enum State {
@@ -248,13 +248,10 @@ impl InteractiveSession {
                         }
                         Command::Filter(filter) => {
                             self.filtered_indices.clear();
-                            let t0 = Instant::now();
                             self.filtered_indices.extend(
                                 (0..self.num_files())
                                     .filter(|fi| filter.eval(|ti| self.table.flags(*fi)[ti])),
                             );
-                            let t1 = Instant::now();
-                            self.echo = format!("Query time: {}us", (t1 - t0).as_micros());
                             self.update_lists();
                             self.filter_str = filter.text(self.table.tags());
                             self.state = State::ListsUpdated;
