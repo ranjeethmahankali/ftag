@@ -41,7 +41,7 @@ pub(crate) struct DirTree {
 }
 
 pub(crate) enum MetaData<'a> {
-    Ok(&'a DirData<'a>),
+    Ok(DirData<'a>),
     NotFound,
     FailedToLoad(Error),
 }
