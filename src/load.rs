@@ -234,12 +234,22 @@ pub(crate) struct GlobData<'a> {
 }
 
 /// Data from an ftag file.
-#[derive(Default)]
 pub(crate) struct DirData<'a> {
     pub alltags: Vec<&'a str>,
     pub desc: Option<&'a str>,
     tags: Range<usize>,
     pub globs: Vec<GlobData<'a>>,
+}
+
+impl Default for DirData<'_> {
+    fn default() -> Self {
+        Self {
+            alltags: Vec::with_capacity(32),
+            desc: None,
+            tags: 0..0,
+            globs: Vec::with_capacity(32),
+        }
+    }
 }
 
 impl<'a> GlobData<'a> {
