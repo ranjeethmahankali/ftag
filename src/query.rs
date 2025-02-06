@@ -40,10 +40,7 @@ impl InheritedTags {
         } else if self.depth >= newdepth {
             let mut marker = self.tag_indices.len();
             for _ in 0..(self.depth + 1 - newdepth) {
-                marker = match self.offsets.pop() {
-                    Some(marker) => marker,
-                    None => return Err(Error::DirectoryTraversalFailed),
-                };
+                marker = self.offsets.pop().ok_or(Error::DirectoryTraversalFailed)?;
             }
             self.tag_indices.truncate(marker);
             self.offsets.push(marker);
