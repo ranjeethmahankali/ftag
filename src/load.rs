@@ -102,7 +102,7 @@ pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
     match path.file_name() {
         Some(fname) => match fname.to_str() {
             Some(fname) => Ok(fname),
-            None => return Err(Error::InvalidPath(path.to_path_buf())),
+            None => Err(Error::InvalidPath(path.to_path_buf())),
         },
         None => Ok(""),
     }
