@@ -61,8 +61,11 @@ fn main() -> Result<(), Error> {
         let path = matches
             .get_one::<PathBuf>(arg::PATH)
             .unwrap_or(&current_dir);
-        edit::edit_file(get_ftag_path::<false>(path).ok_or(Error::InvalidPath(path.clone()))?)
-            .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))?;
+        edit::edit_file(match get_ftag_path::<false>(path) {
+            Some(fpath) => fpath,
+            None => return Err(Error::InvalidPath(path.clone())),
+        })
+        .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))?;
         return Ok(());
     } else if let Some(_matches) = matches.subcommand_matches(cmd::CLEAN) {
         core::clean(current_dir)

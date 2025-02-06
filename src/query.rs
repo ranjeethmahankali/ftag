@@ -40,7 +40,10 @@ impl InheritedTags {
         } else if self.depth >= newdepth {
             let mut marker = self.tag_indices.len();
             for _ in 0..(self.depth + 1 - newdepth) {
-                marker = self.offsets.pop().ok_or(Error::DirectoryTraversalFailed)?;
+                marker = match self.offsets.pop() {
+                    Some(marker) => marker,
+                    None => return Err(Error::DirectoryTraversalFailed),
+                };
             }
             self.tag_indices.truncate(marker);
             self.offsets.push(marker);
@@ -176,11 +179,10 @@ pub fn run_query(dirpath: PathBuf, filter: &str) -> Result<(), Error> {
                         .map(|t| Tag::Text(t))
                 })
                 // Implicit tags.
-                .chain(infer_implicit_tags(
-                    file.name()
-                        .to_str()
-                        .ok_or(Error::InvalidPath(file.name().into()))?,
-                ))
+                .chain(infer_implicit_tags(match file.name().to_str() {
+                    Some(fname) => fname,
+                    None => return Err(Error::InvalidPath(file.name().into())),
+                }))
                 .filter_map(|tag| match tag {
                     Tag::Text(t) | Tag::Format(t) => tag_index.get(t).copied(),
                     Tag::Year(y) => tag_index.get(&y.to_string()).copied(),
@@ -306,11 +308,10 @@ impl TagTable {
                         })
                         // Implicit tags.
                         .chain(
-                            infer_implicit_tags(
-                                file.name()
-                                    .to_str()
-                                    .ok_or(Error::InvalidPath(file.name().into()))?,
-                            )
+                            infer_implicit_tags(match file.name().to_str() {
+                                Some(fname) => fname,
+                                None => return Err(Error::InvalidPath(file.name().into())),
+                            })
                             .map(|t| t.to_string()),
                         ),
                 );

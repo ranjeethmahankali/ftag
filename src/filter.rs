@@ -161,7 +161,10 @@ where
             ')' => {
                 push_tag(input, begin, i, &mut stack, tagmaker);
                 begin = i + 1;
-                let last = parens.pop().ok_or(FilterParseError::MalformedParens)?;
+                let last = match parens.pop() {
+                    Some(last) => last,
+                    None => return Err(FilterParseError::MalformedParens),
+                };
                 if last >= stack.len() - 1 {
                     continue;
                 }
