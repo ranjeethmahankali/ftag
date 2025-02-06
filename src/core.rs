@@ -106,7 +106,7 @@ pub fn check(path: PathBuf) -> Result<(), Error> {
             MetaData::FailedToLoad(e) => return Err(e),
             MetaData::NotFound => continue, // No metadata.
             MetaData::Ok(DirData { globs, .. }) => {
-                matcher.find_matches(files, &globs, true);
+                matcher.find_matches(files, globs, true);
                 missing.extend(globs.iter().enumerate().filter_map(|(i, f)| {
                     if !matcher.is_glob_matched(i) {
                         Some(GlobInfo {
@@ -424,7 +424,7 @@ pub fn untracked_files(root: PathBuf) -> Result<Vec<PathBuf>, Error> {
         match metadata {
             MetaData::FailedToLoad(e) => return Err(e),
             MetaData::Ok(DirData { globs, .. }) => {
-                matcher.find_matches(files, &globs, false);
+                matcher.find_matches(files, globs, false);
                 untracked.extend(files.iter().enumerate().filter_map(|(fi, file)| {
                     // Skip the files that matched with at least one glob. Copy the
                     // paths of files that didn't match with any glob.
@@ -483,7 +483,7 @@ pub fn get_all_tags(path: PathBuf) -> Result<impl Iterator<Item = String>, Error
                 alltags.extend(tags.iter().map(|t| t.to_string()).chain(
                     infer_implicit_tags(get_filename_str(rel_dir_path)?).map(|t| t.to_string()),
                 ));
-                matcher.find_matches(files, &globs, false);
+                matcher.find_matches(files, globs, false);
                 alltags.extend(
                     files
                         .iter()
