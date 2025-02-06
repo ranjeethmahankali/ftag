@@ -234,8 +234,10 @@ pub fn clean(path: PathBuf) -> Result<(), Error> {
             std::cmp::Ordering::Greater => std::cmp::Ordering::Greater,
         });
 
-        let fpath = get_ftag_path::<true>(abs_dir_path)
-            .ok_or(Error::CannotReadStoreFile(abs_dir_path.to_path_buf()))?;
+        let fpath = match get_ftag_path::<true>(abs_dir_path) {
+            Some(fpath) => fpath,
+            None => return Err(Error::CannotReadStoreFile(abs_dir_path.to_path_buf())),
+        };
         // Backup existing data.
         std::fs::copy(&fpath, get_ftag_backup_path(abs_dir_path))
             .map_err(|_| Error::CannotWriteFile(fpath.clone()))?;
@@ -352,11 +354,13 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
     if let Some(parent) = path.parent() {
         outtags.extend(infer_implicit_tags(get_filename_str(parent)?).map(|t| t.to_string()));
     }
-    let filenamestr = path
-        .file_name()
-        .ok_or(Error::InvalidPath(path.to_path_buf()))?
-        .to_str()
-        .ok_or(Error::InvalidPath(path.to_path_buf()))?;
+    let filenamestr = match path.file_name() {
+        Some(fname) => match fname.to_str() {
+            Some(fname) => fname,
+            None => return Err(Error::InvalidPath(path.to_path_buf())),
+        },
+        None => return Err(Error::InvalidPath(path.to_path_buf())),
+    };
     for g in data.globs.iter() {
         if glob_match(g.path, filenamestr) {
             outtags.extend(

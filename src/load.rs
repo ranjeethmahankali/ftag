@@ -99,12 +99,13 @@ pub(crate) fn infer_implicit_tags(name: &str) -> impl Iterator<Item = Tag> + use
 /// string, an error is returned. If the path doesn't exist, an empty string is
 /// returned.
 pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
-    Ok(match path.file_name() {
-        Some(fname) => fname
-            .to_str()
-            .ok_or(Error::InvalidPath(path.to_path_buf()))?,
-        None => "",
-    })
+    match path.file_name() {
+        Some(fname) => match fname.to_str() {
+            Some(fname) => Ok(fname),
+            None => Err(Error::InvalidPath(path.to_path_buf())),
+        },
+        None => Ok(""),
+    }
 }
 
 /// This datastructure is responsible for finding matches between the
@@ -370,21 +371,31 @@ fn load_impl<'text>(
     } = dst;
     let mut headers = AC_PARSER.find_iter(input);
     // We store the data of the file we're currently parsing as:
-    // (list of globs, list of tags, optional description).
+    // (text containing a list of globs, list of tags, optional description).
     let mut current_unit: Option<(&str, Range<usize>, Option<&str>)> = None;
     // Begin parsing.
     let (mut header, mut content, mut next_header) = match headers.next() {
         Some(mat) => {
-            let h = Header::from_match(mat).ok_or(Error::CannotParseFtagFile(
-                filepath.to_path_buf(),
-                "FATAL: Error when searching for headers in the file.".into(),
-            ))?;
-            let (c, n) = match headers.next() {
-                Some(mat) => {
-                    let n = Header::from_match(mat).ok_or(Error::CannotParseFtagFile(
+            let h = match Header::from_match(mat) {
+                Some(h) => h,
+                None => {
+                    return Err(Error::CannotParseFtagFile(
                         filepath.to_path_buf(),
                         "FATAL: Error when searching for headers in the file.".into(),
-                    ))?;
+                    ))
+                }
+            };
+            let (c, n) = match headers.next() {
+                Some(mat) => {
+                    let n = match Header::from_match(mat) {
+                        Some(n) => n,
+                        None => {
+                            return Err(Error::CannotParseFtagFile(
+                                filepath.to_path_buf(),
+                                "FATAL: Error when searching for headers in the file.".into(),
+                            ))
+                        }
+                    };
                     let c = input[h.end..n.start].trim();
                     (c, Some(n))
                 }
@@ -485,10 +496,15 @@ fn load_impl<'text>(
                 header = next;
                 (content, next_header) = match headers.next() {
                     Some(mat) => {
-                        let n = Header::from_match(mat).ok_or(Error::CannotParseFtagFile(
-                            filepath.to_path_buf(),
-                            "FATAL: Error when searching for headers in the file.".into(),
-                        ))?;
+                        let n = match Header::from_match(mat) {
+                            Some(n) => n,
+                            None => {
+                                return Err(Error::CannotParseFtagFile(
+                                    filepath.to_path_buf(),
+                                    "FATAL: Error when searching for headers in the file.".into(),
+                                ))
+                            }
+                        };
                         content = input[header.end..n.start].trim();
                         (content, Some(n))
                     }
