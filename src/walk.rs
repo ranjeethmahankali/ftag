@@ -63,14 +63,16 @@ impl DirTree {
         if !rootdir.is_dir() {
             return Err(Error::InvalidPath(rootdir));
         }
+        let mut stack = Vec::with_capacity(32);
+        stack.push(DirEntry {
+            depth: 1,
+            entry_type: DirEntryType::Dir,
+            name: OsString::new(),
+        });
         Ok(DirTree {
             abs_dir_path: rootdir,
             rel_dir_path: PathBuf::new(),
-            stack: vec![DirEntry {
-                depth: 1,
-                entry_type: DirEntryType::Dir,
-                name: OsString::new(),
-            }],
+            stack,
             cur_depth: 0,
             num_children: 0,
             loader: Loader::new(options),
