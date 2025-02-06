@@ -371,7 +371,7 @@ fn load_impl<'text>(
     } = dst;
     let mut headers = AC_PARSER.find_iter(input);
     // We store the data of the file we're currently parsing as:
-    // (list of globs, list of tags, optional description).
+    // (text containing a list of globs, list of tags, optional description).
     let mut current_unit: Option<(&str, Range<usize>, Option<&str>)> = None;
     // Begin parsing.
     let (mut header, mut content, mut next_header) = match headers.next() {
