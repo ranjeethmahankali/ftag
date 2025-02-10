@@ -361,8 +361,17 @@ impl eframe::App for GuiApp {
              * this problem. There is a correlation between the CPU usage being
              * initialized, and the UI layout being initialized.
              */
-            if frame.info().cpu_usage.is_some() {
-                self.render_grid_preview(ui);
+            match frame.info().cpu_usage {
+                Some(_) => {
+                    self.render_grid_preview(ui);
+                }
+                None => {
+                    ui.add(
+                        egui::Label::new("Loading...")
+                            .halign(egui::Align::Center)
+                            .selectable(false),
+                    );
+                }
             }
         });
     }
