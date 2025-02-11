@@ -26,8 +26,9 @@ fn main() -> Result<(), Error> {
     };
     let table = TagTable::from_dir(current_dir)?;
     let options = eframe::NativeOptions {
-        follow_system_theme: true,
-        viewport: egui::ViewportBuilder::default().with_maximized(true),
+        viewport: egui::ViewportBuilder::default()
+            .with_maximized(true)
+            .with_clamp_size_to_monitor_size(true),
         ..Default::default()
     };
     eframe::run_native(
@@ -83,8 +84,8 @@ impl GuiApp {
         match ftype {
             FileType::Image => ui.add(
                 egui::Image::from_uri(format!("file://{}", abspath.display()))
-                    .rounding(10.)
                     .show_loading_spinner(true)
+                    .corner_radius(10.)
                     .maintain_aspect_ratio(true)
                     .sense(egui::Sense::click().union(egui::Sense::hover())),
             ),
@@ -259,7 +260,7 @@ impl GuiApp {
 }
 
 impl eframe::App for GuiApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // Tags panel.
         egui::SidePanel::left("tags_panel").show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -349,7 +350,29 @@ impl eframe::App for GuiApp {
         });
         // Files previews.
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.render_grid_preview(ui);
+            /*
+             * Sometimes I've found that egui starts rendering images before
+             * it's ready with the layout of the frame. This causes the file
+             * grid calculations to go haywire, and try to load a large number
+             * of images from the disk, because the reported available space by
+             * the layout of the ui is too large.
+             *
+             * I've found that checking if the CPU usage is initialized avoids
+             * this problem. There is a correlation between the CPU usage being
+             * initialized, and the UI layout being initialized.
+             */
+            match frame.info().cpu_usage {
+                Some(_) => {
+                    self.render_grid_preview(ui);
+                }
+                None => {
+                    ui.add(
+                        egui::Label::new("Loading...")
+                            .halign(egui::Align::Center)
+                            .selectable(false),
+                    );
+                }
+            }
         });
     }
 }

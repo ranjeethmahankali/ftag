@@ -1,6 +1,6 @@
 [package]
 name = "ftag"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2021"
 authors = ["Ranjeeth Mahankali <ranjeethmahankali@gmail.com>"]
 description = "CLI tool for tagging and searching files. See README.md for more info."
@@ -20,9 +20,9 @@ crossterm = "0.28.1"
 ratatui = "0.29.0"
 opener = "0.7.2"
 # Dependencies for the GUI
-egui = "0.28.1"
-eframe = "0.28.1"
-egui_extras = { version = "0.28.1", default-features = false, features = ["all_loaders", "image"] }
+egui = "0.31.0"
+eframe = "0.31.0"
+egui_extras = { version = "0.31.0", default-features = false, features = ["default", "all_loaders", "image"] }
 image = { version = "0.25.5", default-features = false, features = ["png", "jpeg"] }
 # Used for loading and parsing data.
 fast-glob = "0.4.3"
