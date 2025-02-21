@@ -1,8 +1,8 @@
 use crate::{
     filter::FilterParseError,
     load::{
-        get_filename_str, get_ftag_backup_path, get_ftag_path, infer_implicit_tags, DirData,
-        FileLoadingOptions, GlobMatches, Loader, LoaderOptions,
+        DirData, FileLoadingOptions, GlobMatches, Loader, LoaderOptions, get_filename_str,
+        get_ftag_backup_path, get_ftag_path, infer_implicit_tags,
     },
     walk::{DirTree, MetaData, VisitedDir},
 };

@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
-    load::{get_ftag_path, DirData, Loader, LoaderOptions},
+    load::{DirData, Loader, LoaderOptions, get_ftag_path},
 };
 
 #[derive(PartialEq, Eq, Copy, Clone)]

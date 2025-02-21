@@ -1,88 +1,85 @@
-use clap::{command, value_parser, Arg};
+use clap::{Arg, command, value_parser};
 use ftag::{
-    core::{self, get_all_tags, search, untracked_files, Error},
+    core::{self, Error, get_all_tags, search, untracked_files},
     load::get_ftag_path,
-    query::{count_files_tags, run_query, TagTable},
+    query::{TagTable, count_files_tags, run_query},
 };
 use std::path::PathBuf;
 
 fn main() -> Result<(), Error> {
     let matches = parse_args();
-    let current_dir = if let Some(rootdir) = matches.get_one::<PathBuf>("path") {
-        rootdir
+    let current_dir = match matches.get_one::<PathBuf>("path") {
+        Some(rootdir) => rootdir
             .canonicalize()
-            .map_err(|_| Error::InvalidPath(rootdir.clone()))?
-    } else {
-        std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?
+            .map_err(|_| Error::InvalidPath(rootdir.clone()))?,
+        None => std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?,
     };
-    // Handle tab completions first.
-    if let Some(complete) = matches.subcommand_matches(cmd::BASH_COMPLETE) {
-        // Bash completions can be registered with:
-        // complete -o default -C 'ftag --bash-complete --' ftag
-        if let Some(words) = complete.get_many::<String>(arg::BASH_COMPLETE_WORDS) {
-            handle_bash_completions(current_dir, words.map(|s| s.as_str()).collect());
+    match matches.subcommand() {
+        // Handle tab completions first.
+        Some((cmd::BASH_COMPLETE, complete)) => {
+            // Bash completions can be registered with:
+            // complete -o default -C 'ftag --bash-complete --' ftag
+            if let Some(words) = complete.get_many::<String>(arg::BASH_COMPLETE_WORDS) {
+                handle_bash_completions(current_dir, words.map(|s| s.as_str()).collect());
+            }
+            Ok(())
         }
-        return Ok(());
-    }
-    if let Some(_matches) = matches.subcommand_matches(cmd::COUNT) {
-        let (nfiles, ntags) = count_files_tags(current_dir)?;
-        println!("{} files; {} tags", nfiles, ntags);
-        return Ok(());
-    }
-    if let Some(matches) = matches.subcommand_matches(cmd::QUERY) {
-        let filter = matches
-            .get_one::<String>(arg::FILTER)
-            .ok_or(Error::InvalidArgs)?;
-        run_query(current_dir, filter)
-    } else if let Some(matches) = matches.subcommand_matches(cmd::SEARCH) {
-        return search(
+        Some((cmd::COUNT, _matches)) => {
+            let (nfiles, ntags) = count_files_tags(current_dir)?;
+            println!("{} files; {} tags", nfiles, ntags);
+            Ok(())
+        }
+        Some((cmd::QUERY, matches)) => {
+            let filter = matches
+                .get_one::<String>(arg::FILTER)
+                .ok_or(Error::InvalidArgs)?;
+            run_query(current_dir, filter)
+        }
+        Some((cmd::SEARCH, matches)) => search(
             current_dir,
             matches
                 .get_one::<String>(arg::SEARCH_STR)
                 .ok_or(Error::InvalidArgs)?,
-        );
-    } else if let Some(_matches) = matches.subcommand_matches(cmd::INTERACTIVE) {
-        return ftag::tui::start(TagTable::from_dir(current_dir)?)
-            .map_err(|err| Error::TUIFailure(format!("{:?}", err)));
-    } else if let Some(_matches) = matches.subcommand_matches(cmd::CHECK) {
-        return core::check(current_dir);
-    } else if let Some(matches) = matches.subcommand_matches(cmd::WHATIS) {
-        match matches.get_one::<PathBuf>(arg::PATH) {
+        ),
+        Some((cmd::INTERACTIVE, _matches)) => ftag::tui::start(TagTable::from_dir(current_dir)?)
+            .map_err(|err| Error::TUIFailure(format!("{:?}", err))),
+        Some((cmd::CHECK, _matches)) => core::check(current_dir),
+        Some((cmd::WHATIS, matches)) => match matches.get_one::<PathBuf>(arg::PATH) {
             Some(path) => {
                 let path = path
                     .canonicalize()
                     .map_err(|_| Error::InvalidPath(path.clone()))?;
                 println!("{}", core::what_is(&path)?);
-                return Ok(());
+                Ok(())
             }
-            None => return Err(Error::InvalidArgs),
+            None => Err(Error::InvalidArgs),
+        },
+        Some((cmd::EDIT, matches)) => {
+            let path = matches
+                .get_one::<PathBuf>(arg::PATH)
+                .unwrap_or(&current_dir);
+            edit::edit_file(match get_ftag_path::<false>(path) {
+                Some(fpath) => Ok(fpath),
+                None => Err(Error::InvalidPath(path.clone())),
+            }?)
+            .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))
         }
-    } else if let Some(matches) = matches.subcommand_matches(cmd::EDIT) {
-        let path = matches
-            .get_one::<PathBuf>(arg::PATH)
-            .unwrap_or(&current_dir);
-        edit::edit_file(match get_ftag_path::<false>(path) {
-            Some(fpath) => fpath,
-            None => return Err(Error::InvalidPath(path.clone())),
-        })
-        .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))?;
-        return Ok(());
-    } else if let Some(_matches) = matches.subcommand_matches(cmd::CLEAN) {
-        core::clean(current_dir)
-    } else if let Some(_matches) = matches.subcommand_matches(cmd::UNTRACKED) {
-        for path in untracked_files(current_dir)? {
-            println!("{}", path.display());
+        Some((cmd::CLEAN, _matches)) => core::clean(current_dir),
+        Some((cmd::UNTRACKED, _matches)) => {
+            for path in untracked_files(current_dir)? {
+                println!("{}", path.display());
+            }
+            Ok(())
         }
-        return Ok(());
-    } else if let Some(_matches) = matches.subcommand_matches(cmd::TAGS) {
-        let mut tags: Box<[String]> = get_all_tags(current_dir)?.collect();
-        tags.sort_unstable();
-        for tag in tags {
-            println!("{}", tag);
+        Some((cmd::TAGS, _matches)) => {
+            let mut tags: Box<[String]> = get_all_tags(current_dir)?.collect();
+            tags.sort_unstable();
+            for tag in tags {
+                println!("{}", tag);
+            }
+            Ok(())
         }
-        return Ok(());
-    } else {
-        return Err(Error::InvalidArgs);
+        _ => Err(Error::InvalidArgs),
     }
 }
 
@@ -256,7 +253,7 @@ tag.";
     pub const INTERACTIVE: &str = "\
 Launch interactive mode in the working directory. Interactive mode loads all the files and tags, and let's you incrementally refine your search criteria inside a TUI. More documentation on the interactive mode can be found here: https://github.com/ranjeethmahankali/ftag/blob/no-table/README.md";
     pub const CHECK: &str = "Recursively traverse directories starting from the working directory and check to see if all the files listed in every .ftag file is exists.";
-    pub const CHECK_PATH:&str = "The directory path where to start checking recursively. If ommitted, the workind directory is assumed.";
+    pub const CHECK_PATH: &str = "The directory path where to start checking recursively. If ommitted, the workind directory is assumed.";
     pub const WHATIS: &str = "Get the tags and description (if found) of the given file.";
     pub const WHATIS_PATH: &str = "Path of the file to describe.";
     pub const EDIT: &str = "Edit the .ftag file of the given (optional) directory.

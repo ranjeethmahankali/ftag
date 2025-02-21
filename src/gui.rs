@@ -1,4 +1,4 @@
-use clap::{command, value_parser, Arg};
+use clap::{Arg, command, value_parser};
 use egui::text::{CCursor, CCursorRange};
 use ftag::{
     core::Error,
@@ -17,12 +17,11 @@ fn main() -> Result<(), Error> {
                 .value_parser(value_parser!(PathBuf)),
         )
         .get_matches();
-    let current_dir = if let Some(rootdir) = matches.get_one::<PathBuf>("path") {
-        rootdir
+    let current_dir = match matches.get_one::<PathBuf>("path") {
+        Some(rootdir) => rootdir
             .canonicalize()
-            .map_err(|_| Error::InvalidPath(rootdir.clone()))?
-    } else {
-        std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?
+            .map_err(|_| Error::InvalidPath(rootdir.clone()))?,
+        None => std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?,
     };
     let table = TagTable::from_dir(current_dir)?;
     let options = eframe::NativeOptions {

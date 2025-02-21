@@ -3,17 +3,17 @@ use crate::{
     query::TagTable,
 };
 use crossterm::{
-    event::{self, KeyCode, KeyEvent, KeyEventKind},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
+    event::{self, KeyCode, KeyEvent, KeyEventKind},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame,
     prelude::{Backend, Constraint, CrosstermBackend, Direction, Layout, Terminal},
     text::{Line, Text},
     widgets::{
         Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
     },
-    Frame,
 };
 use std::io::stdout;
 
