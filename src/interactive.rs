@@ -157,13 +157,11 @@ impl InteractiveSession {
                 .for_each(|(dst, src)| *dst = *dst || *src);
         }
         dst.clear();
-        dst.extend(tags.iter().zip(0..table.tags().len()).filter_map(|(t, i)| {
-            if active[i] {
-                Some(t.clone())
-            } else {
-                None
-            }
-        }));
+        dst.extend(
+            tags.iter()
+                .zip(0..table.tags().len())
+                .filter_map(|(t, i)| if active[i] { Some(t.clone()) } else { None }),
+        );
     }
 
     fn update_lists(&mut self) {

@@ -382,7 +382,7 @@ fn load_impl<'text>(
                     return Err(Error::CannotParseFtagFile(
                         filepath.to_path_buf(),
                         "FATAL: Error when searching for headers in the file.".into(),
-                    ))
+                    ));
                 }
             };
             let (c, n) = match headers.next() {
@@ -393,7 +393,7 @@ fn load_impl<'text>(
                             return Err(Error::CannotParseFtagFile(
                                 filepath.to_path_buf(),
                                 "FATAL: Error when searching for headers in the file.".into(),
-                            ))
+                            ));
                         }
                     };
                     let c = input[h.end..n.start].trim();
@@ -407,7 +407,7 @@ fn load_impl<'text>(
             return Err(Error::CannotParseFtagFile(
                 filepath.to_path_buf(),
                 "File does not contain any headers.".into(),
-            ))
+            ));
         }
     };
     // Parse until no more headers are found.
@@ -502,7 +502,7 @@ fn load_impl<'text>(
                                 return Err(Error::CannotParseFtagFile(
                                     filepath.to_path_buf(),
                                     "FATAL: Error when searching for headers in the file.".into(),
-                                ))
+                                ));
                             }
                         };
                         content = input[header.end..n.start].trim();

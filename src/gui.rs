@@ -1,4 +1,4 @@
-use clap::{command, value_parser, Arg};
+use clap::{Arg, command, value_parser};
 use egui::text::{CCursor, CCursorRange};
 use ftag::{
     core::Error,

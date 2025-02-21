@@ -2,7 +2,7 @@ use crate::{
     core::Error,
     filter::Filter,
     load::{
-        get_filename_str, infer_implicit_tags, FileLoadingOptions, GlobMatches, LoaderOptions, Tag,
+        FileLoadingOptions, GlobMatches, LoaderOptions, Tag, get_filename_str, infer_implicit_tags,
     },
     walk::{DirTree, MetaData, VisitedDir},
 };

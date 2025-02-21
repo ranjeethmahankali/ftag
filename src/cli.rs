@@ -1,8 +1,8 @@
-use clap::{command, value_parser, Arg};
+use clap::{Arg, command, value_parser};
 use ftag::{
-    core::{self, get_all_tags, search, untracked_files, Error},
+    core::{self, Error, get_all_tags, search, untracked_files},
     load::get_ftag_path,
-    query::{count_files_tags, run_query, TagTable},
+    query::{TagTable, count_files_tags, run_query},
 };
 use std::path::PathBuf;
 
@@ -253,7 +253,7 @@ tag.";
     pub const INTERACTIVE: &str = "\
 Launch interactive mode in the working directory. Interactive mode loads all the files and tags, and let's you incrementally refine your search criteria inside a TUI. More documentation on the interactive mode can be found here: https://github.com/ranjeethmahankali/ftag/blob/no-table/README.md";
     pub const CHECK: &str = "Recursively traverse directories starting from the working directory and check to see if all the files listed in every .ftag file is exists.";
-    pub const CHECK_PATH:&str = "The directory path where to start checking recursively. If ommitted, the workind directory is assumed.";
+    pub const CHECK_PATH: &str = "The directory path where to start checking recursively. If ommitted, the workind directory is assumed.";
     pub const WHATIS: &str = "Get the tags and description (if found) of the given file.";
     pub const WHATIS_PATH: &str = "Path of the file to describe.";
     pub const EDIT: &str = "Edit the .ftag file of the given (optional) directory.
