@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
+    core::Error,
     load::{DirData, Loader, LoaderOptions, get_ftag_path},
 };
 
@@ -54,8 +54,8 @@ pub(crate) struct VisitedDir<'a> {
     pub(crate) metadata: MetaData<'a>,
 }
 
-fn is_ftag_file(file: &OsStr) -> bool {
-    file == OsStr::new(FTAG_FILE) || file == OsStr::new(FTAG_BACKUP_FILE)
+fn ignore_file(file: &OsStr) -> bool {
+    file.to_string_lossy().starts_with(".")
 }
 
 impl DirTree {
@@ -106,7 +106,7 @@ impl DirTree {
                     if let Ok(entries) = std::fs::read_dir(&self.abs_dir_path) {
                         for child in entries.flatten() {
                             match (child.file_name(), child.file_type()) {
-                                (cname, _) if is_ftag_file(&cname) => continue,
+                                (cname, _) if ignore_file(&cname) => continue,
                                 (cname, Ok(ctype)) if ctype.is_dir() => self.stack.push(DirEntry {
                                     depth: depth + 1,
                                     entry_type: DirEntryType::Dir,
