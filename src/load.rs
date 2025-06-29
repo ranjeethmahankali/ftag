@@ -24,8 +24,8 @@ pub(crate) enum Tag<'a> {
 impl Display for Tag<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Tag::Text(t) | Tag::Format(t) => write!(f, "{}", t),
-            Tag::Year(y) => write!(f, "{}", y),
+            Tag::Text(t) | Tag::Format(t) => write!(f, "{t}"),
+            Tag::Year(y) => write!(f, "{y}"),
         }
     }
 }
@@ -443,8 +443,7 @@ fn load_impl<'text>(
                             return Err(Error::CannotParseFtagFile(
                                 filepath.to_path_buf(),
                                 format!(
-                                    "The following globs have more than one 'tags' header:\n{}.",
-                                    globs
+                                    "The following globs have more than one 'tags' header:\n{globs}."
                                 ),
                             ));
                         }
@@ -471,8 +470,7 @@ fn load_impl<'text>(
                             return Err(Error::CannotParseFtagFile(
                                 filepath.to_path_buf(),
                                 format!(
-                                    "Following globs have more than one description:\n{}.",
-                                    globs
+                                    "Following globs have more than one description:\n{globs}."
                                 ),
                             ));
                         } else {

@@ -43,10 +43,10 @@ impl Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::TUIFailure(message) => {
-                write!(f, "Something went wrong in interactive mode:\n{}", message)
+                write!(f, "Something went wrong in interactive mode:\n{message}")
             }
-            Self::GUIFailure(e) => write!(f, "Failure in the GUI:\n{}", e),
-            Self::EditCommandFailed(message) => write!(f, "Unable to edit file:\n{}", message),
+            Self::GUIFailure(e) => write!(f, "Failure in the GUI:\n{e}"),
+            Self::EditCommandFailed(message) => write!(f, "Unable to edit file:\n{message}"),
             Self::UnmatchedGlobs(infos) => {
                 writeln!(f)?;
                 for info in infos {
@@ -67,10 +67,10 @@ impl Debug for Error {
             }
             Self::CannotParseFtagFile(path, message) => {
                 writeln!(f, "While parsing file '{}'", path.display())?;
-                write!(f, "{}", message)
+                write!(f, "{message}")
             }
             Self::CannotWriteFile(path) => writeln!(f, "Cannot write to file {}", path.display()),
-            Self::InvalidFilter(err) => write!(f, "Unable to parse filter:\n{:?}", err),
+            Self::InvalidFilter(err) => write!(f, "Unable to parse filter:\n{err:?}"),
             Self::DirectoryTraversalFailed => {
                 write!(f, "Something went wrong when traversing directories.")
             }
@@ -145,7 +145,7 @@ fn write_globs<T: AsRef<str>>(globs: &[T], w: &mut impl io::Write) -> Result<(),
     }
     writeln!(w, "\n[path]")?;
     for glob in globs.iter().map(|g| g.as_ref()) {
-        writeln!(w, "{}", glob)?;
+        writeln!(w, "{glob}")?;
     }
     Ok(())
 }
@@ -160,10 +160,10 @@ fn write_tags<T: AsRef<str>>(tags: &[T], w: &mut impl io::Write) -> Result<(), i
         .try_fold(0usize, |len, tag| -> Result<usize, io::Error> {
             let tag = tag.as_ref();
             Ok(if len > 80 {
-                writeln!(w, "{}", tag)?;
+                writeln!(w, "{tag}")?;
                 0usize
             } else {
-                write!(w, "{} ", tag)?;
+                write!(w, "{tag} ")?;
                 len + tag.len() + 1
             })
         })?
@@ -305,7 +305,7 @@ fn full_description(tags: Vec<String>, desc: String) -> String {
     let tagstr = {
         let mut tags = tags.into_iter();
         let first = tags.next().unwrap_or_default();
-        tags.fold(first, |acc, t| format!("{}, {}", acc, t))
+        tags.fold(first, |acc, t| format!("{acc}, {t}"))
     };
     format!(
         "tags: [{}]{}",
@@ -313,7 +313,7 @@ fn full_description(tags: Vec<String>, desc: String) -> String {
         if desc.is_empty() {
             desc
         } else {
-            format!("\n{}", desc)
+            format!("\n{desc}")
         }
     )
 }
@@ -370,7 +370,7 @@ fn what_is_file(path: &Path) -> Result<String, Error> {
                     .chain(infer_implicit_tags(filenamestr).map(|t| t.to_string())),
             );
             if let Some(fdesc) = g.desc {
-                outdesc = format!("{}\n{}", fdesc, outdesc);
+                outdesc = format!("{fdesc}\n{outdesc}");
             }
         }
     }
@@ -545,7 +545,7 @@ pub fn search(path: PathBuf, needle: &str) -> Result<(), Error> {
                         None
                     }
                 }) {
-                    println!("{}", filepath);
+                    println!("{filepath}");
                 }
             }
             MetaData::NotFound => continue, // No metadata, just keep going.

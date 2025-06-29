@@ -14,7 +14,7 @@ impl Debug for FilterParseError {
             FilterParseError::EmptyQuery => write!(f, "The filter string is empty."),
             FilterParseError::MalformedParens => write!(f, "Parentheses are unbalanced."),
             FilterParseError::ExpectedBinaryOperator => write!(f, "A binary operator is missing."),
-            FilterParseError::UnexpectedBinaryOperator(t) => write!(f, "'{}' was not expected.", t),
+            FilterParseError::UnexpectedBinaryOperator(t) => write!(f, "'{t}' was not expected."),
             FilterParseError::EndOfTokens => write!(f, "Unexpected end of tokens."),
         }
     }
@@ -55,7 +55,7 @@ impl Filter {
     fn maybe_parens(parent: &Filter, child: &Filter, childstr: String) -> String {
         match (child, parent) {
             (Tag(_), _) | (Not(_), _) | (And(_, _), And(_, _)) | (Or(_, _), Or(_, _)) => childstr,
-            _ => format!("({})", childstr),
+            _ => format!("({childstr})"),
         }
     }
 
@@ -95,7 +95,7 @@ impl Filter {
 impl Display for Filter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Tag(tag) => write!(f, "{}", tag),
+            Tag(tag) => write!(f, "{tag}"),
             And(lhs, rhs) => write!(
                 f,
                 "{} & {}",
@@ -132,7 +132,7 @@ impl Display for Token {
             Token::And => write!(f, "&"),
             Token::Or => write!(f, "|"),
             Token::Not => write!(f, "!"),
-            Token::Parsed(p) => write!(f, "{}", p),
+            Token::Parsed(p) => write!(f, "{p}"),
         }
     }
 }
