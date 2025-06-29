@@ -26,7 +26,7 @@ fn main() -> Result<(), Error> {
         }
         Some((cmd::COUNT, _matches)) => {
             let (nfiles, ntags) = count_files_tags(current_dir)?;
-            println!("{} files; {} tags", nfiles, ntags);
+            println!("{nfiles} files; {ntags} tags");
             Ok(())
         }
         Some((cmd::QUERY, matches)) => {
@@ -42,7 +42,7 @@ fn main() -> Result<(), Error> {
                 .ok_or(Error::InvalidArgs)?,
         ),
         Some((cmd::INTERACTIVE, _matches)) => ftag::tui::start(TagTable::from_dir(current_dir)?)
-            .map_err(|err| Error::TUIFailure(format!("{:?}", err))),
+            .map_err(|err| Error::TUIFailure(format!("{err:?}"))),
         Some((cmd::CHECK, _matches)) => core::check(current_dir),
         Some((cmd::WHATIS, matches)) => match matches.get_one::<PathBuf>(arg::PATH) {
             Some(path) => {
@@ -62,7 +62,7 @@ fn main() -> Result<(), Error> {
                 Some(fpath) => Ok(fpath),
                 None => Err(Error::InvalidPath(path.clone())),
             }?)
-            .map_err(|e| Error::EditCommandFailed(format!("{:?}", e)))
+            .map_err(|e| Error::EditCommandFailed(format!("{e:?}")))
         }
         Some((cmd::CLEAN, _matches)) => core::clean(current_dir),
         Some((cmd::UNTRACKED, _matches)) => {
@@ -75,7 +75,7 @@ fn main() -> Result<(), Error> {
             let mut tags: Box<[String]> = get_all_tags(current_dir)?.collect();
             tags.sort_unstable();
             for tag in tags {
-                println!("{}", tag);
+                println!("{tag}");
             }
             Ok(())
         }
@@ -113,7 +113,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
         Some("ftag") => {
             if let Some(cmd) = words.pop() {
                 for suggestion in PREV_WORDS.iter().filter(|c| c.starts_with(cmd)) {
-                    println!("{}", suggestion);
+                    println!("{suggestion}");
                 }
             }
         }
@@ -132,7 +132,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
                     (&word[..last], &word[last..])
                 };
                 for tag in tags.filter(|t| t.starts_with(right)) {
-                    println!("{left}{}", tag);
+                    println!("{left}{tag}");
                 }
             }
         }

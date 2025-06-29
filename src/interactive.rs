@@ -29,7 +29,7 @@ enum Error {
 impl Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidCommand(message) => write!(f, "Invalid command: {}", message),
+            Self::InvalidCommand(message) => write!(f, "Invalid command: {message}"),
             Self::InvalidFilter(err) => write!(f, "Invalid filter: {err:?}"),
         }
     }
@@ -260,7 +260,7 @@ impl InteractiveSession {
                             Err(_) => self.echo = String::from("Unable to open the file."),
                         },
                     },
-                    Err(e) => self.echo = format!("{:?}", e),
+                    Err(e) => self.echo = format!("{e:?}"),
                 }
                 self.command.clear();
             }
@@ -284,9 +284,9 @@ impl InteractiveSession {
         self.echo.clear();
         for (i, suggestion) in self.suggestions.iter().enumerate() {
             if i == self.suggestion_index {
-                self.echo.push_str(&format!("[{}]", suggestion));
+                self.echo.push_str(&format!("[{suggestion}]"));
             } else {
-                self.echo.push_str(&format!(" {} ", suggestion));
+                self.echo.push_str(&format!(" {suggestion} "));
             }
         }
     }
