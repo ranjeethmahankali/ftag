@@ -534,9 +534,16 @@ impl Loader {
     /// Load the data from a .ftag file specified by the filepath.
     pub fn load<'a>(&'a mut self, filepath: &Path) -> Result<&'a DirData<'a>, Error> {
         self.raw_text.clear();
-        File::open(filepath)
-            .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?
-            .read_to_string(&mut self.raw_text)
+        let mut file =
+            File::open(filepath).map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
+
+        // Reserve space based on file size to avoid reallocations
+        match file.metadata() {
+            Ok(metadata) => self.raw_text.reserve(metadata.len() as usize),
+            Err(_) => return Err(Error::CannotReadStoreFile(filepath.to_path_buf())),
+        }
+
+        file.read_to_string(&mut self.raw_text)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
         self.parsed.reset();
         let borrowed = unsafe {
