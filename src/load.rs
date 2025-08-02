@@ -536,13 +536,12 @@ impl Loader {
         self.raw_text.clear();
         let mut file =
             File::open(filepath).map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
-
         // Reserve space based on file size to avoid reallocations
         match file.metadata() {
             Ok(metadata) => self.raw_text.reserve(metadata.len() as usize),
             Err(_) => return Err(Error::CannotReadStoreFile(filepath.to_path_buf())),
         }
-
+        // Read contents to a string and parse.
         file.read_to_string(&mut self.raw_text)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
         self.parsed.reset();
