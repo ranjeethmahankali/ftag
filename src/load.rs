@@ -188,16 +188,16 @@ impl GlobMatches {
 /// or a directory path, in which case the store file will be it's
 /// child.
 pub fn get_ftag_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
-    let mut out = if path.exists() {
-        if path.is_dir() {
-            PathBuf::from(path)
-        } else {
-            let mut out = PathBuf::from(path);
-            out.pop();
-            out
-        }
+    let metadata = match path.metadata() {
+        Ok(meta) => meta,
+        Err(_) => return None,
+    };
+    let mut out = if metadata.is_dir() {
+        PathBuf::from(path)
     } else {
-        return None;
+        let mut out = PathBuf::from(path);
+        out.pop();
+        out
     };
     out.push(FTAG_FILE);
     if MUST_EXIST && !out.exists() {
@@ -534,9 +534,15 @@ impl Loader {
     /// Load the data from a .ftag file specified by the filepath.
     pub fn load<'a>(&'a mut self, filepath: &Path) -> Result<&'a DirData<'a>, Error> {
         self.raw_text.clear();
-        File::open(filepath)
-            .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?
-            .read_to_string(&mut self.raw_text)
+        let mut file =
+            File::open(filepath).map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
+        // Reserve space based on file size to avoid reallocations
+        match file.metadata() {
+            Ok(metadata) => self.raw_text.reserve(metadata.len() as usize),
+            Err(_) => return Err(Error::CannotReadStoreFile(filepath.to_path_buf())),
+        }
+        // Read contents to a string and parse.
+        file.read_to_string(&mut self.raw_text)
             .map_err(|_| Error::CannotReadStoreFile(filepath.to_path_buf()))?;
         self.parsed.reset();
         let borrowed = unsafe {
