@@ -188,16 +188,16 @@ impl GlobMatches {
 /// or a directory path, in which case the store file will be it's
 /// child.
 pub fn get_ftag_path<const MUST_EXIST: bool>(path: &Path) -> Option<PathBuf> {
-    let mut out = if path.exists() {
-        if path.is_dir() {
-            PathBuf::from(path)
-        } else {
-            let mut out = PathBuf::from(path);
-            out.pop();
-            out
-        }
+    let metadata = match path.metadata() {
+        Ok(meta) => meta,
+        Err(_) => return None,
+    };
+    let mut out = if metadata.is_dir() {
+        PathBuf::from(path)
     } else {
-        return None;
+        let mut out = PathBuf::from(path);
+        out.pop();
+        out
     };
     out.push(FTAG_FILE);
     if MUST_EXIST && !out.exists() {
