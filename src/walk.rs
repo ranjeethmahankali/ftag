@@ -82,7 +82,7 @@ impl DirTree {
     /// Move on to the next directory. Returns a tuple containing the depth of
     /// the directory, its absolute path, its path relative to the root of the
     /// walk, and a slice containing info about the files in this directory.
-    pub fn walk(&mut self) -> Option<VisitedDir> {
+    pub fn walk(&'_ mut self) -> Option<VisitedDir<'_>> {
         while let Some(DirEntry {
             depth,
             entry_type,

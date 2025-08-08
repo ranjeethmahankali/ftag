@@ -68,7 +68,7 @@ fn infer_year_range(mut input: &str) -> Option<Range<u16>> {
 
 /// Get an iterator over tags inferred from the format of the file. The input is
 /// expected to be the path / name of the file.
-fn infer_format_tag(input: &str) -> impl Iterator<Item = Tag> + use<'_> {
+fn infer_format_tag(input: &'_ str) -> impl Iterator<Item = Tag<'_>> + use<'_> {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
         (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
         (&[".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif"], "image"),
@@ -87,7 +87,7 @@ fn infer_format_tag(input: &str) -> impl Iterator<Item = Tag> + use<'_> {
 
 /// Get an iterator over all the implicit tags that can be inferred
 /// from the name of the file or directory.
-pub(crate) fn infer_implicit_tags(name: &str) -> impl Iterator<Item = Tag> + use<'_> {
+pub(crate) fn infer_implicit_tags(name: &'_ str) -> impl Iterator<Item = Tag<'_>> + use<'_> {
     infer_year_range(name)
         .into_iter()
         .flatten()
