@@ -2,7 +2,6 @@ use crate::{
     core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
     walk::DirEntry,
 };
-use aho_corasick::{AhoCorasick, Match};
 use fast_glob::glob_match;
 use smallvec::SmallVec;
 use std::{
@@ -12,7 +11,6 @@ use std::{
     io::Read,
     ops::Range,
     path::{Path, PathBuf},
-    sync::LazyLock,
 };
 
 pub(crate) enum Tag<'a> {
@@ -319,10 +317,7 @@ impl LoaderOptions {
     }
 }
 
-static AC_PARSER: LazyLock<AhoCorasick> = LazyLock::new(|| {
-    const HEADER_STR: [&str; 3] = ["[path]", "[tags]", "[desc]"];
-    AhoCorasick::new(HEADER_STR).expect("FATAL: Unable to initialize the parser")
-});
+const HEADER_STRINGS: [&str; 3] = ["[path]", "[tags]", "[desc]"];
 
 #[derive(Debug, PartialEq)]
 enum HeaderType {
@@ -332,7 +327,7 @@ enum HeaderType {
 }
 
 impl HeaderType {
-    pub fn from_u32(i: u32) -> Option<Self> {
+    pub fn from_usize(i: usize) -> Option<Self> {
         match i {
             0 => Some(Self::Path),
             1 => Some(Self::Tags),
@@ -349,12 +344,63 @@ struct Header {
 }
 
 impl Header {
-    pub fn from_match(mat: Match) -> Option<Self> {
-        HeaderType::from_u32(mat.pattern().as_u32()).map(|kind| Header {
-            kind,
-            start: mat.start(),
-            end: mat.end(),
-        })
+    pub fn new(kind: HeaderType, start: usize, end: usize) -> Self {
+        Header { kind, start, end }
+    }
+}
+
+/// Fast header finder that replaces aho-corasick for better performance.
+/// Finds the next header starting from the given position.
+fn find_next_header(input: &str, start: usize) -> Option<Header> {
+    let bytes = input.as_bytes();
+    let mut pos = start;
+
+    while pos < bytes.len() {
+        // Look for '[' character
+        if let Some(bracket_pos) = bytes[pos..].iter().position(|&b| b == b'[') {
+            let header_start = pos + bracket_pos;
+
+            // Check if we have enough space for the shortest header "[desc]"
+            if header_start + 6 <= bytes.len() {
+                // Check each possible header
+                for (i, &header_str) in HEADER_STRINGS.iter().enumerate() {
+                    if input[header_start..].starts_with(header_str) {
+                        let header_end = header_start + header_str.len();
+                        if let Some(kind) = HeaderType::from_usize(i) {
+                            return Some(Header::new(kind, header_start, header_end));
+                        }
+                    }
+                }
+            }
+            pos = header_start + 1;
+        } else {
+            break;
+        }
+    }
+    None
+}
+
+struct HeaderIterator<'a> {
+    input: &'a str,
+    pos: usize,
+}
+
+impl<'a> HeaderIterator<'a> {
+    fn new(input: &'a str) -> Self {
+        Self { input, pos: 0 }
+    }
+}
+
+impl<'a> Iterator for HeaderIterator<'a> {
+    type Item = Header;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(header) = find_next_header(self.input, self.pos) {
+            self.pos = header.end;
+            Some(header)
+        } else {
+            None
+        }
     }
 }
 
@@ -370,37 +416,19 @@ fn load_impl<'text>(
         tags: dirtags,
         globs: files,
     } = dst;
-    let mut headers = AC_PARSER.find_iter(input);
+    let mut headers = HeaderIterator::new(input);
     // We store the data of the file we're currently parsing as:
     // (text containing a list of globs, list of tags, optional description).
     let mut current_unit: Option<(&str, Range<usize>, Option<&str>)> = None;
     // Begin parsing.
     let (mut header, mut content, mut next_header) = match headers.next() {
-        Some(mat) => {
-            let h = match Header::from_match(mat) {
-                Some(h) => h,
-                None => {
-                    return Err(Error::CannotParseFtagFile(
-                        filepath.to_path_buf(),
-                        "FATAL: Error when searching for headers in the file.".into(),
-                    ));
-                }
-            };
+        Some(h) => {
             let (c, n) = match headers.next() {
-                Some(mat) => {
-                    let n = match Header::from_match(mat) {
-                        Some(n) => n,
-                        None => {
-                            return Err(Error::CannotParseFtagFile(
-                                filepath.to_path_buf(),
-                                "FATAL: Error when searching for headers in the file.".into(),
-                            ));
-                        }
-                    };
+                Some(n) => {
                     let c = input[h.end..n.start].trim();
                     (c, Some(n))
                 }
-                None => (input[mat.end()..].trim(), None),
+                None => (input[h.end..].trim(), None),
             };
             (h, c, n)
         }
@@ -494,16 +522,7 @@ fn load_impl<'text>(
             Some(next) => {
                 header = next;
                 (content, next_header) = match headers.next() {
-                    Some(mat) => {
-                        let n = match Header::from_match(mat) {
-                            Some(n) => n,
-                            None => {
-                                return Err(Error::CannotParseFtagFile(
-                                    filepath.to_path_buf(),
-                                    "FATAL: Error when searching for headers in the file.".into(),
-                                ));
-                            }
-                        };
+                    Some(n) => {
                         content = input[header.end..n.start].trim();
                         (content, Some(n))
                     }
