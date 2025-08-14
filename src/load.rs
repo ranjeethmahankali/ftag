@@ -324,6 +324,7 @@ static AC_PARSER: LazyLock<AhoCorasick> = LazyLock::new(|| {
     AhoCorasick::new(HEADER_STR).expect("FATAL: Unable to initialize the parser")
 });
 
+#[derive(Debug, PartialEq)]
 enum HeaderType {
     Path,
     Tags,
@@ -586,5 +587,160 @@ mod test {
             let actual: Vec<_> = infer_format_tag(input).map(|t| t.to_string()).collect();
             assert_eq!(&actual, expected);
         }
+    }
+
+    #[test]
+    fn t_parse_complete_ftag_file() {
+        let input = r#"
+[tags]
+dir_tag1 dir_tag2
+
+[desc]
+Directory description
+
+[path]
+*.jpg
+file.txt
+
+[tags]
+image text
+
+[desc]
+Mixed file types
+
+[path]
+video/*
+
+[tags]
+video media
+"#;
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(
+            true,
+            true,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: true,
+            },
+        );
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["dir_tag1", "dir_tag2"]);
+        assert_eq!(data.desc, Some("Directory description"));
+        assert_eq!(data.globs.len(), 3);
+        assert_eq!(data.globs[0].path, "*.jpg");
+        assert_eq!(data.globs[1].path, "file.txt");
+        assert_eq!(data.globs[0].tags(&data.alltags), &["image", "text"]);
+        assert_eq!(data.globs[0].desc, Some("Mixed file types"));
+        assert_eq!(data.globs[2].path, "video/*");
+        assert_eq!(data.globs[2].tags(&data.alltags), &["video", "media"]);
+    }
+
+    #[test]
+    fn t_parse_with_loading_options() {
+        let input = r#"
+[tags]
+dir_tag
+
+[desc]
+Directory description
+
+[path]
+file.txt
+
+[tags]
+file_tag
+
+[desc]
+File description
+"#;
+        // Test directory-only loading
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(true, true, FileLoadingOptions::Skip);
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["dir_tag"]);
+        assert_eq!(data.desc, Some("Directory description"));
+        assert_eq!(data.globs.len(), 0);
+        // Test file tags only
+        data.reset();
+        let options = LoaderOptions::new(
+            false,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: false,
+            },
+        );
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &[] as &[&str]);
+        assert_eq!(data.desc, None);
+        assert_eq!(data.globs.len(), 1);
+        assert_eq!(data.globs[0].tags(&data.alltags), &["file_tag"]);
+        assert_eq!(data.globs[0].desc, None);
+    }
+
+    #[test]
+    fn t_whitespace_and_empty_sections() {
+        let input = r#"
+
+
+   [tags]
+  tag1   tag2
+
+   [desc]
+
+   [path]
+  file.txt
+
+   [tags]
+
+
+"#;
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(
+            true,
+            true,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: true,
+            },
+        );
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["tag1", "tag2"]);
+        assert_eq!(data.desc, Some(""));
+        assert_eq!(data.globs.len(), 1);
+        assert_eq!(data.globs[0].path, "file.txt");
+        assert_eq!(data.globs[0].tags(&data.alltags), &[] as &[&str]);
+    }
+
+    #[test]
+    fn t_error_conditions() {
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(true, true, FileLoadingOptions::Skip);
+        // No headers
+        let result = load_impl(
+            "plain text",
+            Path::new("dummy_file_path"),
+            &options,
+            &mut data,
+        );
+        assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
+        // Multiple directory tags
+        data.reset();
+        let input = "[tags]\ntag1\n[tags]\ntag2";
+        let result = load_impl(input, Path::new("dummy_file_path"), &options, &mut data);
+        assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
+        // Multiple file tags for same group
+        data.reset();
+        let options = LoaderOptions::new(
+            false,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: false,
+            },
+        );
+        let input = "[path]\nfile.txt\n[tags]\ntag1\n[tags]\ntag2";
+        let result = load_impl(input, Path::new("dummy_file_path"), &options, &mut data);
+        assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
     }
 }
