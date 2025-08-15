@@ -374,8 +374,8 @@ impl<'text, 'path> Iterator for HeaderIterator<'text, 'path> {
             if self.input.starts_with(pat) {
                 self.input = &self.input[pat.len()..];
                 let (content, next) = match self.input.find("\n[") {
-                    Some(pos) => (self.input[..(pos + 1)].trim(), pos + 2),
-                    None => (self.input, self.input.len()),
+                    Some(pos) => (self.input[..pos].trim(), pos + 2),
+                    None => (self.input.trim(), self.input.len()),
                 };
                 self.input = &self.input[next..];
                 return Some(Ok(Header { kind, content }));
@@ -715,6 +715,45 @@ File description
             },
         );
         let input = "[path]\nfile.txt\n[tags]\ntag1\n[tags]\ntag2";
+        let result = load_impl(input, Path::new("dummy_file_path"), &options, &mut data);
+        assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
+    }
+
+    #[test]
+    fn t_edge_cases_and_boundary_conditions() {
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(
+            true,
+            true,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: true,
+            },
+        );
+        // Header at end of file without trailing newline
+        let input = "[tags]\ntag1 tag2\n[desc]\nend description";
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["tag1", "tag2"]);
+        assert_eq!(data.desc, Some("end description"));
+
+        // Empty content sections and multiple consecutive newlines
+        data.reset();
+        let input = "[tags]\n\n\n[desc]\n\n[path]\n\n\nfile.txt\n\n";
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &[] as &[&str]);
+        assert_eq!(data.desc, Some(""));
+        assert_eq!(data.globs.len(), 1);
+        assert_eq!(data.globs[0].path, "file.txt");
+
+        // File ending with partial header pattern - trailing [ terminates content
+        data.reset();
+        let input = "[tags]\ntag1\nsome text ending with\n[";
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["tag1", "some", "text", "ending", "with"]);
+
+        // Unknown header should cause error
+        data.reset();
+        let input = "[tags]\ntag1\n[unknown]\ncontent";
         let result = load_impl(input, Path::new("dummy_file_path"), &options, &mut data);
         assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
     }
