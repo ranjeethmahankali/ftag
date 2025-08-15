@@ -317,8 +317,6 @@ impl LoaderOptions {
     }
 }
 
-const HEADER_STRINGS: [&str; 3] = ["[path]", "[tags]", "[desc]"];
-
 #[derive(Debug, PartialEq)]
 enum HeaderType {
     Path,
@@ -326,81 +324,71 @@ enum HeaderType {
     Desc,
 }
 
-impl HeaderType {
-    pub fn from_usize(i: usize) -> Option<Self> {
-        match i {
-            0 => Some(Self::Path),
-            1 => Some(Self::Tags),
-            2 => Some(Self::Desc),
-            _ => None,
-        }
-    }
-}
-
-struct Header {
+#[derive(Debug)]
+struct Header<'a> {
     kind: HeaderType,
-    start: usize,
-    end: usize,
+    content: &'a str,
 }
 
-impl Header {
-    pub fn new(kind: HeaderType, start: usize, end: usize) -> Self {
-        Header { kind, start, end }
-    }
+struct HeaderIterator<'text, 'path> {
+    input: &'text str,
+    filepath: &'path Path,
 }
 
-/// Fast header finder that replaces aho-corasick for better performance.
-/// Finds the next header starting from the given position.
-fn find_next_header(input: &str, start: usize) -> Option<Header> {
-    let bytes = input.as_bytes();
-    let mut pos = start;
-
-    while pos < bytes.len() {
-        // Look for '[' character
-        if let Some(bracket_pos) = bytes[pos..].iter().position(|&b| b == b'[') {
-            let header_start = pos + bracket_pos;
-
-            // Check if we have enough space for the shortest header "[desc]"
-            if header_start + 6 <= bytes.len() {
-                // Check each possible header
-                for (i, &header_str) in HEADER_STRINGS.iter().enumerate() {
-                    if input[header_start..].starts_with(header_str) {
-                        let header_end = header_start + header_str.len();
-                        if let Some(kind) = HeaderType::from_usize(i) {
-                            return Some(Header::new(kind, header_start, header_end));
-                        }
-                    }
+impl<'text, 'path> HeaderIterator<'text, 'path> {
+    fn new(input: &'text str, filepath: &'path Path) -> Result<Self, Error> {
+        let input = input.trim();
+        let input = if input.starts_with('[') {
+            &input[1..] // Matched the first char.
+        } else {
+            match input.find("\n[") {
+                Some(pos) => &input[(pos + 2)..], // We matched two characters.
+                None => {
+                    return Err(Error::CannotParseFtagFile(
+                        filepath.to_path_buf(),
+                        "Cannot find the first header in the file.".into(),
+                    ));
                 }
             }
-            pos = header_start + 1;
-        } else {
-            break;
-        }
-    }
-    None
-}
-
-struct HeaderIterator<'a> {
-    input: &'a str,
-    pos: usize,
-}
-
-impl<'a> HeaderIterator<'a> {
-    fn new(input: &'a str) -> Self {
-        Self { input, pos: 0 }
+        };
+        Ok(Self {
+            input: input.trim(),
+            filepath,
+        })
     }
 }
 
-impl<'a> Iterator for HeaderIterator<'a> {
-    type Item = Header;
+impl<'text, 'path> Iterator for HeaderIterator<'text, 'path> {
+    type Item = Result<Header<'text>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(header) = find_next_header(self.input, self.pos) {
-            self.pos = header.end;
-            Some(header)
-        } else {
-            None
+        const HEADERS: [(&str, HeaderType); 3] = [
+            ("path]", HeaderType::Path),
+            ("tags]", HeaderType::Tags),
+            ("desc]", HeaderType::Desc),
+        ];
+        if self.input.is_empty() {
+            return None;
         }
+        for (pat, kind) in HEADERS {
+            if self.input.starts_with(pat) {
+                self.input = &self.input[pat.len()..];
+                let (content, next) = match self.input.find("\n[") {
+                    Some(pos) => (self.input[..(pos + 1)].trim(), pos + 2),
+                    None => (self.input, self.input.len()),
+                };
+                self.input = &self.input[next..];
+                return Some(Ok(Header { kind, content }));
+            }
+        }
+        Some(Err(Error::CannotParseFtagFile(
+            self.filepath.to_path_buf(),
+            self.input
+                .lines()
+                .next()
+                .unwrap_or("Unable to extract line where the error is.")
+                .to_string(),
+        )))
     }
 }
 
@@ -416,31 +404,12 @@ fn load_impl<'text>(
         tags: dirtags,
         globs: files,
     } = dst;
-    let mut headers = HeaderIterator::new(input);
     // We store the data of the file we're currently parsing as:
     // (text containing a list of globs, list of tags, optional description).
     let mut current_unit: Option<(&str, Range<usize>, Option<&str>)> = None;
-    // Begin parsing.
-    let (mut header, mut content, mut next_header) = match headers.next() {
-        Some(h) => {
-            let (c, n) = match headers.next() {
-                Some(n) => {
-                    let c = input[h.end..n.start].trim();
-                    (c, Some(n))
-                }
-                None => (input[h.end..].trim(), None),
-            };
-            (h, c, n)
-        }
-        None => {
-            return Err(Error::CannotParseFtagFile(
-                filepath.to_path_buf(),
-                "File does not contain any headers.".into(),
-            ));
-        }
-    };
-    // Parse until no more headers are found.
-    loop {
+    // Parse file.
+    for header in HeaderIterator::new(input, filepath)? {
+        let header = header?;
         match header.kind {
             HeaderType::Path => {
                 if let FileLoadingOptions::Skip = options.file_options {
@@ -450,14 +419,14 @@ fn load_impl<'text>(
                     Some((globs, tags, desc)) => {
                         let desc = desc.take();
                         let tags = std::mem::replace(tags, 0..0);
-                        let lines = std::mem::replace(globs, content).lines();
+                        let lines = std::mem::replace(globs, header.content).lines();
                         files.extend(lines.map(|g| GlobData {
                             desc,
                             path: g.trim(),
                             tags: tags.clone(),
                         }));
                     }
-                    None => current_unit = Some((content, 0..0, None)),
+                    None => current_unit = Some((header.content, 0..0, None)),
                 }
             }
             HeaderType::Tags => {
@@ -466,7 +435,7 @@ fn load_impl<'text>(
                         if tags.start == tags.end {
                             // No tags found for the current unit.
                             let before = alltags.len();
-                            alltags.extend(content.split_whitespace());
+                            alltags.extend(header.content.split_whitespace());
                             *tags = before..alltags.len();
                         } else {
                             return Err(Error::CannotParseFtagFile(
@@ -481,7 +450,7 @@ fn load_impl<'text>(
                     if dirtags.start == dirtags.end {
                         // No directory tags found.
                         let before = alltags.len();
-                        alltags.extend(content.split_whitespace());
+                        alltags.extend(header.content.split_whitespace());
                         *dirtags = before..alltags.len();
                     } else {
                         return Err(Error::CannotParseFtagFile(
@@ -503,7 +472,7 @@ fn load_impl<'text>(
                                 ),
                             ));
                         } else {
-                            *desc = Some(content);
+                            *desc = Some(header.content);
                         }
                     }
                 } else if options.dir_desc {
@@ -513,23 +482,10 @@ fn load_impl<'text>(
                             "The directory has more than one description.".into(),
                         ));
                     } else {
-                        *desc = Some(content);
+                        *desc = Some(header.content);
                     }
                 }
             }
-        };
-        match next_header {
-            Some(next) => {
-                header = next;
-                (content, next_header) = match headers.next() {
-                    Some(n) => {
-                        content = input[header.end..n.start].trim();
-                        (content, Some(n))
-                    }
-                    None => (input[header.end..].trim(), None),
-                };
-            }
-            None => break,
         }
     }
     if let Some((globs, tags, desc)) = current_unit {
@@ -702,15 +658,15 @@ File description
         let input = r#"
 
 
-   [tags]
+[tags]
   tag1   tag2
 
-   [desc]
+[desc]
 
-   [path]
+[path]
   file.txt
 
-   [tags]
+[tags]
 
 
 "#;
