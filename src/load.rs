@@ -3,7 +3,6 @@ use crate::{
     walk::DirEntry,
 };
 use fast_glob::glob_match;
-use smallvec::SmallVec;
 use std::{
     ffi::OsStr,
     fmt::Display,
@@ -12,6 +11,85 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
 };
+
+/// A vector that stores small numbers of items inline to avoid heap allocation.
+#[derive(Clone)]
+enum SmallVec<T, const N: usize> {
+    Small([T; N], usize), // array + count
+    Large(Vec<T>),
+}
+
+impl<T: Default + Copy, const N: usize> SmallVec<T, N> {
+    fn new() -> Self {
+        Self::Small([T::default(); N], 0)
+    }
+
+    fn push(&mut self, item: T) {
+        match self {
+            Self::Small(arr, count) => {
+                if *count < N {
+                    arr[*count] = item;
+                    *count += 1;
+                } else {
+                    // Promote to Large variant
+                    let mut vec = Vec::with_capacity(N + 1);
+                    vec.extend_from_slice(&arr[..]);
+                    vec.push(item);
+                    *self = Self::Large(vec);
+                }
+            }
+            Self::Large(vec) => vec.push(item),
+        }
+    }
+
+    fn iter(&self) -> SmallVecIter<T, N> {
+        match self {
+            Self::Small(arr, count) => SmallVecIter::Small {
+                arr,
+                count: *count,
+                index: 0,
+            },
+            Self::Large(vec) => SmallVecIter::Large { iter: vec.iter() },
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Small(_, count) => *count == 0,
+            Self::Large(vec) => vec.is_empty(),
+        }
+    }
+}
+
+enum SmallVecIter<'a, T, const N: usize> {
+    Small {
+        arr: &'a [T; N],
+        count: usize,
+        index: usize,
+    },
+    Large {
+        iter: std::slice::Iter<'a, T>,
+    },
+}
+
+impl<'a, T, const N: usize> Iterator for SmallVecIter<'a, T, N> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Small { arr, count, index } => {
+                if *index < *count {
+                    let item = &arr[*index];
+                    *index += 1;
+                    Some(item)
+                } else {
+                    None
+                }
+            }
+            Self::Large { iter } => iter.next(),
+        }
+    }
+}
 
 pub(crate) enum Tag<'a> {
     Text(&'a str),
@@ -110,7 +188,7 @@ pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
 /// files on disk, and globs listed in the ftag file. This can be
 /// reused for multiple folders to avoid reallocations.
 pub(crate) struct GlobMatches {
-    file_matches: Vec<SmallVec<[usize; 4]>>,
+    file_matches: Vec<SmallVec<usize, 4>>,
     glob_matches: Vec<bool>,
 }
 
@@ -756,5 +834,83 @@ File description
         let input = "[tags]\ntag1\n[unknown]\ncontent";
         let result = load_impl(input, Path::new("dummy_file_path"), &options, &mut data);
         assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
+    }
+
+    #[test]
+    fn t_smallvec_basic_operations() {
+        // Test empty SmallVec
+        let mut sv: SmallVec<usize, 4> = SmallVec::new();
+        assert!(sv.is_empty());
+        assert_eq!(sv.iter().count(), 0);
+        // Test small capacity (stays on stack)
+        sv.push(1);
+        sv.push(2);
+        sv.push(3);
+        sv.push(4);
+        assert!(!sv.is_empty());
+        let items: Vec<usize> = sv.iter().copied().collect();
+        assert_eq!(items, vec![1, 2, 3, 4]);
+        // Verify still Small variant by checking we haven't allocated
+        match sv {
+            SmallVec::Small(_, count) => assert_eq!(count, 4),
+            SmallVec::Large(_) => panic!("Should still be Small variant"),
+        }
+    }
+
+    #[test]
+    fn t_smallvec_promotion_to_large() {
+        let mut sv: SmallVec<usize, 3> = SmallVec::new();
+        // Fill to capacity
+        sv.push(10);
+        sv.push(20);
+        sv.push(30);
+        // Should still be Small
+        match sv {
+            SmallVec::Small(_, count) => assert_eq!(count, 3),
+            SmallVec::Large(_) => panic!("Should still be Small variant"),
+        }
+        // Push one more to trigger promotion
+        sv.push(40);
+        // Should now be Large
+        match sv {
+            SmallVec::Small(_, _) => panic!("Should have promoted to Large variant"),
+            SmallVec::Large(ref vec) => assert_eq!(vec.len(), 4),
+        }
+        // Verify all items are still accessible
+        let items: Vec<usize> = sv.iter().copied().collect();
+        assert_eq!(items, vec![10, 20, 30, 40]);
+        // Test continued pushing to Large variant
+        sv.push(50);
+        sv.push(60);
+        let items: Vec<usize> = sv.iter().copied().collect();
+        assert_eq!(items, vec![10, 20, 30, 40, 50, 60]);
+    }
+
+    #[test]
+    fn t_smallvec_edge_cases() {
+        // Test with capacity 0 (always promotes)
+        let mut sv: SmallVec<i32, 0> = SmallVec::new();
+        assert!(sv.is_empty());
+        sv.push(42);
+        match sv {
+            SmallVec::Small(_, _) => panic!("Should have promoted immediately"),
+            SmallVec::Large(ref vec) => assert_eq!(vec[0], 42),
+        }
+        // Test with capacity 1
+        let mut sv: SmallVec<char, 1> = SmallVec::new();
+        sv.push('a');
+        assert_eq!(sv.iter().copied().collect::<Vec<_>>(), vec!['a']);
+        sv.push('b'); // Should promote
+        match sv {
+            SmallVec::Small(_, _) => panic!("Should have promoted"),
+            SmallVec::Large(_) => {} // Expected
+        }
+        assert_eq!(sv.iter().copied().collect::<Vec<_>>(), vec!['a', 'b']);
+        // Test clone functionality
+        let sv_clone = sv.clone();
+        assert_eq!(
+            sv.iter().copied().collect::<Vec<_>>(),
+            sv_clone.iter().copied().collect::<Vec<_>>()
+        );
     }
 }

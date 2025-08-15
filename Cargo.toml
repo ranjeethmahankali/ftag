@@ -26,7 +26,6 @@ egui_extras = { version = "0.31.0", default-features = false, features = ["defau
 image = { version = "0.25.5", default-features = false, features = ["png", "jpeg"] }
 # Used for loading and parsing data.
 fast-glob = "0.4.3"
-smallvec = "1.13.2"
 
 [[bin]]
 name = "ftag"

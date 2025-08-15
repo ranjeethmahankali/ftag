@@ -1393,7 +1393,6 @@ dependencies = [
  "image",
  "opener",
  "ratatui",
- "smallvec",
 ]
 
 [[package]]
