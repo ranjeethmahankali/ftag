@@ -2,9 +2,7 @@ use crate::{
     core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
     walk::DirEntry,
 };
-use aho_corasick::{AhoCorasick, Match};
 use fast_glob::glob_match;
-use smallvec::SmallVec;
 use std::{
     ffi::OsStr,
     fmt::Display,
@@ -12,8 +10,86 @@ use std::{
     io::Read,
     ops::Range,
     path::{Path, PathBuf},
-    sync::LazyLock,
 };
+
+/// A vector that stores small numbers of items inline to avoid heap allocation.
+#[derive(Clone)]
+enum SmallVec<T, const N: usize> {
+    Small([T; N], usize), // array + count
+    Large(Vec<T>),
+}
+
+impl<T: Default + Copy, const N: usize> SmallVec<T, N> {
+    fn new() -> Self {
+        Self::Small([T::default(); N], 0)
+    }
+
+    fn push(&mut self, item: T) {
+        match self {
+            Self::Small(arr, count) => {
+                if *count < N {
+                    arr[*count] = item;
+                    *count += 1;
+                } else {
+                    // Promote to Large variant
+                    let mut vec = Vec::with_capacity(N + 1);
+                    vec.extend_from_slice(&arr[..]);
+                    vec.push(item);
+                    *self = Self::Large(vec);
+                }
+            }
+            Self::Large(vec) => vec.push(item),
+        }
+    }
+
+    fn iter(&self) -> SmallVecIter<'_, T, N> {
+        match self {
+            Self::Small(arr, count) => SmallVecIter::Small {
+                arr,
+                count: *count,
+                index: 0,
+            },
+            Self::Large(vec) => SmallVecIter::Large { iter: vec.iter() },
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Small(_, count) => *count == 0,
+            Self::Large(vec) => vec.is_empty(),
+        }
+    }
+}
+
+enum SmallVecIter<'a, T, const N: usize> {
+    Small {
+        arr: &'a [T; N],
+        count: usize,
+        index: usize,
+    },
+    Large {
+        iter: std::slice::Iter<'a, T>,
+    },
+}
+
+impl<'a, T, const N: usize> Iterator for SmallVecIter<'a, T, N> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Small { arr, count, index } => {
+                if *index < *count {
+                    let item = &arr[*index];
+                    *index += 1;
+                    Some(item)
+                } else {
+                    None
+                }
+            }
+            Self::Large { iter } => iter.next(),
+        }
+    }
+}
 
 pub(crate) enum Tag<'a> {
     Text(&'a str),
@@ -70,7 +146,7 @@ fn infer_year_range(mut input: &str) -> Option<Range<u16>> {
 /// expected to be the path / name of the file.
 fn infer_format_tag(input: &'_ str) -> impl Iterator<Item = Tag<'_>> + use<'_> {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
-        (&[".mov", ".flv", ".mp4", ".3gp"], "video"),
+        (&[".mov", ".flv", ".mp4", ".3gp", ".mpg"], "video"),
         (&[".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif"], "image"),
     ];
     EXT_TAG_MAP.iter().filter_map(|(exts, tag)| {
@@ -112,7 +188,7 @@ pub(crate) fn get_filename_str(path: &Path) -> Result<&str, Error> {
 /// files on disk, and globs listed in the ftag file. This can be
 /// reused for multiple folders to avoid reallocations.
 pub(crate) struct GlobMatches {
-    file_matches: Vec<SmallVec<[usize; 4]>>,
+    file_matches: Vec<SmallVec<usize, 4>>,
     glob_matches: Vec<bool>,
 }
 
@@ -319,41 +395,78 @@ impl LoaderOptions {
     }
 }
 
-static AC_PARSER: LazyLock<AhoCorasick> = LazyLock::new(|| {
-    const HEADER_STR: [&str; 3] = ["[path]", "[tags]", "[desc]"];
-    AhoCorasick::new(HEADER_STR).expect("FATAL: Unable to initialize the parser")
-});
-
+#[derive(Debug, PartialEq)]
 enum HeaderType {
     Path,
     Tags,
     Desc,
 }
 
-impl HeaderType {
-    pub fn from_u32(i: u32) -> Option<Self> {
-        match i {
-            0 => Some(Self::Path),
-            1 => Some(Self::Tags),
-            2 => Some(Self::Desc),
-            _ => None,
-        }
+#[derive(Debug)]
+struct Header<'a> {
+    kind: HeaderType,
+    content: &'a str,
+}
+
+struct HeaderIterator<'text, 'path> {
+    input: &'text str,
+    filepath: &'path Path,
+}
+
+impl<'text, 'path> HeaderIterator<'text, 'path> {
+    fn new(input: &'text str, filepath: &'path Path) -> Result<Self, Error> {
+        let input = input.trim();
+        let input = if let Some(stripped) = input.strip_prefix('[') {
+            stripped
+        } else {
+            match input.find("\n[") {
+                Some(pos) => &input[(pos + 2)..], // We matched two characters.
+                None => {
+                    return Err(Error::CannotParseFtagFile(
+                        filepath.to_path_buf(),
+                        "Cannot find the first header in the file.".into(),
+                    ));
+                }
+            }
+        };
+        Ok(Self {
+            input: input.trim(),
+            filepath,
+        })
     }
 }
 
-struct Header {
-    kind: HeaderType,
-    start: usize,
-    end: usize,
-}
+impl<'text, 'path> Iterator for HeaderIterator<'text, 'path> {
+    type Item = Result<Header<'text>, Error>;
 
-impl Header {
-    pub fn from_match(mat: Match) -> Option<Self> {
-        HeaderType::from_u32(mat.pattern().as_u32()).map(|kind| Header {
-            kind,
-            start: mat.start(),
-            end: mat.end(),
-        })
+    fn next(&mut self) -> Option<Self::Item> {
+        const HEADERS: [(&str, HeaderType); 3] = [
+            ("path]", HeaderType::Path),
+            ("tags]", HeaderType::Tags),
+            ("desc]", HeaderType::Desc),
+        ];
+        if self.input.is_empty() {
+            return None;
+        }
+        for (pat, kind) in HEADERS {
+            if self.input.starts_with(pat) {
+                self.input = &self.input[pat.len()..];
+                let (content, next) = match self.input.find("\n[") {
+                    Some(pos) => (self.input[..pos].trim(), pos + 2),
+                    None => (self.input.trim(), self.input.len()),
+                };
+                self.input = &self.input[next..];
+                return Some(Ok(Header { kind, content }));
+            }
+        }
+        Some(Err(Error::CannotParseFtagFile(
+            self.filepath.to_path_buf(),
+            self.input
+                .lines()
+                .next()
+                .unwrap_or("Unable to extract line where the error is.")
+                .to_string(),
+        )))
     }
 }
 
@@ -369,49 +482,12 @@ fn load_impl<'text>(
         tags: dirtags,
         globs: files,
     } = dst;
-    let mut headers = AC_PARSER.find_iter(input);
     // We store the data of the file we're currently parsing as:
     // (text containing a list of globs, list of tags, optional description).
     let mut current_unit: Option<(&str, Range<usize>, Option<&str>)> = None;
-    // Begin parsing.
-    let (mut header, mut content, mut next_header) = match headers.next() {
-        Some(mat) => {
-            let h = match Header::from_match(mat) {
-                Some(h) => h,
-                None => {
-                    return Err(Error::CannotParseFtagFile(
-                        filepath.to_path_buf(),
-                        "FATAL: Error when searching for headers in the file.".into(),
-                    ));
-                }
-            };
-            let (c, n) = match headers.next() {
-                Some(mat) => {
-                    let n = match Header::from_match(mat) {
-                        Some(n) => n,
-                        None => {
-                            return Err(Error::CannotParseFtagFile(
-                                filepath.to_path_buf(),
-                                "FATAL: Error when searching for headers in the file.".into(),
-                            ));
-                        }
-                    };
-                    let c = input[h.end..n.start].trim();
-                    (c, Some(n))
-                }
-                None => (input[mat.end()..].trim(), None),
-            };
-            (h, c, n)
-        }
-        None => {
-            return Err(Error::CannotParseFtagFile(
-                filepath.to_path_buf(),
-                "File does not contain any headers.".into(),
-            ));
-        }
-    };
-    // Parse until no more headers are found.
-    loop {
+    // Parse file.
+    for header in HeaderIterator::new(input, filepath)? {
+        let header = header?;
         match header.kind {
             HeaderType::Path => {
                 if let FileLoadingOptions::Skip = options.file_options {
@@ -421,14 +497,14 @@ fn load_impl<'text>(
                     Some((globs, tags, desc)) => {
                         let desc = desc.take();
                         let tags = std::mem::replace(tags, 0..0);
-                        let lines = std::mem::replace(globs, content).lines();
+                        let lines = std::mem::replace(globs, header.content).lines();
                         files.extend(lines.map(|g| GlobData {
                             desc,
                             path: g.trim(),
                             tags: tags.clone(),
                         }));
                     }
-                    None => current_unit = Some((content, 0..0, None)),
+                    None => current_unit = Some((header.content, 0..0, None)),
                 }
             }
             HeaderType::Tags => {
@@ -437,7 +513,7 @@ fn load_impl<'text>(
                         if tags.start == tags.end {
                             // No tags found for the current unit.
                             let before = alltags.len();
-                            alltags.extend(content.split_whitespace());
+                            alltags.extend(header.content.split_whitespace());
                             *tags = before..alltags.len();
                         } else {
                             return Err(Error::CannotParseFtagFile(
@@ -452,7 +528,7 @@ fn load_impl<'text>(
                     if dirtags.start == dirtags.end {
                         // No directory tags found.
                         let before = alltags.len();
-                        alltags.extend(content.split_whitespace());
+                        alltags.extend(header.content.split_whitespace());
                         *dirtags = before..alltags.len();
                     } else {
                         return Err(Error::CannotParseFtagFile(
@@ -474,7 +550,7 @@ fn load_impl<'text>(
                                 ),
                             ));
                         } else {
-                            *desc = Some(content);
+                            *desc = Some(header.content);
                         }
                     }
                 } else if options.dir_desc {
@@ -484,32 +560,10 @@ fn load_impl<'text>(
                             "The directory has more than one description.".into(),
                         ));
                     } else {
-                        *desc = Some(content);
+                        *desc = Some(header.content);
                     }
                 }
             }
-        };
-        match next_header {
-            Some(next) => {
-                header = next;
-                (content, next_header) = match headers.next() {
-                    Some(mat) => {
-                        let n = match Header::from_match(mat) {
-                            Some(n) => n,
-                            None => {
-                                return Err(Error::CannotParseFtagFile(
-                                    filepath.to_path_buf(),
-                                    "FATAL: Error when searching for headers in the file.".into(),
-                                ));
-                            }
-                        };
-                        content = input[header.end..n.start].trim();
-                        (content, Some(n))
-                    }
-                    None => (input[header.end..].trim(), None),
-                };
-            }
-            None => break,
         }
     }
     if let Some((globs, tags, desc)) = current_unit {
@@ -586,5 +640,277 @@ mod test {
             let actual: Vec<_> = infer_format_tag(input).map(|t| t.to_string()).collect();
             assert_eq!(&actual, expected);
         }
+    }
+
+    #[test]
+    fn t_parse_complete_ftag_file() {
+        let input = r#"
+[tags]
+dir_tag1 dir_tag2
+
+[desc]
+Directory description
+
+[path]
+*.jpg
+file.txt
+
+[tags]
+image text
+
+[desc]
+Mixed file types
+
+[path]
+video/*
+
+[tags]
+video media
+"#;
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(
+            true,
+            true,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: true,
+            },
+        );
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["dir_tag1", "dir_tag2"]);
+        assert_eq!(data.desc, Some("Directory description"));
+        assert_eq!(data.globs.len(), 3);
+        assert_eq!(data.globs[0].path, "*.jpg");
+        assert_eq!(data.globs[1].path, "file.txt");
+        assert_eq!(data.globs[0].tags(&data.alltags), &["image", "text"]);
+        assert_eq!(data.globs[0].desc, Some("Mixed file types"));
+        assert_eq!(data.globs[2].path, "video/*");
+        assert_eq!(data.globs[2].tags(&data.alltags), &["video", "media"]);
+    }
+
+    #[test]
+    fn t_parse_with_loading_options() {
+        let input = r#"
+[tags]
+dir_tag
+
+[desc]
+Directory description
+
+[path]
+file.txt
+
+[tags]
+file_tag
+
+[desc]
+File description
+"#;
+        // Test directory-only loading
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(true, true, FileLoadingOptions::Skip);
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["dir_tag"]);
+        assert_eq!(data.desc, Some("Directory description"));
+        assert_eq!(data.globs.len(), 0);
+        // Test file tags only
+        data.reset();
+        let options = LoaderOptions::new(
+            false,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: false,
+            },
+        );
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &[] as &[&str]);
+        assert_eq!(data.desc, None);
+        assert_eq!(data.globs.len(), 1);
+        assert_eq!(data.globs[0].tags(&data.alltags), &["file_tag"]);
+        assert_eq!(data.globs[0].desc, None);
+    }
+
+    #[test]
+    fn t_whitespace_and_empty_sections() {
+        let input = r#"
+
+
+[tags]
+  tag1   tag2
+
+[desc]
+
+[path]
+  file.txt
+
+[tags]
+
+
+"#;
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(
+            true,
+            true,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: true,
+            },
+        );
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["tag1", "tag2"]);
+        assert_eq!(data.desc, Some(""));
+        assert_eq!(data.globs.len(), 1);
+        assert_eq!(data.globs[0].path, "file.txt");
+        assert_eq!(data.globs[0].tags(&data.alltags), &[] as &[&str]);
+    }
+
+    #[test]
+    fn t_error_conditions() {
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(true, true, FileLoadingOptions::Skip);
+        // No headers
+        let result = load_impl(
+            "plain text",
+            Path::new("dummy_file_path"),
+            &options,
+            &mut data,
+        );
+        assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
+        // Multiple directory tags
+        data.reset();
+        let input = "[tags]\ntag1\n[tags]\ntag2";
+        let result = load_impl(input, Path::new("dummy_file_path"), &options, &mut data);
+        assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
+        // Multiple file tags for same group
+        data.reset();
+        let options = LoaderOptions::new(
+            false,
+            false,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: false,
+            },
+        );
+        let input = "[path]\nfile.txt\n[tags]\ntag1\n[tags]\ntag2";
+        let result = load_impl(input, Path::new("dummy_file_path"), &options, &mut data);
+        assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
+    }
+
+    #[test]
+    fn t_edge_cases_and_boundary_conditions() {
+        let mut data = DirData::default();
+        let options = LoaderOptions::new(
+            true,
+            true,
+            FileLoadingOptions::Load {
+                file_tags: true,
+                file_desc: true,
+            },
+        );
+        // Header at end of file without trailing newline
+        let input = "[tags]\ntag1 tag2\n[desc]\nend description";
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["tag1", "tag2"]);
+        assert_eq!(data.desc, Some("end description"));
+
+        // Empty content sections and multiple consecutive newlines
+        data.reset();
+        let input = "[tags]\n\n\n[desc]\n\n[path]\n\n\nfile.txt\n\n";
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &[] as &[&str]);
+        assert_eq!(data.desc, Some(""));
+        assert_eq!(data.globs.len(), 1);
+        assert_eq!(data.globs[0].path, "file.txt");
+
+        // File ending with partial header pattern - trailing [ terminates content
+        data.reset();
+        let input = "[tags]\ntag1\nsome text ending with\n[";
+        load_impl(input, Path::new("dummy_file_path"), &options, &mut data).unwrap();
+        assert_eq!(data.tags(), &["tag1", "some", "text", "ending", "with"]);
+
+        // Unknown header should cause error
+        data.reset();
+        let input = "[tags]\ntag1\n[unknown]\ncontent";
+        let result = load_impl(input, Path::new("dummy_file_path"), &options, &mut data);
+        assert!(matches!(result, Err(Error::CannotParseFtagFile(_, _))));
+    }
+
+    #[test]
+    fn t_smallvec_basic_operations() {
+        // Test empty SmallVec
+        let mut sv: SmallVec<usize, 4> = SmallVec::new();
+        assert!(sv.is_empty());
+        assert_eq!(sv.iter().count(), 0);
+        // Test small capacity (stays on stack)
+        sv.push(1);
+        sv.push(2);
+        sv.push(3);
+        sv.push(4);
+        assert!(!sv.is_empty());
+        let items: Vec<usize> = sv.iter().copied().collect();
+        assert_eq!(items, vec![1, 2, 3, 4]);
+        // Verify still Small variant by checking we haven't allocated
+        match sv {
+            SmallVec::Small(_, count) => assert_eq!(count, 4),
+            SmallVec::Large(_) => panic!("Should still be Small variant"),
+        }
+    }
+
+    #[test]
+    fn t_smallvec_promotion_to_large() {
+        let mut sv: SmallVec<usize, 3> = SmallVec::new();
+        // Fill to capacity
+        sv.push(10);
+        sv.push(20);
+        sv.push(30);
+        // Should still be Small
+        match sv {
+            SmallVec::Small(_, count) => assert_eq!(count, 3),
+            SmallVec::Large(_) => panic!("Should still be Small variant"),
+        }
+        // Push one more to trigger promotion
+        sv.push(40);
+        // Should now be Large
+        match sv {
+            SmallVec::Small(_, _) => panic!("Should have promoted to Large variant"),
+            SmallVec::Large(ref vec) => assert_eq!(vec.len(), 4),
+        }
+        // Verify all items are still accessible
+        let items: Vec<usize> = sv.iter().copied().collect();
+        assert_eq!(items, vec![10, 20, 30, 40]);
+        // Test continued pushing to Large variant
+        sv.push(50);
+        sv.push(60);
+        let items: Vec<usize> = sv.iter().copied().collect();
+        assert_eq!(items, vec![10, 20, 30, 40, 50, 60]);
+    }
+
+    #[test]
+    fn t_smallvec_edge_cases() {
+        // Test with capacity 0 (always promotes)
+        let mut sv: SmallVec<i32, 0> = SmallVec::new();
+        assert!(sv.is_empty());
+        sv.push(42);
+        match sv {
+            SmallVec::Small(_, _) => panic!("Should have promoted immediately"),
+            SmallVec::Large(ref vec) => assert_eq!(vec[0], 42),
+        }
+        // Test with capacity 1
+        let mut sv: SmallVec<char, 1> = SmallVec::new();
+        sv.push('a');
+        assert_eq!(sv.iter().copied().collect::<Vec<_>>(), vec!['a']);
+        sv.push('b'); // Should promote
+        match sv {
+            SmallVec::Small(_, _) => panic!("Should have promoted"),
+            SmallVec::Large(_) => {} // Expected
+        }
+        assert_eq!(sv.iter().copied().collect::<Vec<_>>(), vec!['a', 'b']);
+        // Test clone functionality
+        let sv_clone = sv.clone();
+        assert_eq!(
+            sv.iter().copied().collect::<Vec<_>>(),
+            sv_clone.iter().copied().collect::<Vec<_>>()
+        );
     }
 }

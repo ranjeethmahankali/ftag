@@ -73,7 +73,7 @@ impl GuiApp {
                 Some(ext) => match ext {
                     "png" | "jpg" | "jpeg" | "bmp" | "webp" => FileType::Image,
                     "pdf" => FileType::PdfDocument,
-                    "mov" | "flv" | "mp4" | "3gp" => FileType::Video,
+                    "mov" | "flv" | "mp4" | "3gp" | "mpg" => FileType::Video,
                     _ => FileType::Other,
                 },
                 None => FileType::Other,
