@@ -338,8 +338,8 @@ struct HeaderIterator<'text, 'path> {
 impl<'text, 'path> HeaderIterator<'text, 'path> {
     fn new(input: &'text str, filepath: &'path Path) -> Result<Self, Error> {
         let input = input.trim();
-        let input = if input.starts_with('[') {
-            &input[1..] // Matched the first char.
+        let input = if let Some(stripped) = input.strip_prefix('[') {
+            stripped
         } else {
             match input.find("\n[") {
                 Some(pos) => &input[(pos + 2)..], // We matched two characters.
