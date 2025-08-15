@@ -42,7 +42,7 @@ impl<T: Default + Copy, const N: usize> SmallVec<T, N> {
         }
     }
 
-    fn iter(&self) -> SmallVecIter<T, N> {
+    fn iter(&self) -> SmallVecIter<'_, T, N> {
         match self {
             Self::Small(arr, count) => SmallVecIter::Small {
                 arr,
