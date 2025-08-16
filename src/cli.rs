@@ -58,7 +58,7 @@ fn main() -> Result<(), Error> {
             let path = matches
                 .get_one::<PathBuf>(arg::PATH)
                 .unwrap_or(&current_dir);
-            edit::edit_file(match get_ftag_path::<false>(path) {
+            ftag::open::edit_file(match get_ftag_path::<false>(path) {
                 Some(fpath) => Ok(fpath),
                 None => Err(Error::InvalidPath(path.clone())),
             }?)
