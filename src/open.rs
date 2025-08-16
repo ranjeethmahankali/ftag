@@ -3,12 +3,16 @@ use std::process::Command;
 
 /// Opens a file or directory in the default application.
 ///
+/// This function is non-blocking and returns immediately after launching
+/// the command. It does not wait for the application to finish starting
+/// or closing.
+///
 /// # Arguments
 /// * `path` - The path to the file or directory to open
 ///
 /// # Returns
-/// * `Ok(())` if the file was successfully opened
-/// * `Err(std::io::Error)` if there was an error opening the file
+/// * `Ok(())` if the command was successfully launched
+/// * `Err(std::io::Error)` if there was an error launching the command
 pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
     let path = path.as_ref();
 
@@ -17,17 +21,17 @@ pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
         Command::new("cmd")
             .args(["/c", "start", ""])
             .arg(path)
-            .status()?;
+            .spawn()?;
     }
 
     #[cfg(target_os = "macos")]
     {
-        Command::new("open").arg(path).status()?;
+        Command::new("open").arg(path).spawn()?;
     }
 
     #[cfg(target_os = "linux")]
     {
-        Command::new("xdg-open").arg(path).status()?;
+        Command::new("xdg-open").arg(path).spawn()?;
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
@@ -87,14 +91,14 @@ mod test {
             writeln!(file, "Test file for ftag open functionality").unwrap();
         }
 
-        // Test opening the file
+        // Test opening the file (non-blocking)
         let result = open(&file_path);
 
         // Clean up
         let _ = std::fs::remove_file(&file_path);
 
-        // On headless systems, the command may succeed but not actually open
-        // We just verify the command executes without critical errors
+        // The command should launch successfully, even on headless systems
+        // We only verify the command starts, not that it opens successfully
         assert!(result.is_ok());
     }
 }
