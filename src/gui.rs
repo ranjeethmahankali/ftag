@@ -3,6 +3,7 @@ use egui::text::{CCursor, CCursorRange};
 use ftag::{
     core::Error,
     interactive::{InteractiveSession, State},
+    open,
     query::TagTable,
 };
 use std::path::{Path, PathBuf};
@@ -179,7 +180,7 @@ impl GuiApp {
                 {
                     ui.vertical_centered(|ui| {
                         let response = Self::render_file_preview(relpath, &path, ui);
-                        if response.double_clicked() && opener::open(&path).is_err() {
+                        if response.double_clicked() && open::open(&path).is_err() {
                             echo = Some("Unable to open the file.");
                         } else if response.hovered() {
                             response.show_tooltip_ui(|ui| {
