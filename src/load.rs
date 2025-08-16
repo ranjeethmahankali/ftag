@@ -204,7 +204,8 @@ impl GlobMatches {
     /// `globs`. If `short_circuit_globs` is true, then each glob will be
     /// matched with at most 1 file on disk. This is useful when you're not
     /// interested in matching all possible files, but only interested in
-    /// knowing if a glob matches at least one file.
+    /// knowing if a glob matches at least one file. FILES MUST BE SORTED BY
+    /// NAME.
     pub fn find_matches(
         &mut self,
         files: &[DirEntry],
