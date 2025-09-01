@@ -1,6 +1,7 @@
 use crate::{
     core::what_is,
     filter::{Filter, FilterParseError},
+    open,
     query::TagTable,
 };
 use std::{fmt::Debug, path::PathBuf};
@@ -255,7 +256,7 @@ impl InteractiveSession {
                             self.state = State::ListsUpdated;
                         }
                         Command::Reset => self.reset(),
-                        Command::Open(path) => match opener::open(path) {
+                        Command::Open(path) => match open::open(path) {
                             Ok(_) => {} // Do nothing.
                             Err(_) => self.echo = String::from("Unable to open the file."),
                         },

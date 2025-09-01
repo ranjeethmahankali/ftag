@@ -1,6 +1,6 @@
 [package]
 name = "ftag"
-version = "0.7.6"
+version = "0.8.1"
 edition = "2024"
 authors = ["Ranjeeth Mahankali <ranjeethmahankali@gmail.com>"]
 description = "CLI tool for tagging and searching files. See README.md for more info."
@@ -14,18 +14,14 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 #Used by the CLI.
-clap = { version = "4.5.26", features = ["cargo"] }
-edit = "0.1.5"
-crossterm = "0.28.1"
-ratatui = "0.29.0"
-opener = "0.7.2"
+crossterm = "0.29"
+ratatui = "0.29"
+fast-glob = "1.0"
 # Dependencies for the GUI
-egui = "0.31.0"
-eframe = "0.31.0"
-egui_extras = { version = "0.31.0", default-features = false, features = ["default", "all_loaders", "image"] }
-image = { version = "0.25.5", default-features = false, features = ["png", "jpeg"] }
-# Used for loading and parsing data.
-fast-glob = "0.4.3"
+egui = "0.32"
+eframe = "0.32"
+egui_extras = { version = "0.32", default-features = false, features = ["default", "all_loaders", "image"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [[bin]]
 name = "ftag"
@@ -38,7 +34,7 @@ path = "src/gui.rs"
 # For smaller binary size.
 [profile.release]
 strip = true # Automatically strip symbols
-panic = "abort" # Don't unwind stack. Should never panic.
+panic = "abort" # Don't unwind stack.
 codegen-units = 1
 lto = true
 

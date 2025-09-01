@@ -1,29 +1,68 @@
-use clap::{Arg, command, value_parser};
 use egui::text::{CCursor, CCursorRange};
 use ftag::{
     core::Error,
     interactive::{InteractiveSession, State},
+    open,
     query::TagTable,
 };
-use std::path::{Path, PathBuf};
+use std::{
+    fmt::Debug,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
-fn main() -> Result<(), Error> {
-    let matches = command!()
-        .arg(
-            Arg::new("path")
-                .long("path")
-                .short('p')
-                .required(false)
-                .value_parser(value_parser!(PathBuf)),
-        )
-        .get_matches();
-    let current_dir = match matches.get_one::<PathBuf>("path") {
-        Some(rootdir) => rootdir
-            .canonicalize()
-            .map_err(|_| Error::InvalidPath(rootdir.clone()))?,
-        None => std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?,
-    };
-    let table = TagTable::from_dir(current_dir)?;
+enum GuiError {
+    Core(Error),
+    Gui(eframe::Error),
+}
+
+impl From<Error> for GuiError {
+    fn from(value: Error) -> Self {
+        GuiError::Core(value)
+    }
+}
+
+impl From<eframe::Error> for GuiError {
+    fn from(value: eframe::Error) -> Self {
+        GuiError::Gui(value)
+    }
+}
+
+impl Debug for GuiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Core(inner) => write!(f, "core ERROR: {:?}", inner),
+            Self::Gui(inner) => write!(f, "eframe ERROR: {:?}", inner),
+        }
+    }
+}
+
+fn main() -> Result<(), GuiError> {
+    let working_dir =
+        match std::env::args()
+            .skip(1)
+            .fold((false, None), |(read_path, path), arg| {
+                match (read_path, path, arg.as_str()) {
+                    (false, None, "--path" | "-p") => (true, None),
+                    (true, None, val) => (
+                        false,
+                        Some(
+                            PathBuf::from_str(val)
+                                .expect("ERROR: Cannot parse path argument.")
+                                .canonicalize()
+                                .expect("ERROR: Unable to parse path argument."),
+                        ),
+                    ),
+                    (_, _, val) => {
+                        eprintln!("ERROR: Unexpected argument: {}", val);
+                        panic!("ABORTED.");
+                    }
+                }
+            }) {
+            (_, None) => std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?,
+            (_, Some(path)) => path,
+        };
+    let table = TagTable::from_dir(working_dir)?;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_maximized(true)
@@ -44,7 +83,7 @@ fn main() -> Result<(), Error> {
             }))
         }),
     )
-    .map_err(Error::GUIFailure)
+    .map_err(GuiError::Gui)
 }
 
 struct GuiApp {
@@ -179,7 +218,7 @@ impl GuiApp {
                 {
                     ui.vertical_centered(|ui| {
                         let response = Self::render_file_preview(relpath, &path, ui);
-                        if response.double_clicked() && opener::open(&path).is_err() {
+                        if response.double_clicked() && open::open(&path).is_err() {
                             echo = Some("Unable to open the file.");
                         } else if response.hovered() {
                             response.show_tooltip_ui(|ui| {
