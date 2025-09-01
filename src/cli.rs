@@ -1,77 +1,50 @@
-use clap::{Arg, command, value_parser};
 use ftag::{
     core::{self, Error, get_all_tags, search, untracked_files},
     load::get_ftag_path,
     query::{TagTable, count_files_tags, run_query},
 };
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 fn main() -> Result<(), Error> {
-    let matches = parse_args();
-    let current_dir = match matches.get_one::<PathBuf>("path") {
-        Some(rootdir) => rootdir
-            .canonicalize()
-            .map_err(|_| Error::InvalidPath(rootdir.clone()))?,
-        None => std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?,
-    };
-    match matches.subcommand() {
-        // Handle tab completions first.
-        Some((cmd::BASH_COMPLETE, complete)) => {
-            // Bash completions can be registered with:
-            // complete -o default -C 'ftag --bash-complete --' ftag
-            if let Some(words) = complete.get_many::<String>(arg::BASH_COMPLETE_WORDS) {
-                handle_bash_completions(current_dir, words.map(|s| s.as_str()).collect());
-            }
+    let Arguments {
+        path: current_dir,
+        command,
+    } = parse_args();
+    match command {
+        Command::BashComplete(items) => {
+            handle_bash_completions(current_dir, items);
             Ok(())
         }
-        Some((cmd::COUNT, _matches)) => {
+        Command::Count => {
             let (nfiles, ntags) = count_files_tags(current_dir)?;
             println!("{nfiles} files; {ntags} tags");
             Ok(())
         }
-        Some((cmd::QUERY, matches)) => {
-            let filter = matches
-                .get_one::<String>(arg::FILTER)
-                .ok_or(Error::InvalidArgs)?;
-            run_query(current_dir, filter)
-        }
-        Some((cmd::SEARCH, matches)) => search(
-            current_dir,
-            matches
-                .get_one::<String>(arg::SEARCH_STR)
-                .ok_or(Error::InvalidArgs)?,
-        ),
-        Some((cmd::INTERACTIVE, _matches)) => ftag::tui::start(TagTable::from_dir(current_dir)?)
+        Command::Query(filter) => run_query(current_dir, &filter),
+        Command::Search(needle) => search(current_dir, &needle),
+        Command::Interactive => ftag::tui::start(TagTable::from_dir(current_dir)?)
             .map_err(|err| Error::TUIFailure(format!("{err:?}"))),
-        Some((cmd::CHECK, _matches)) => core::check(current_dir),
-        Some((cmd::WHATIS, matches)) => match matches.get_one::<PathBuf>(arg::PATH) {
-            Some(path) => {
-                let path = path
-                    .canonicalize()
-                    .map_err(|_| Error::InvalidPath(path.clone()))?;
-                println!("{}", core::what_is(&path)?);
-                Ok(())
-            }
-            None => Err(Error::InvalidArgs),
-        },
-        Some((cmd::EDIT, matches)) => {
-            let path = matches
-                .get_one::<PathBuf>(arg::PATH)
-                .unwrap_or(&current_dir);
+        Command::Check => core::check(current_dir),
+        Command::WhatIs(path) => {
+            println!("{}", core::what_is(&path)?);
+            Ok(())
+        }
+        Command::Edit(path) => {
+            let path = path.as_ref().unwrap_or(&current_dir);
             ftag::open::edit_file(match get_ftag_path::<false>(path) {
                 Some(fpath) => Ok(fpath),
                 None => Err(Error::InvalidPath(path.clone())),
             }?)
             .map_err(|e| Error::EditCommandFailed(format!("{e:?}")))
         }
-        Some((cmd::CLEAN, _matches)) => core::clean(current_dir),
-        Some((cmd::UNTRACKED, _matches)) => {
+        Command::Clean => core::clean(current_dir),
+        Command::Untracked => {
             for path in untracked_files(current_dir)? {
                 println!("{}", path.display());
             }
             Ok(())
         }
-        Some((cmd::TAGS, _matches)) => {
+        Command::Tags => {
             let mut tags: Box<[String]> = get_all_tags(current_dir)?.collect();
             tags.sort_unstable();
             for tag in tags {
@@ -79,11 +52,16 @@ fn main() -> Result<(), Error> {
             }
             Ok(())
         }
-        _ => Err(Error::InvalidArgs),
+        Command::Help => todo!("Print help"),
+        Command::Version => {
+            let version = env!("CARGO_PKG_VERSION");
+            println!("ftag CLI: {}", version);
+            Ok(())
+        }
     }
 }
 
-fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
+fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<String>) {
     /*
     Bash completion always passes in 3 words. The first word will be the main
     binary: ftag. The second word will be an empty string, and the third word
@@ -109,10 +87,11 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
         "--path",
         "-p",
     ];
-    match words.pop() {
+    let last = words.pop();
+    match last.as_ref().map(|w| w.as_str()) {
         Some("ftag") => {
             if let Some(cmd) = words.pop() {
-                for suggestion in PREV_WORDS.iter().filter(|c| c.starts_with(cmd)) {
+                for suggestion in PREV_WORDS.iter().filter(|c| c.starts_with(&cmd)) {
                     println!("{suggestion}");
                 }
             }
@@ -140,76 +119,118 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<&str>) {
     }
 }
 
-fn parse_args() -> clap::ArgMatches {
-    command!()
-        .arg(
-            Arg::new(arg::PATH)
-                .long("path")
-                .short('p')
-                .required(false)
-                .value_parser(value_parser!(PathBuf)),
-        )
-        .subcommand(clap::Command::new(cmd::COUNT).about(about::COUNT))
-        .subcommand(
-            clap::Command::new(cmd::QUERY)
-                .alias(cmd::QUERY_SHORT)
-                .about(about::QUERY)
-                .arg(
-                    Arg::new(arg::FILTER)
-                        .required(true)
-                        .help(about::QUERY_FILTER)
-                        .long_help(about::QUERY_FILTER_LONG),
-                ),
-        )
-        .subcommand(
-            clap::Command::new(cmd::SEARCH)
-                .alias(cmd::SEARCH_SHORT)
-                .about(about::SEARCH)
-                .arg(
-                    Arg::new(arg::SEARCH_STR)
-                        .required(true)
-                        .help(about::SEARCH_STR)
-                        .long_help(about::SEARCH_STR_LONG),
-                ),
-        )
-        .subcommand(
-            clap::Command::new(cmd::INTERACTIVE)
-                .alias("-i")
-                .about(about::INTERACTIVE),
-        )
-        .subcommand(
-            clap::Command::new(cmd::CHECK).about(about::CHECK).arg(
-                Arg::new(arg::PATH)
-                    .help(about::CHECK_PATH)
-                    .required(false)
-                    .value_parser(value_parser!(PathBuf)),
-            ),
-        )
-        .subcommand(
-            clap::Command::new(cmd::WHATIS).about(about::WHATIS).arg(
-                Arg::new(arg::PATH)
-                    .required(true)
-                    .value_parser(value_parser!(PathBuf))
-                    .help(about::WHATIS_PATH),
-            ),
-        )
-        .subcommand(
-            clap::Command::new(cmd::EDIT).about(about::EDIT).arg(
-                Arg::new(arg::PATH)
-                    .help(about::EDIT_PATH)
-                    .required(false)
-                    .value_parser(value_parser!(PathBuf))
-                    .default_value("."),
-            ),
-        )
-        .subcommand(clap::Command::new(cmd::CLEAN).about(about::CLEAN))
-        .subcommand(clap::Command::new(cmd::UNTRACKED).about(about::UNTRACKED))
-        .subcommand(clap::Command::new(cmd::TAGS).about(about::TAGS))
-        .subcommand(
-            clap::Command::new(cmd::BASH_COMPLETE)
-                .arg(Arg::new(arg::BASH_COMPLETE_WORDS).num_args(3)),
-        )
-        .get_matches()
+#[derive(Debug)]
+enum Command {
+    BashComplete(Vec<String>),
+    Count,
+    Query(String),
+    Search(String),
+    Interactive,
+    Check,
+    WhatIs(PathBuf),
+    Edit(Option<PathBuf>),
+    Clean,
+    Untracked,
+    Tags,
+    Help,
+    Version,
+}
+
+#[derive(Debug)]
+struct Arguments {
+    path: PathBuf,
+    command: Command,
+}
+
+fn parse_args() -> Arguments {
+    let mut path: Option<PathBuf> = None; // Default choice of path.
+    let mut cmdopt: Option<Command> = None;
+    let mut args = std::env::args().skip(1); // First argument is the executable.
+    println!("{:?}", &args); // DEBUG
+    while let Some(word) = args.next() {
+        match (word.as_str(), &cmdopt, &path) {
+            (cmd::BASH_COMPLETE, None, _) => {
+                cmdopt = {
+                    let mut words = Vec::new();
+                    while let Some(word) = args.next() {
+                        words.push(word);
+                    }
+                    Some(Command::BashComplete(words))
+                }
+            }
+            (cmd::COUNT, None, _) => cmdopt = Some(Command::Count),
+            (cmd::QUERY | cmd::QUERY_SHORT, None, _) => {
+                cmdopt = Some(Command::Query(
+                    args.next()
+                        .expect("ERROR: Cannot find the query filter argument."),
+                ))
+            }
+            (cmd::SEARCH | cmd::SEARCH_SHORT, None, _) => {
+                cmdopt = Some(Command::Search(
+                    args.next()
+                        .expect("ERROR: Cannot find argument for the 'search' command"),
+                ));
+            }
+            (cmd::INTERACTIVE | cmd::INTERACTIVE_SHORT, None, _) => {
+                cmdopt = Some(Command::Interactive)
+            }
+            (cmd::CHECK, None, _) => cmdopt = Some(Command::Check),
+            (cmd::WHATIS, None, _) => {
+                cmdopt = Some(Command::WhatIs(
+                    PathBuf::from_str(
+                        &args
+                            .next()
+                            .expect("ERROR: Cannot read argument of 'whatis' command."),
+                    )
+                    .expect("ERROR: Cannot parse argument of 'whatis' command.")
+                    .canonicalize()
+                    .expect("ERROR: Unable to parse the aargument of 'whatis' command."),
+                ))
+            }
+            (cmd::EDIT, None, _) => {
+                cmdopt = Some(Command::Edit(args.next().map(|p| {
+                    PathBuf::from_str(&p)
+                        .expect("ERROR: Unable to parse the argument of 'edit' command.")
+                        .canonicalize()
+                        .expect("ERROR: Cannot parse the argument of 'edit' command.")
+                })))
+            }
+            (cmd::CLEAN, None, _) => cmdopt = Some(Command::Clean),
+            (cmd::UNTRACKED, None, _) => cmdopt = Some(Command::Untracked),
+            (cmd::TAGS, None, _) => cmdopt = Some(Command::Tags),
+            ("help" | "--help" | "-h" | "?", None, _) => cmdopt = Some(Command::Help),
+            ("version" | "--version", None, _) => cmdopt = Some(Command::Version),
+            (arg::PATH | arg::PATH_SHORT, _, None) => {
+                path = Some(
+                    PathBuf::from_str(
+                        &args
+                            .next()
+                            .expect("ERROR: No value found for the 'path' argument"),
+                    )
+                    .expect("ERROR: Cannot parse the value of the 'path' argument")
+                    .canonicalize()
+                    .expect("ERROR: Cannot cannonicalize path"),
+                );
+            }
+            _ => {
+                eprintln!("ERROR: Unexpected argument: {}", &word);
+                panic!("ABORTED.")
+            }
+        }
+    }
+    Arguments {
+        path: match path {
+            Some(path) => path,
+            None => std::env::current_dir().expect("ERROR: Cannot get working directory"),
+        },
+        command: match cmdopt {
+            Some(command) => command,
+            None => {
+                eprintln!("ERROR: Command not found among arguments");
+                panic!("ABORTED.")
+            }
+        },
+    }
 }
 
 mod cmd {
@@ -219,6 +240,7 @@ mod cmd {
     pub const SEARCH: &str = "search";
     pub const SEARCH_SHORT: &str = "-s";
     pub const INTERACTIVE: &str = "interactive";
+    pub const INTERACTIVE_SHORT: &str = "-i";
     pub const CHECK: &str = "check";
     pub const WHATIS: &str = "whatis";
     pub const EDIT: &str = "edit";
@@ -229,10 +251,8 @@ mod cmd {
 }
 
 mod arg {
-    pub const FILTER: &str = "filter"; // Query command.
-    pub const PATH: &str = "path"; // --path flag to run in a different path than cwd.
-    pub const SEARCH_STR: &str = "search string";
-    pub const BASH_COMPLETE_WORDS: &str = "bash-complete-words";
+    pub const PATH: &str = "--path"; // --path flag to run in a different path than cwd.
+    pub const PATH_SHORT: &str = "-p";
 }
 
 mod about {
