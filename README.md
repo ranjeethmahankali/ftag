@@ -172,7 +172,7 @@ When searching for files, you may not remember the exact tags you're
 supposed to search for. Having autocompletion for tags and commands
 can be very helpful. To enable tab-autocompletion in bash, add this to your bash profile:
 ```bash
-complete -o default -C 'ftag --bash-complete --' ftag
+complete -o default -C 'ftag --bash-complete' ftag
 ```
 
 ### Interactive mode with TUI
