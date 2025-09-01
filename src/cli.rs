@@ -169,16 +169,20 @@ fn parse_args() -> Arguments {
                             .next()
                             .expect("ERROR: Cannot read argument of 'whatis' command."),
                     )
+                    .inspect_err(|e| eprintln!("ERROR: {}", e))
                     .expect("ERROR: Cannot parse argument of 'whatis' command.")
                     .canonicalize()
-                    .expect("ERROR: Unable to parse the aargument of 'whatis' command."),
+                    .inspect_err(|e| eprintln!("ERROR: {}", e))
+                    .expect("ERROR: Unable to parse the argument of 'whatis' command."),
                 ))
             }
             (cmd::EDIT, None, _) => {
                 cmdopt = Some(Command::Edit(args.next().map(|p| {
                     PathBuf::from_str(&p)
+                        .inspect_err(|e| eprintln!("ERROR: {}", e))
                         .expect("ERROR: Unable to parse the argument of 'edit' command.")
                         .canonicalize()
+                        .inspect_err(|e| eprintln!("ERROR: {}", e))
                         .expect("ERROR: Cannot parse the argument of 'edit' command.")
                 })))
             }
@@ -194,9 +198,11 @@ fn parse_args() -> Arguments {
                             .next()
                             .expect("ERROR: No value found for the 'path' argument"),
                     )
+                    .inspect_err(|e| eprintln!("ERROR: {}", e))
                     .expect("ERROR: Cannot parse the value of the 'path' argument")
                     .canonicalize()
-                    .expect("ERROR: Cannot cannonicalize path"),
+                    .inspect_err(|e| eprintln!("ERROR: {}", e))
+                    .expect("ERROR: Cannot canonicalize path"),
                 );
             }
             _ => {
@@ -208,7 +214,9 @@ fn parse_args() -> Arguments {
     Arguments {
         path: match path {
             Some(path) => path,
-            None => std::env::current_dir().expect("ERROR: Cannot get working directory"),
+            None => std::env::current_dir()
+                .inspect_err(|e| eprintln!("ERROR: {}", e))
+                .expect("ERROR: Cannot get working directory"),
         },
         command: match cmdopt {
             Some(command) => command,
