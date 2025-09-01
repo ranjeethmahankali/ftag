@@ -146,7 +146,6 @@ fn parse_args() -> Arguments {
     let mut path: Option<PathBuf> = None; // Default choice of path.
     let mut cmdopt: Option<Command> = None;
     let mut args = std::env::args().skip(1); // First argument is the executable.
-    println!("{:?}", &args); // DEBUG
     while let Some(word) = args.next() {
         match (word.as_str(), &cmdopt, &path) {
             (cmd::BASH_COMPLETE, None, _) => {
