@@ -38,7 +38,7 @@ impl Debug for GuiError {
 }
 
 fn main() -> Result<(), GuiError> {
-    let current_dir =
+    let working_dir =
         match std::env::args()
             .skip(1)
             .fold((false, None), |(read_path, path), arg| {
@@ -62,7 +62,7 @@ fn main() -> Result<(), GuiError> {
             (_, None) => std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?,
             (_, Some(path)) => path,
         };
-    let table = TagTable::from_dir(current_dir)?;
+    let table = TagTable::from_dir(working_dir)?;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_maximized(true)

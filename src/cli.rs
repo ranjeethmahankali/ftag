@@ -7,37 +7,37 @@ use std::{path::PathBuf, str::FromStr};
 
 fn main() -> Result<(), Error> {
     let Arguments {
-        path: current_dir,
+        working_dir,
         command,
     } = parse_args();
     match command {
-        Command::BashComplete(items) => handle_bash_completions(current_dir, items),
+        Command::BashComplete(items) => handle_bash_completions(working_dir, items),
         Command::Count => {
-            let (nfiles, ntags) = count_files_tags(current_dir)?;
+            let (nfiles, ntags) = count_files_tags(working_dir)?;
             println!("{nfiles} files; {ntags} tags")
         }
-        Command::Query(filter) => run_query(current_dir, &filter)?,
-        Command::Search(needle) => search(current_dir, &needle)?,
-        Command::Interactive => ftag::tui::start(TagTable::from_dir(current_dir)?)
+        Command::Query(filter) => run_query(working_dir, &filter)?,
+        Command::Search(needle) => search(working_dir, &needle)?,
+        Command::Interactive => ftag::tui::start(TagTable::from_dir(working_dir)?)
             .map_err(|err| Error::TUIFailure(format!("{err:?}")))?,
-        Command::Check => core::check(current_dir)?,
+        Command::Check => core::check(working_dir)?,
         Command::WhatIs(path) => println!("{}", core::what_is(&path)?),
         Command::Edit(path) => {
-            let path = path.as_ref().unwrap_or(&current_dir);
+            let path = path.as_ref().unwrap_or(&working_dir);
             ftag::open::edit_file(match get_ftag_path::<false>(path) {
                 Some(fpath) => Ok(fpath),
                 None => Err(Error::InvalidPath(path.clone())),
             }?)
             .map_err(|e| Error::EditCommandFailed(format!("{e:?}")))?
         }
-        Command::Clean => core::clean(current_dir)?,
+        Command::Clean => core::clean(working_dir)?,
         Command::Untracked => {
-            for path in untracked_files(current_dir)? {
+            for path in untracked_files(working_dir)? {
                 println!("{}", path.display());
             }
         }
         Command::Tags => {
-            let mut tags: Box<[String]> = get_all_tags(current_dir)?.collect();
+            let mut tags: Box<[String]> = get_all_tags(working_dir)?.collect();
             tags.sort_unstable();
             for tag in tags {
                 println!("{tag}");
@@ -123,7 +123,7 @@ enum Command {
 
 #[derive(Debug)]
 struct Arguments {
-    path: PathBuf,
+    working_dir: PathBuf,
     command: Command,
 }
 
@@ -201,7 +201,7 @@ fn parse_args() -> Arguments {
         }
     }
     Arguments {
-        path: match path {
+        working_dir: match path {
             Some(path) => path,
             None => std::env::current_dir()
                 .inspect_err(|e| eprintln!("ERROR: {}", e))
