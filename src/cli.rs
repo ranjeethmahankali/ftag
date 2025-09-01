@@ -56,10 +56,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<String>) {
     will be the most recent word that the user typed, that provides the context
     for completions.
      */
-    if words.len() != 3 {
-        return;
-    }
-    if words[0] != "ftag" {
+    if words.len() != 3 || words[0] != "ftag" {
         return;
     }
     const PREV_WORDS: [&str; 11] = [
