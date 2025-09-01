@@ -71,10 +71,10 @@ pub fn edit_file<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
             if status.success() {
                 return Ok(());
             } else {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Editor '{}' exited with non-zero status", editor),
-                ));
+                return Err(std::io::Error::other(format!(
+                    "Editor '{}' exited with non-zero status",
+                    editor
+                )));
             }
         }
     }

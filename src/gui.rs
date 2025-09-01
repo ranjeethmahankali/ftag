@@ -6,9 +6,38 @@ use ftag::{
     open,
     query::TagTable,
 };
-use std::path::{Path, PathBuf};
+use std::{
+    fmt::Debug,
+    path::{Path, PathBuf},
+};
 
-fn main() -> Result<(), Error> {
+enum GuiError {
+    Core(Error),
+    Gui(eframe::Error),
+}
+
+impl From<Error> for GuiError {
+    fn from(value: Error) -> Self {
+        GuiError::Core(value)
+    }
+}
+
+impl From<eframe::Error> for GuiError {
+    fn from(value: eframe::Error) -> Self {
+        GuiError::Gui(value)
+    }
+}
+
+impl Debug for GuiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Core(inner) => write!(f, "core ERROR: {:?}", inner),
+            Self::Gui(inner) => write!(f, "eframe ERROR: {:?}", inner),
+        }
+    }
+}
+
+fn main() -> Result<(), GuiError> {
     let matches = command!()
         .arg(
             Arg::new("path")
@@ -45,7 +74,7 @@ fn main() -> Result<(), Error> {
             }))
         }),
     )
-    .map_err(Error::GUIFailure)
+    .map_err(GuiError::Gui)
 }
 
 struct GuiApp {
