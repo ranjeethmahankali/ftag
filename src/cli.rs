@@ -84,7 +84,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<String>) {
                 }
             }
         }
-        Some(cmd::QUERY) | Some(cmd::QUERY_SHORT) => {
+        Some("query") | Some("-q") => {
             if let (Some(word), Ok(tags)) = (words.pop(), get_all_tags(current_dir)) {
                 let (left, right) = {
                     let mut last = 0usize;
@@ -136,7 +136,7 @@ fn parse_args() -> Arguments {
     let mut args = std::env::args().skip(1); // First argument is the executable.
     while let Some(word) = args.next() {
         match (word.as_str(), &cmdopt, &path) {
-            (cmd::BASH_COMPLETE, None, _) => {
+            ("--bash-complete", None, _) => {
                 cmdopt = {
                     let mut words = Vec::new();
                     while let Some(word) = args.next() {
@@ -145,24 +145,22 @@ fn parse_args() -> Arguments {
                     Some(Command::BashComplete(words))
                 }
             }
-            (cmd::COUNT, None, _) => cmdopt = Some(Command::Count),
-            (cmd::QUERY | cmd::QUERY_SHORT, None, _) => {
+            ("count", None, _) => cmdopt = Some(Command::Count),
+            ("query" | "-q", None, _) => {
                 cmdopt = Some(Command::Query(
                     args.next()
                         .expect("ERROR: Cannot find the query filter argument."),
                 ))
             }
-            (cmd::SEARCH | cmd::SEARCH_SHORT, None, _) => {
+            ("search" | "-s", None, _) => {
                 cmdopt = Some(Command::Search(
                     args.next()
                         .expect("ERROR: Cannot find argument for the 'search' command"),
                 ));
             }
-            (cmd::INTERACTIVE | cmd::INTERACTIVE_SHORT, None, _) => {
-                cmdopt = Some(Command::Interactive)
-            }
-            (cmd::CHECK, None, _) => cmdopt = Some(Command::Check),
-            (cmd::WHATIS, None, _) => {
+            ("interactive" | "-i", None, _) => cmdopt = Some(Command::Interactive),
+            ("check", None, _) => cmdopt = Some(Command::Check),
+            ("whatis", None, _) => {
                 cmdopt = Some(Command::WhatIs(
                     PathBuf::from_str(
                         &args
@@ -176,7 +174,7 @@ fn parse_args() -> Arguments {
                     .expect("ERROR: Unable to parse the argument of 'whatis' command."),
                 ))
             }
-            (cmd::EDIT, None, _) => {
+            ("edit", None, _) => {
                 cmdopt = Some(Command::Edit(args.next().map(|p| {
                     PathBuf::from_str(&p)
                         .inspect_err(|e| eprintln!("ERROR: {}", e))
@@ -186,12 +184,12 @@ fn parse_args() -> Arguments {
                         .expect("ERROR: Cannot parse the argument of 'edit' command.")
                 })))
             }
-            (cmd::CLEAN, None, _) => cmdopt = Some(Command::Clean),
-            (cmd::UNTRACKED, None, _) => cmdopt = Some(Command::Untracked),
-            (cmd::TAGS, None, _) => cmdopt = Some(Command::Tags),
+            ("clean", None, _) => cmdopt = Some(Command::Clean),
+            ("untracked", None, _) => cmdopt = Some(Command::Untracked),
+            ("tags", None, _) => cmdopt = Some(Command::Tags),
             ("help" | "--help" | "-h" | "?", None, _) => cmdopt = Some(Command::Help),
             ("version" | "--version", None, _) => cmdopt = Some(Command::Version),
-            (arg::PATH | arg::PATH_SHORT, _, None) => {
+            ("--path" | "-p", _, None) => {
                 path = Some(
                     PathBuf::from_str(
                         &args
@@ -226,23 +224,6 @@ fn parse_args() -> Arguments {
             }
         },
     }
-}
-
-mod cmd {
-    pub const COUNT: &str = "count";
-    pub const QUERY: &str = "query";
-    pub const QUERY_SHORT: &str = "-q";
-    pub const SEARCH: &str = "search";
-    pub const SEARCH_SHORT: &str = "-s";
-    pub const INTERACTIVE: &str = "interactive";
-    pub const INTERACTIVE_SHORT: &str = "-i";
-    pub const CHECK: &str = "check";
-    pub const WHATIS: &str = "whatis";
-    pub const EDIT: &str = "edit";
-    pub const CLEAN: &str = "clean";
-    pub const UNTRACKED: &str = "untracked";
-    pub const TAGS: &str = "tags";
-    pub const BASH_COMPLETE: &str = "--bash-complete";
 }
 
 const HELP_TEXT: &str = r#"ftag - CLI tool for tagging and searching files
@@ -305,8 +286,3 @@ const HELP_TEXT: &str = r#"ftag - CLI tool for tagging and searching files
       ftag whatis src/main.rs           # Show tags for specific file
       ftag edit                         # Edit .ftag file for current directory
   "#;
-
-mod arg {
-    pub const PATH: &str = "--path"; // --path flag to run in a different path than cwd.
-    pub const PATH_SHORT: &str = "-p";
-}
