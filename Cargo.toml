@@ -34,7 +34,7 @@ path = "src/gui.rs"
 # For smaller binary size.
 [profile.release]
 strip = true # Automatically strip symbols
-panic = "abort" # Don't unwind stack. Should never panic.
+panic = "abort" # Don't unwind stack.
 codegen-units = 1
 lto = true
 
