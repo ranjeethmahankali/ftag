@@ -1,4 +1,3 @@
-use clap::{Arg, command, value_parser};
 use egui::text::{CCursor, CCursorRange};
 use ftag::{
     core::Error,
@@ -9,6 +8,7 @@ use ftag::{
 use std::{
     fmt::Debug,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 enum GuiError {
@@ -38,21 +38,30 @@ impl Debug for GuiError {
 }
 
 fn main() -> Result<(), GuiError> {
-    let matches = command!()
-        .arg(
-            Arg::new("path")
-                .long("path")
-                .short('p')
-                .required(false)
-                .value_parser(value_parser!(PathBuf)),
-        )
-        .get_matches();
-    let current_dir = match matches.get_one::<PathBuf>("path") {
-        Some(rootdir) => rootdir
-            .canonicalize()
-            .map_err(|_| Error::InvalidPath(rootdir.clone()))?,
-        None => std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?,
-    };
+    let current_dir =
+        match std::env::args()
+            .skip(1)
+            .fold((false, None), |(read_path, path), arg| {
+                match (read_path, path, arg.as_str()) {
+                    (false, None, "--path" | "-p") => (true, None),
+                    (true, None, val) => (
+                        false,
+                        Some(
+                            PathBuf::from_str(val)
+                                .expect("ERROR: Cannot parse path argument.")
+                                .canonicalize()
+                                .expect("ERROR: Unable to parse path argument."),
+                        ),
+                    ),
+                    (_, _, val) => {
+                        eprintln!("ERROR: Unexpected argument: {}", val);
+                        panic!("ABORTED.");
+                    }
+                }
+            }) {
+            (_, None) => std::env::current_dir().map_err(|_| Error::InvalidWorkingDirectory)?,
+            (_, Some(path)) => path,
+        };
     let table = TagTable::from_dir(current_dir)?;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
