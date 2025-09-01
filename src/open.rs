@@ -15,7 +15,6 @@ use std::process::Command;
 /// * `Err(std::io::Error)` if there was an error launching the command
 pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
     let path = path.as_ref();
-
     #[cfg(target_os = "windows")]
     {
         Command::new("cmd")
@@ -23,17 +22,14 @@ pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
             .arg(path)
             .spawn()?;
     }
-
     #[cfg(target_os = "macos")]
     {
         Command::new("open").arg(path).spawn()?;
     }
-
     #[cfg(target_os = "linux")]
     {
         Command::new("xdg-open").arg(path).spawn()?;
     }
-
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         return Err(std::io::Error::new(
@@ -41,7 +37,6 @@ pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
             "Cannot open file: Unsupported operating system",
         ));
     }
-
     Ok(())
 }
 
@@ -78,7 +73,6 @@ pub fn edit_file<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
             }
         }
     }
-
     // Platform-specific fallbacks
     #[cfg(target_os = "windows")]
     {
@@ -87,7 +81,6 @@ pub fn edit_file<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
             return Ok(());
         }
     }
-
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         eprint!("===============================");
@@ -101,7 +94,6 @@ pub fn edit_file<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
             }
         }
     }
-
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         return Err(std::io::Error::new(
@@ -109,7 +101,6 @@ pub fn edit_file<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
             "Cannot edit file: Unsupported operating system",
         ));
     }
-
     // Final fallback: try to open with default application (non-blocking)
     // This might open in a GUI editor like TextEdit, gedit, etc.
     open(path)
@@ -128,19 +119,16 @@ mod test {
             let output = Command::new("where").arg("cmd").output();
             assert!(output.is_ok() && output.unwrap().status.success());
         }
-
         #[cfg(target_os = "macos")]
         {
             let output = Command::new("which").arg("open").output();
             assert!(output.is_ok() && output.unwrap().status.success());
         }
-
         #[cfg(target_os = "linux")]
         {
             let output = Command::new("which").arg("xdg-open").output();
             assert!(output.is_ok() && output.unwrap().status.success());
         }
-
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
         {
             // On unsupported systems, this test should fail
@@ -156,7 +144,6 @@ mod test {
             let output = Command::new("where").arg("notepad").output();
             assert!(output.is_ok() && output.unwrap().status.success());
         }
-
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
             // At least one of these should exist on Unix-like systems
@@ -170,7 +157,6 @@ mod test {
             });
             assert!(found, "No common text editor found (nano, vim, vi)");
         }
-
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
         {
             // On unsupported systems, this test should fail
@@ -181,22 +167,17 @@ mod test {
     #[test]
     fn t_open_file() {
         use std::env;
-
         let temp_dir = env::temp_dir();
         let file_path = temp_dir.join("ftag_test_file.txt");
-
         // Create a temporary test file
         {
             let mut file = File::create(&file_path).unwrap();
             writeln!(file, "Test file for ftag open functionality").unwrap();
         }
-
         // Test opening the file (non-blocking)
         let result = open(&file_path);
-
         // Clean up
         let _ = std::fs::remove_file(&file_path);
-
         // The command should launch successfully, even on headless systems
         // We only verify the command starts, not that it opens successfully
         assert!(result.is_ok());
