@@ -73,7 +73,7 @@ fn handle_bash_completions(current_dir: PathBuf, mut words: Vec<String>) {
         "-p",
     ];
     let last = words.pop();
-    match last.as_ref().map(|w| w.as_str()) {
+    match last.as_deref() {
         Some("ftag") => {
             if let Some(cmd) = words.pop() {
                 for suggestion in PREV_WORDS.iter().filter(|c| c.starts_with(&cmd)) {
@@ -134,13 +134,7 @@ fn parse_args() -> Arguments {
     while let Some(word) = args.next() {
         match (word.as_str(), &cmdopt, &path) {
             ("--bash-complete", None, _) => {
-                cmdopt = {
-                    let mut words = Vec::new();
-                    while let Some(word) = args.next() {
-                        words.push(word);
-                    }
-                    Some(Command::BashComplete(words))
-                }
+                cmdopt = Some(Command::BashComplete(args.by_ref().collect()))
             }
             ("count", None, _) => cmdopt = Some(Command::Count),
             ("query" | "-q", None, _) => {
