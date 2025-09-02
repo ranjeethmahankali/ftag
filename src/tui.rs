@@ -5,7 +5,7 @@ use crate::{
 use crossterm::{
     ExecutableCommand,
     cursor::MoveTo,
-    event::{self, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
     style::Print,
     terminal::{
@@ -105,15 +105,15 @@ impl TuiApp {
             self.scroll = self.scroll.saturating_sub(end - ntags);
         }
         self.max_scroll = ntags.saturating_sub(h);
-        // 2 rows for the header, 4 rows for the footer -> total 7 rows.
-        let old_files_per_page = self.files_per_page;
-        self.files_per_page = h.saturating_sub(6);
+        // 1 for header, 1 for border at the top. 2 borders at the bottom, one
+        // for the REPL line, two for the echo area. In total 7 lines.
+        let old_fpp = std::mem::replace(&mut self.files_per_page, h.saturating_sub(7));
         (self.num_pages, self.page_index) = if self.files_per_page == 0 {
             (0, 0)
         } else {
             (
                 self.session.filelist().len() / self.files_per_page,
-                (self.page_index * old_files_per_page) / self.files_per_page,
+                (self.page_index * old_fpp) / self.files_per_page,
             )
         };
     }
@@ -165,9 +165,11 @@ impl TuiApp {
                 }
                 KeyCode::Up if self.can_scroll() => {
                     self.scroll = self.scroll.saturating_sub(1);
+                    self.session.set_echo("Scrolling up...");
                 }
                 KeyCode::Down if self.can_scroll() => {
                     self.scroll = self.scroll.saturating_add(1).min(self.max_scroll);
+                    self.session.set_echo("Scrolling down...");
                 }
                 KeyCode::Tab => self.session.autocomplete(),
                 _ => {}
@@ -253,11 +255,19 @@ impl TuiApp {
             None => write!(self.screen_buf, "{:<lwidth$.lwidth$}├", "")?,
         }
         write!(self.screen_buf, "{:─<rwidth$.rwidth$}", "")?;
-        match tags.next() {
-            Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}│")?,
-            None => write!(self.screen_buf, "{:<lwidth$.lwidth$}│", "")?,
+        for line in self
+            .session
+            .echo()
+            .lines()
+            .chain(std::iter::repeat("")) // Always render exactly two lines.
+            .take(2)
+        {
+            match tags.next() {
+                Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}│")?,
+                None => write!(self.screen_buf, "{:<lwidth$.lwidth$}│", "")?,
+            }
+            write!(self.screen_buf, "{:<rwidth$.rwidth$}", line)?;
         }
-        write!(self.screen_buf, "{:<rwidth$.rwidth$}", self.session.echo())?;
         match tags.next() {
             Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}├")?,
             None => write!(self.screen_buf, "{:<lwidth$.lwidth$}├", "")?,
@@ -288,35 +298,30 @@ impl TuiApp {
 }
 
 /// Start the interactive TUI mode of ftag.
-pub fn start(table: TagTable) -> Result<(), TuiError> {
+pub fn run(table: TagTable) -> Result<(), TuiError> {
     let mut stdout = std::io::stdout();
     stdout.execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
     let mut app = TuiApp::init(table);
-    run_app(&mut stdout, &mut app)?;
-    // Clean up.
-    stdout.execute(LeaveAlternateScreen)?;
-    disable_raw_mode()?;
-    Ok(())
-}
-
-fn run_app(stdout: &mut std::io::Stdout, app: &mut TuiApp) -> Result<(), TuiError> {
-    const DELAY: u64 = 20;
     // Main application loop. The terminal is only redrawn when an
     // event is registered, so it is necessary to draw it once at
     // first.
-    app.render(stdout)?;
+    app.render(&mut stdout)?;
     loop {
-        // Poll events to see if redraw needed.
-        if event::poll(std::time::Duration::from_millis(DELAY))? {
-            if let event::Event::Key(key) = crossterm::event::read()? {
+        match event::read()? {
+            Event::Key(key) => {
                 app.keyevent(key);
+                app.render(&mut stdout)?;
             }
-            app.render(stdout)?;
-        }
+            Event::Resize(..) => app.render(&mut stdout)?,
+            _ => {} // Do nothing.
+        };
         if let State::Exit = app.session.state() {
             break;
         };
     }
+    // Clean up.
+    stdout.execute(LeaveAlternateScreen)?;
+    disable_raw_mode()?;
     Ok(())
 }
