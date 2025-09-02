@@ -6,7 +6,7 @@ use crossterm::{
     ExecutableCommand,
     cursor::{MoveDown, MoveRight, MoveTo, MoveToColumn, MoveToNextLine},
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    execute,
+    queue,
     style::{Attribute, Print, SetAttribute},
     terminal::{
         Clear, ClearType, DisableLineWrap, EnterAlternateScreen, LeaveAlternateScreen,
@@ -215,7 +215,7 @@ impl TuiApp {
         self.screen_buf
             .reserve((ncols as usize) * (nrows as usize) * 2);
         // Clearn the screen and start rendering.
-        execute!(
+        queue!(
             self.screen_buf,
             Clear(ClearType::All),
             MoveTo(0, 0),
@@ -231,7 +231,7 @@ impl TuiApp {
             .skip(self.tag_scroll)
             .take(nrows as usize)
         {
-            execute!(
+            queue!(
                 self.screen_buf,
                 MoveRight(1),
                 Print(format_args!("{}", truncate_string(tag, lwidth - 1))),
@@ -239,7 +239,7 @@ impl TuiApp {
             )?;
         }
         // Render the header.
-        execute!(
+        queue!(
             self.screen_buf,
             MoveTo(lwidth as u16, 0),
             SetAttribute(Attribute::Bold),
@@ -262,7 +262,7 @@ impl TuiApp {
             SetAttribute(Attribute::Reset)
         )?;
         // Render border below header.
-        execute!(
+        queue!(
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
@@ -279,7 +279,7 @@ impl TuiApp {
             .take(self.files_per_page)
             .try_fold("", |prevfile, (i, file)| {
                 if file.is_empty() {
-                    execute!(
+                    queue!(
                         self.screen_buf,
                         MoveToColumn(lwidth as u16),
                         MoveDown(1),
@@ -287,7 +287,7 @@ impl TuiApp {
                     )?;
                 } else {
                     let (padding, trimmed) = remove_common_prefix(prevfile, file);
-                    execute!(
+                    queue!(
                         self.screen_buf,
                         MoveToColumn(lwidth as u16),
                         MoveDown(1),
@@ -307,7 +307,7 @@ impl TuiApp {
                 Result::<&str, std::io::Error>::Ok(file)
             })?;
         // Render border.
-        execute!(
+        queue!(
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
@@ -321,7 +321,7 @@ impl TuiApp {
             .chain(std::iter::repeat(""))
             .take(2)
         {
-            execute!(
+            queue!(
                 self.screen_buf,
                 MoveToColumn(lwidth as u16),
                 MoveDown(1),
@@ -329,7 +329,7 @@ impl TuiApp {
             )?;
         }
         // Render border.
-        execute!(
+        queue!(
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
@@ -339,7 +339,7 @@ impl TuiApp {
         // way we don't have to hide the cursor and render a cursor unicode
         // character artificially. The cursor will naturally land at the end of
         // the echo string.
-        execute!(
+        queue!(
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
