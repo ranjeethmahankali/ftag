@@ -15,7 +15,6 @@ categories = ["command-line-utilities"]
 [dependencies]
 #Used by the CLI.
 crossterm = "0.29"
-ratatui = "0.29"
 fast-glob = "1.0"
 # Dependencies for the GUI
 egui = "0.32"
