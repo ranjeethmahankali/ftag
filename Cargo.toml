@@ -1,6 +1,6 @@
 [package]
 name = "ftag"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2024"
 authors = ["Ranjeeth Mahankali <ranjeethmahankali@gmail.com>"]
 description = "CLI tool for tagging and searching files. See README.md for more info."
@@ -15,7 +15,6 @@ categories = ["command-line-utilities"]
 [dependencies]
 #Used by the CLI.
 crossterm = "0.29"
-ratatui = "0.29"
 fast-glob = "1.0"
 # Dependencies for the GUI
 egui = "0.32"

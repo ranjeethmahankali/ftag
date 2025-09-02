@@ -18,7 +18,7 @@ fn main() -> Result<(), Error> {
         }
         Command::Query(filter) => run_query(working_dir, &filter)?,
         Command::Search(needle) => search(working_dir, &needle)?,
-        Command::Interactive => ftag::tui::start(TagTable::from_dir(working_dir)?)
+        Command::Interactive => ftag::tui::run(TagTable::from_dir(working_dir)?)
             .map_err(|err| Error::TUIFailure(format!("{err:?}")))?,
         Command::Check => core::check(working_dir)?,
         Command::WhatIs(path) => println!("{}", core::what_is(&path)?),
