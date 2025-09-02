@@ -33,16 +33,19 @@ fn count_digits(mut num: usize) -> u8 {
 /// tuple. The first element of the tuple is the length of the prefix
 /// that was trimmed.
 fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
-    let stop = usize::min(prev.len(), curr.len());
-    let mut start = 0usize;
-    for (i, (l, r)) in prev.chars().zip(curr.chars()).enumerate() {
-        if !(i < stop && l == r) {
-            break;
-        }
-        if l == std::path::MAIN_SEPARATOR {
-            start = i;
-        }
-    }
+    let start =
+        match prev
+            .chars()
+            .zip(curr.chars())
+            .enumerate()
+            .try_fold(0usize, |start, (i, (l, r))| match (l, r) {
+                (std::path::MAIN_SEPARATOR, std::path::MAIN_SEPARATOR) => Ok(i),
+                (l, r) if l == r => Ok(start),
+                _ => Err(start),
+            }) {
+            Ok(start) => start,
+            Err(start) => start,
+        };
     (start, &curr[start..])
 }
 
@@ -191,7 +194,6 @@ impl TuiApp {
             .iter()
             .skip(self.scroll)
             .take(nrows as usize);
-
         // Render first line with the top bar heading.
         match tags.next() {
             Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}│")?,
