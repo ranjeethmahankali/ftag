@@ -49,6 +49,11 @@ fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
     (start, &curr[start..])
 }
 
+#[inline(always)]
+fn truncate_string(input: &str, len: usize) -> &str {
+    &input[..(len.min(input.len()))]
+}
+
 #[derive(Debug)]
 pub enum TuiError {
     IO(std::io::Error),
@@ -203,7 +208,7 @@ impl TuiApp {
             execute!(
                 self.screen_buf,
                 MoveRight(1),
-                Print(format_args!("{tag:<w$.w$}", w = lwidth - 1)),
+                Print(format_args!("{}", truncate_string(tag, lwidth - 1))),
                 MoveToNextLine(1)
             )?;
         }
@@ -251,7 +256,7 @@ impl TuiApp {
                         self.screen_buf,
                         MoveToColumn(lwidth as u16),
                         MoveDown(1),
-                        Print(format_args!("│{:<rwidth$}", ""))
+                        Print("│")
                     )?;
                 } else {
                     let (padding, trimmed) = remove_common_prefix(prevfile, file);
@@ -260,11 +265,14 @@ impl TuiApp {
                         MoveToColumn(lwidth as u16),
                         MoveDown(1),
                         Print(format_args!(
-                            "│{:<rwidth$.rwidth$}",
-                            format_args!(
-                                " [{i:>iw$}] {pp:.<padding$}{trimmed}",
-                                iw = self.file_index_width as usize,
-                                pp = ""
+                            "│ [{i:>iw$}] {pp:.<padding$}{trimmed}",
+                            iw = self.file_index_width as usize,
+                            pp = "",
+                            trimmed = truncate_string(
+                                trimmed,
+                                rwidth
+                                    .saturating_sub(4)
+                                    .saturating_sub(self.file_index_width as usize)
                             )
                         ))
                     )?;
@@ -290,7 +298,7 @@ impl TuiApp {
                 self.screen_buf,
                 MoveToColumn(lwidth as u16),
                 MoveDown(1),
-                Print(format_args!("│{:<rwidth$.rwidth$}", line))
+                Print(format_args!("│{}", truncate_string(line, rwidth)))
             )?;
         }
         // Render border.
@@ -309,8 +317,8 @@ impl TuiApp {
             MoveToColumn(lwidth as u16),
             MoveDown(1),
             Print(format_args!(
-                "│{:<.rwidth$}",
-                format_args!(">>> {}", self.session.command())
+                "│>>> {}",
+                truncate_string(self.session.command(), rwidth.saturating_sub(4))
             ))
         )?;
         // Write the screen buffer out to the terminal in a single sys call.
