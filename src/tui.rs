@@ -7,7 +7,7 @@ use crossterm::{
     cursor::{MoveDown, MoveRight, MoveTo, MoveToColumn, MoveToNextLine},
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
-    style::Print,
+    style::{Attribute, Print, SetAttribute},
     terminal::{
         Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
         enable_raw_mode,
@@ -211,9 +211,11 @@ impl TuiApp {
         execute!(
             self.screen_buf,
             MoveTo(lwidth as u16, 0),
+            SetAttribute(Attribute::Bold),
             Print(format_args!(
                 "│{:^rwidth$.rwidth$}",
-                format_args!(
+                // Must use format instead of format_args, for the center alignment to work.
+                format!(
                     "{}: {} results, page {} of {}",
                     if self.session.filter_str().is_empty() {
                         "ALL_TAGS"
@@ -224,7 +226,8 @@ impl TuiApp {
                     self.page_index + 1, // Don't show the user zero based index.
                     self.last_page + 1,
                 )
-            ))
+            )),
+            SetAttribute(Attribute::Reset)
         )?;
         // Render border below header.
         execute!(
