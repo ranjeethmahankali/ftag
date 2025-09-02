@@ -4,7 +4,7 @@ use crate::{
 };
 use crossterm::{
     ExecutableCommand,
-    cursor::MoveTo,
+    cursor::{MoveDown, MoveRight, MoveTo, MoveToColumn, MoveToNextLine},
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
     style::Print,
@@ -190,7 +190,7 @@ impl TuiApp {
         self.screen_buf.execute(Clear(ClearType::All))?;
         self.screen_buf.execute(MoveTo(0, 0))?;
         // Render all tags.
-        for (row, tag) in self
+        for tag in self
             .session
             .taglist()
             .iter()
@@ -198,12 +198,12 @@ impl TuiApp {
             .chain(std::iter::repeat(""))
             .skip(self.scroll)
             .take(nrows as usize)
-            .enumerate()
         {
             execute!(
                 self.screen_buf,
-                MoveTo(1, row as u16),
-                Print(format!("{tag:<w$.w$}", w = lwidth - 1))
+                MoveRight(1),
+                Print(format!("{tag:<w$.w$}", w = lwidth - 1)),
+                MoveToNextLine(1)
             )?;
         }
         // Render the header.
@@ -228,7 +228,8 @@ impl TuiApp {
         // Render border below header.
         execute!(
             self.screen_buf,
-            MoveTo(lwidth as u16, 1),
+            MoveToColumn(lwidth as u16),
+            MoveDown(1),
             Print(format!("├{:─<rwidth$.rwidth$}", ""))
         )?;
         // Render filepaths.
@@ -240,20 +241,20 @@ impl TuiApp {
             .enumerate()
             .skip(self.files_per_page * self.page_index)
             .take(self.files_per_page)
-            .enumerate()
-            .try_fold("", |prevfile, (row, (i, file))| {
-                let row = (row + 2) as u16;
+            .try_fold("", |prevfile, (i, file)| {
                 if file.is_empty() {
                     execute!(
                         self.screen_buf,
-                        MoveTo(lwidth as u16, row),
+                        MoveToColumn(lwidth as u16),
+                        MoveDown(1),
                         Print(format!("│{:<rwidth$}", ""))
                     )?;
                 } else {
                     let (padding, trimmed) = remove_common_prefix(prevfile, file);
                     execute!(
                         self.screen_buf,
-                        MoveTo(lwidth as u16, row),
+                        MoveToColumn(lwidth as u16),
+                        MoveDown(1),
                         Print(format!(
                             "│{:<rwidth$.rwidth$}",
                             format!(
@@ -269,28 +270,30 @@ impl TuiApp {
         // Render border.
         execute!(
             self.screen_buf,
-            MoveTo(lwidth as u16, (self.files_per_page + 2) as u16),
+            MoveToColumn(lwidth as u16),
+            MoveDown(1),
             Print(format!("├{:─<rwidth$.rwidth$}", ""))
         )?;
         // Render two lines in the echo area one line at a time.
-        for (line, row) in self
+        for line in self
             .session
             .echo()
             .lines()
             .chain(std::iter::repeat(""))
-            .zip(((self.files_per_page + 3) as u16)..)
             .take(2)
         {
             execute!(
                 self.screen_buf,
-                MoveTo(lwidth as u16, row),
+                MoveToColumn(lwidth as u16),
+                MoveDown(1),
                 Print(format!("│{:<rwidth$.rwidth$}", line))
             )?;
         }
         // Render border.
         execute!(
             self.screen_buf,
-            MoveTo(lwidth as u16, nrows.saturating_sub(2)),
+            MoveToColumn(lwidth as u16),
+            MoveDown(1),
             Print(format!("├{:─<rwidth$.rwidth$}", ""))
         )?;
         // Render the REPL line. We render the echo string last, because that
@@ -299,7 +302,8 @@ impl TuiApp {
         // the echo string.
         execute!(
             self.screen_buf,
-            MoveTo(lwidth as u16, nrows.saturating_sub(1)),
+            MoveToColumn(lwidth as u16),
+            MoveDown(1),
             Print(format!(
                 "│{:<.rwidth$}",
                 format!(">>> {}", self.session.command())
