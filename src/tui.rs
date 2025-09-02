@@ -86,26 +86,29 @@ struct TuiApp {
     hline: String,
     left_width: u16,
     right_width: u16,
+    max_tag_len: u16,
 }
 
 impl TuiApp {
     fn init(table: TagTable) -> Self {
         let ntags = table.tags().len();
         let nfiles = table.files().len();
+        let max_tag_len = table.tags().iter().map(|t| t.len()).max().unwrap_or(0) as u16;
         TuiApp {
             session: InteractiveSession::init(table),
-            tag_scroll: 0,
+            file_index_width: count_digits(nfiles - 1),
             tag_max_scroll: ntags,
+            tag_scroll: 0,
             frame_height: 0,
             frame_width: 0,
             page_index: 0,
             last_page: 0,
             files_per_page: 0,
-            file_index_width: count_digits(nfiles - 1),
             screen_buf: Default::default(),
             hline: String::default(),
             left_width: 0,
             right_width: 0,
+            max_tag_len,
         }
     }
 
@@ -117,7 +120,7 @@ impl TuiApp {
         if ncols != self.frame_width {
             // Deal with columns and panel widths.
             self.frame_width = ncols;
-            self.left_width = ncols.saturating_sub(1) / 5;
+            self.left_width = (ncols.saturating_sub(1) / 5).min(self.max_tag_len + 3);
             self.right_width = ncols.saturating_sub(1).saturating_sub(self.left_width);
             self.hline = format!(
                 "{line:─<w$.w$}",
@@ -208,6 +211,8 @@ impl TuiApp {
     }
 
     fn render(&mut self, stdout: &mut std::io::Stdout) -> Result<(), TuiError> {
+        let time_before = std::time::Instant::now();
+
         let (ncols, nrows) = crossterm::terminal::size()?;
         self.set_frame_size(ncols, nrows);
         let (lwidth, rwidth) = (self.left_width, self.right_width);
@@ -351,6 +356,12 @@ impl TuiApp {
         // Write the screen buffer out to the terminal in a single sys call.
         stdout.write_all(&self.screen_buf)?;
         stdout.flush()?;
+
+        self.session.set_echo(&format!(
+            "Last frame took: {:?}",
+            std::time::Instant::now() - time_before
+        ));
+
         Ok(())
     }
 }
