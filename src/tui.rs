@@ -104,6 +104,7 @@ impl TuiApp {
         if end > ntags {
             self.scroll = self.scroll.saturating_sub(end - ntags);
         }
+        self.max_scroll = ntags.saturating_sub(h);
         // 2 rows for the header, 4 rows for the footer -> total 7 rows.
         let old_files_per_page = self.files_per_page;
         self.files_per_page = h.saturating_sub(6);
@@ -122,8 +123,14 @@ impl TuiApp {
             KeyEventKind::Press | KeyEventKind::Repeat => match evt.code {
                 KeyCode::Char(c) => {
                     if evt.modifiers.contains(KeyModifiers::CONTROL) {
-                        if c == 'q' || c == 'Q' {
-                            self.session.set_state(State::Exit);
+                        match c {
+                            'q' | 'Q' => self.session.set_state(State::Exit),
+                            'n' | 'N' => {
+                                self.page_index =
+                                    self.page_index.saturating_add(1).min(self.num_pages)
+                            }
+                            'p' | 'P' => self.page_index = self.page_index.saturating_sub(1),
+                            _ => {}
                         }
                     } else {
                         self.session.command_mut().push(c);
@@ -132,9 +139,8 @@ impl TuiApp {
                 }
                 KeyCode::Backspace => {
                     let cmd = self.session.command_mut();
-                    if evt
-                        .modifiers
-                        .contains(KeyModifiers::ALT | KeyModifiers::CONTROL)
+                    if evt.modifiers.contains(KeyModifiers::ALT)
+                        || evt.modifiers.contains(KeyModifiers::CONTROL)
                     {
                         while let Some(c) = cmd.pop() {
                             if c.is_whitespace() {
@@ -161,7 +167,7 @@ impl TuiApp {
                     self.scroll = self.scroll.saturating_sub(1);
                 }
                 KeyCode::Down if self.can_scroll() => {
-                    self.scroll = self.scroll.saturating_add(1);
+                    self.scroll = self.scroll.saturating_add(1).min(self.max_scroll);
                 }
                 KeyCode::Tab => self.session.autocomplete(),
                 _ => {}
