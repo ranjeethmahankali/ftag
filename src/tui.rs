@@ -49,6 +49,19 @@ fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
     (start, &curr[start..])
 }
 
+fn get_file_icon(file: &str) -> char {
+    let ext = match file.rsplit_once('.') {
+        Some((_, ext)) => ext,
+        None => return '📄',
+    };
+    match ext {
+        "pdf" | "ext" | "doc" | "docx" => '📃',
+        "mp4" | "mov" => '🎬',
+        "jpg" | "png" | "gif" => '📷',
+        _ => '📄',
+    }
+}
+
 #[inline(always)]
 fn truncate_string(input: &str, len: u16) -> &str {
     &input[..((len as usize).min(input.len()))]
@@ -295,13 +308,14 @@ impl TuiApp {
                         MoveToColumn(lwidth as u16),
                         MoveDown(1),
                         Print(format_args!(
-                            "│ [{i:>iw$}] {pp:.<padding$}{trimmed}",
+                            "│{icon} [{i:>iw$}] {pp:.<padding$}{trimmed}",
+                            icon = get_file_icon(file),
                             iw = self.file_index_width as usize,
                             pp = "",
                             trimmed = truncate_string(
                                 trimmed,
                                 rwidth
-                                    .saturating_sub(4)
+                                    .saturating_sub(5)
                                     .saturating_sub(self.file_index_width as u16)
                             )
                         ))
