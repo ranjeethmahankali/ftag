@@ -73,7 +73,7 @@ struct TuiApp {
     max_scroll: usize,
     frameheight: usize,
     page_index: usize,
-    num_pages: usize,
+    last_page: usize,
     files_per_page: usize,
     file_index_width: u8,
     screen_buf: String,
@@ -89,7 +89,7 @@ impl TuiApp {
             max_scroll: ntags,
             frameheight: 0,
             page_index: 0,
-            num_pages: 0,
+            last_page: 0,
             files_per_page: 0,
             file_index_width: count_digits(nfiles - 1),
             screen_buf: Default::default(),
@@ -111,7 +111,7 @@ impl TuiApp {
         // 1 for header, 1 for border at the top. 2 borders at the bottom, one
         // for the REPL line, two for the echo area. In total 7 lines.
         let old_fpp = std::mem::replace(&mut self.files_per_page, h.saturating_sub(7));
-        (self.num_pages, self.page_index) = if self.files_per_page == 0 {
+        (self.last_page, self.page_index) = if self.files_per_page == 0 {
             (0, 0)
         } else {
             (
@@ -130,7 +130,7 @@ impl TuiApp {
                             'q' | 'Q' => self.session.set_state(State::Exit),
                             'n' | 'N' => {
                                 self.page_index =
-                                    self.page_index.saturating_add(1).min(self.num_pages)
+                                    self.page_index.saturating_add(1).min(self.last_page)
                             }
                             'p' | 'P' => self.page_index = self.page_index.saturating_sub(1),
                             _ => {}
@@ -210,8 +210,8 @@ impl TuiApp {
                     self.session.filter_str()
                 },
                 self.session.filelist().len(),
-                self.page_index + 1,
-                self.num_pages
+                self.page_index + 1, // Don't show the user zero based index.
+                self.last_page + 1,
             )
         )?;
         // Render second line with the border.

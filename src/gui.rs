@@ -7,6 +7,7 @@ use ftag::{
 };
 use std::{
     fmt::Debug,
+    ops::Add,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -79,7 +80,7 @@ fn main() -> Result<(), GuiError> {
             Ok(Box::from(GuiApp {
                 session: InteractiveSession::init(table),
                 page_index: 0,
-                num_pages: 1,
+                last_page: 0,
             }))
         }),
     )
@@ -89,7 +90,7 @@ fn main() -> Result<(), GuiError> {
 struct GuiApp {
     session: InteractiveSession,
     page_index: usize,
-    num_pages: usize,
+    last_page: usize,
 }
 
 const DESIRED_ROW_HEIGHT: f32 = 200.;
@@ -195,7 +196,7 @@ impl GuiApp {
             )
         };
         // This takes the ceil of integer division.
-        self.num_pages = usize::max(self.session.filelist().len().div_ceil(ncells), 1);
+        self.last_page = self.session.filelist().len() / ncells;
         let mut echo = None;
         egui::Grid::new("image_grid")
             .min_row_height(row_height)
@@ -327,7 +328,7 @@ impl eframe::App for GuiApp {
                             },
                             self.session.filelist().len(),
                             self.page_index + 1,
-                            self.num_pages
+                            self.last_page + 1,
                         ))
                         .text_style(egui::TextStyle::Monospace),
                     )
@@ -378,10 +379,9 @@ impl eframe::App for GuiApp {
                 } else if query_response.changed() {
                     self.session.stop_autocomplete();
                 } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
-                    self.page_index = usize::clamp(self.page_index + 1, 0, self.num_pages - 1);
+                    self.page_index = self.page_index.add(1).min(self.last_page);
                 } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::P)) {
-                    self.page_index =
-                        usize::clamp(self.page_index.saturating_sub(1), 0, self.num_pages - 1);
+                    self.page_index = self.page_index.saturating_sub(1);
                 }
                 query_response.request_focus();
             });
