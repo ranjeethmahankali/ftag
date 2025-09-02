@@ -168,11 +168,9 @@ impl TuiApp {
                 }
                 KeyCode::Up if self.can_scroll() => {
                     self.scroll = self.scroll.saturating_sub(1);
-                    self.session.set_echo("Scrolling up...");
                 }
                 KeyCode::Down if self.can_scroll() => {
                     self.scroll = self.scroll.saturating_add(1).min(self.max_scroll);
-                    self.session.set_echo("Scrolling down...");
                 }
                 KeyCode::Tab => self.session.autocomplete(),
                 _ => {}
@@ -192,16 +190,19 @@ impl TuiApp {
             .session
             .taglist()
             .iter()
+            .map(|t| t.as_str())
             .skip(self.scroll)
             .take(nrows as usize);
         // Render first line with the top bar heading.
-        match tags.next() {
-            Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}│")?,
-            None => write!(self.screen_buf, "{:<lwidth$.lwidth$}│", "")?,
-        }
         write!(
             self.screen_buf,
-            "{:^rwidth$.rwidth$}",
+            " {tag:<w$.w$}",
+            tag = tags.next().unwrap_or(""),
+            w = lwidth - 1
+        )?;
+        write!(
+            self.screen_buf,
+            "│{:^rwidth$.rwidth$}",
             format!(
                 "{}: {} results, page {} of {}",
                 if self.session.filter_str().is_empty() {
@@ -215,32 +216,37 @@ impl TuiApp {
             )
         )?;
         // Render second line with the border.
-        match tags.next() {
-            Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}├")?,
-            None => write!(self.screen_buf, "{:<lwidth$.lwidth$}├", "")?,
-        }
-        write!(self.screen_buf, "{:─<rwidth$.rwidth$}", "")?;
-        // Render the lines corresponding to file paths.
-        let mut files = self
-            .session
-            .filelist()
-            .iter()
-            .enumerate()
-            .skip(self.files_per_page * self.page_index)
-            .take(self.files_per_page);
-        let mut prevfile: &str = "";
-        for _ in 0..self.files_per_page {
-            match tags.next() {
-                Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}│")?,
-                None => write!(self.screen_buf, "{:<lwidth$.lwidth$}│", "")?,
-            }
-            match files.next() {
-                Some((i, file)) => {
-                    let (padding, trimmed) =
-                        remove_common_prefix(std::mem::replace(&mut prevfile, file), file);
+        write!(
+            self.screen_buf,
+            " {tag:<w$.w$}",
+            tag = tags.next().unwrap_or(""),
+            w = lwidth - 1
+        )?;
+        write!(self.screen_buf, "├{:─<rwidth$.rwidth$}", "")?;
+        // Render the lines corresponding to file paths. Pad both iterators with
+        // infinite empty strings, then take the number of rows we'd like to
+        // render.
+        tags.by_ref()
+            .chain(std::iter::repeat(""))
+            .zip(
+                self.session
+                    .filelist()
+                    .iter()
+                    .map(|f| f.as_str())
+                    .chain(std::iter::repeat(""))
+                    .enumerate()
+                    .skip(self.files_per_page * self.page_index),
+            )
+            .take(self.files_per_page)
+            .try_fold("", |prevfile, (tag, (i, file))| {
+                write!(self.screen_buf, " {tag:<w$.w$}", tag = tag, w = lwidth - 1)?;
+                if file.is_empty() {
+                    write!(self.screen_buf, "│{:<rwidth$}", "")?
+                } else {
+                    let (padding, trimmed) = remove_common_prefix(prevfile, file);
                     write!(
                         self.screen_buf,
-                        "{:<rwidth$.rwidth$}",
+                        "│{:<rwidth$.rwidth$}",
                         format!(
                             " [{i:>iw$}] {pp:.<padding$}{trimmed}",
                             iw = self.file_index_width as usize,
@@ -248,15 +254,16 @@ impl TuiApp {
                         )
                     )?;
                 }
-                None => write!(self.screen_buf, "{:<rwidth$}", "")?,
-            }
-        }
+                Result::<&str, std::fmt::Error>::Ok(file)
+            })?;
         // Render the echo area.
-        match tags.next() {
-            Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}├")?,
-            None => write!(self.screen_buf, "{:<lwidth$.lwidth$}├", "")?,
-        }
-        write!(self.screen_buf, "{:─<rwidth$.rwidth$}", "")?;
+        write!(
+            self.screen_buf,
+            " {tag:<w$.w$}",
+            tag = tags.next().unwrap_or(""),
+            w = lwidth - 1
+        )?;
+        write!(self.screen_buf, "├{:─<rwidth$.rwidth$}", "")?;
         for line in self
             .session
             .echo()
@@ -264,28 +271,34 @@ impl TuiApp {
             .chain(std::iter::repeat("")) // Always render exactly two lines.
             .take(2)
         {
-            match tags.next() {
-                Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}│")?,
-                None => write!(self.screen_buf, "{:<lwidth$.lwidth$}│", "")?,
-            }
-            write!(self.screen_buf, "{:<rwidth$.rwidth$}", line)?;
+            write!(
+                self.screen_buf,
+                " {tag:<w$.w$}",
+                tag = tags.next().unwrap_or(""),
+                w = lwidth - 1
+            )?;
+            write!(self.screen_buf, "│{:<rwidth$.rwidth$}", line)?;
         }
-        match tags.next() {
-            Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}├")?,
-            None => write!(self.screen_buf, "{:<lwidth$.lwidth$}├", "")?,
-        }
-        write!(self.screen_buf, "{:─<rwidth$.rwidth$}", "")?;
-        match tags.next() {
-            Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}│")?,
-            None => write!(self.screen_buf, "{:<lwidth$.lwidth$}│", "")?,
-        }
+        write!(
+            self.screen_buf,
+            " {tag:<w$.w$}",
+            tag = tags.next().unwrap_or(""),
+            w = lwidth - 1
+        )?;
+        write!(self.screen_buf, "├{:─<rwidth$.rwidth$}", "")?;
+        write!(
+            self.screen_buf,
+            " {tag:<w$.w$}",
+            tag = tags.next().unwrap_or(""),
+            w = lwidth - 1
+        )?;
         // We render the echo string last, because that way we don't have to
         // hide the cursor and render a cursor unicode character
         // artificially. The cursor will naturally land at the end of the echo
         // string.
         write!(
             self.screen_buf,
-            "{:<.rwidth$}",
+            "│{:<.rwidth$}",
             format!(">>> {}", self.session.command())
         )?;
         // Write the screen buffer out to the terminal in a single sys call.
