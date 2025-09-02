@@ -180,12 +180,11 @@ impl TuiApp {
     }
 
     fn render(&mut self, stdout: &mut std::io::Stdout) -> Result<(), TuiError> {
-        let before = std::time::Instant::now();
-
         let (ncols, nrows) = crossterm::terminal::size()?;
         self.set_frame_height(nrows as usize);
         self.screen_buf.clear();
-        self.screen_buf.reserve((ncols as usize) * (nrows as usize));
+        self.screen_buf
+            .reserve((ncols as usize) * (nrows as usize) * 2);
         let lwidth = ((ncols - 1) / 5) as usize;
         let rwidth = (ncols as usize) - 1 - lwidth;
         // Clearn the screen and start rendering.
@@ -204,7 +203,7 @@ impl TuiApp {
             execute!(
                 self.screen_buf,
                 MoveRight(1),
-                Print(format!("{tag:<w$.w$}", w = lwidth - 1)),
+                Print(format_args!("{tag:<w$.w$}", w = lwidth - 1)),
                 MoveToNextLine(1)
             )?;
         }
@@ -212,9 +211,9 @@ impl TuiApp {
         execute!(
             self.screen_buf,
             MoveTo(lwidth as u16, 0),
-            Print(format!(
+            Print(format_args!(
                 "│{:^rwidth$.rwidth$}",
-                format!(
+                format_args!(
                     "{}: {} results, page {} of {}",
                     if self.session.filter_str().is_empty() {
                         "ALL_TAGS"
@@ -232,7 +231,7 @@ impl TuiApp {
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
-            Print(format!("├{:─<rwidth$.rwidth$}", ""))
+            Print(format_args!("├{:─<rwidth$.rwidth$}", ""))
         )?;
         // Render filepaths.
         self.session
@@ -249,7 +248,7 @@ impl TuiApp {
                         self.screen_buf,
                         MoveToColumn(lwidth as u16),
                         MoveDown(1),
-                        Print(format!("│{:<rwidth$}", ""))
+                        Print(format_args!("│{:<rwidth$}", ""))
                     )?;
                 } else {
                     let (padding, trimmed) = remove_common_prefix(prevfile, file);
@@ -257,9 +256,9 @@ impl TuiApp {
                         self.screen_buf,
                         MoveToColumn(lwidth as u16),
                         MoveDown(1),
-                        Print(format!(
+                        Print(format_args!(
                             "│{:<rwidth$.rwidth$}",
-                            format!(
+                            format_args!(
                                 " [{i:>iw$}] {pp:.<padding$}{trimmed}",
                                 iw = self.file_index_width as usize,
                                 pp = ""
@@ -274,7 +273,7 @@ impl TuiApp {
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
-            Print(format!("├{:─<rwidth$.rwidth$}", ""))
+            Print(format_args!("├{:─<rwidth$.rwidth$}", ""))
         )?;
         // Render two lines in the echo area one line at a time.
         for line in self
@@ -288,7 +287,7 @@ impl TuiApp {
                 self.screen_buf,
                 MoveToColumn(lwidth as u16),
                 MoveDown(1),
-                Print(format!("│{:<rwidth$.rwidth$}", line))
+                Print(format_args!("│{:<rwidth$.rwidth$}", line))
             )?;
         }
         // Render border.
@@ -296,7 +295,7 @@ impl TuiApp {
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
-            Print(format!("├{:─<rwidth$.rwidth$}", ""))
+            Print(format_args!("├{:─<rwidth$.rwidth$}", ""))
         )?;
         // Render the REPL line. We render the echo string last, because that
         // way we don't have to hide the cursor and render a cursor unicode
@@ -306,20 +305,14 @@ impl TuiApp {
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
-            Print(format!(
+            Print(format_args!(
                 "│{:<.rwidth$}",
-                format!(">>> {}", self.session.command())
+                format_args!(">>> {}", self.session.command())
             ))
         )?;
         // Write the screen buffer out to the terminal in a single sys call.
         stdout.write_all(&self.screen_buf)?;
         stdout.flush()?;
-
-        self.session.set_echo(&format!(
-            "Rendering the last frame took {:?}",
-            std::time::Instant::now() - before
-        ));
-
         Ok(())
     }
 }
