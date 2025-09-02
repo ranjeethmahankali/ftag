@@ -13,7 +13,7 @@ use crossterm::{
         enable_raw_mode,
     },
 };
-use std::fmt::Write as FmtWrite;
+use std::io::Write as IOWrite;
 
 /// Count digits in the integer as written in base 10.
 fn count_digits(mut num: usize) -> u8 {
@@ -76,7 +76,7 @@ struct TuiApp {
     last_page: usize,
     files_per_page: usize,
     file_index_width: u8,
-    screen_buf: String,
+    screen_buf: Vec<u8>,
 }
 
 impl TuiApp {
@@ -186,128 +186,128 @@ impl TuiApp {
         self.screen_buf.reserve((ncols as usize) * (nrows as usize));
         let lwidth = ((ncols - 1) / 5) as usize;
         let rwidth = (ncols as usize) - 1 - lwidth;
-        let mut tags = self
+        // Clearn the screen and start rendering.
+        self.screen_buf.execute(Clear(ClearType::All))?;
+        self.screen_buf.execute(MoveTo(0, 0))?;
+        // Render all tags.
+        for (row, tag) in self
             .session
             .taglist()
             .iter()
             .map(|t| t.as_str())
-            .skip(self.scroll)
-            .take(nrows as usize);
-        // Render first line with the top bar heading.
-        write!(
-            self.screen_buf,
-            " {tag:<w$.w$}",
-            tag = tags.next().unwrap_or(""),
-            w = lwidth - 1
-        )?;
-        write!(
-            self.screen_buf,
-            "│{:^rwidth$.rwidth$}",
-            format!(
-                "{}: {} results, page {} of {}",
-                if self.session.filter_str().is_empty() {
-                    "ALL_TAGS"
-                } else {
-                    self.session.filter_str()
-                },
-                self.session.filelist().len(),
-                self.page_index + 1, // Don't show the user zero based index.
-                self.last_page + 1,
-            )
-        )?;
-        // Render second line with the border.
-        write!(
-            self.screen_buf,
-            " {tag:<w$.w$}",
-            tag = tags.next().unwrap_or(""),
-            w = lwidth - 1
-        )?;
-        write!(self.screen_buf, "├{:─<rwidth$.rwidth$}", "")?;
-        // Render the lines corresponding to file paths. Pad both iterators with
-        // infinite empty strings, then take the number of rows we'd like to
-        // render.
-        tags.by_ref()
             .chain(std::iter::repeat(""))
-            .zip(
-                self.session
-                    .filelist()
-                    .iter()
-                    .map(|f| f.as_str())
-                    .chain(std::iter::repeat(""))
-                    .enumerate()
-                    .skip(self.files_per_page * self.page_index),
-            )
+            .skip(self.scroll)
+            .take(nrows as usize)
+            .enumerate()
+        {
+            execute!(
+                self.screen_buf,
+                MoveTo(1, row as u16),
+                Print(format!("{tag:<w$.w$}", w = lwidth - 1))
+            )?;
+        }
+        // Render the header.
+        execute!(
+            self.screen_buf,
+            MoveTo(lwidth as u16, 0),
+            Print(format!(
+                "│{:^rwidth$.rwidth$}",
+                format!(
+                    "{}: {} results, page {} of {}",
+                    if self.session.filter_str().is_empty() {
+                        "ALL_TAGS"
+                    } else {
+                        self.session.filter_str()
+                    },
+                    self.session.filelist().len(),
+                    self.page_index + 1, // Don't show the user zero based index.
+                    self.last_page + 1,
+                )
+            ))
+        )?;
+        // Render border below header.
+        execute!(
+            self.screen_buf,
+            MoveTo(lwidth as u16, 1),
+            Print(format!("├{:─<rwidth$.rwidth$}", ""))
+        )?;
+        // Render filepaths.
+        self.session
+            .filelist()
+            .iter()
+            .map(|f| f.as_str())
+            .chain(std::iter::repeat(""))
+            .enumerate()
+            .skip(self.files_per_page * self.page_index)
             .take(self.files_per_page)
-            .try_fold("", |prevfile, (tag, (i, file))| {
-                write!(self.screen_buf, " {tag:<w$.w$}", tag = tag, w = lwidth - 1)?;
+            .enumerate()
+            .try_fold("", |prevfile, (row, (i, file))| {
+                let row = (row + 2) as u16;
                 if file.is_empty() {
-                    write!(self.screen_buf, "│{:<rwidth$}", "")?
+                    execute!(
+                        self.screen_buf,
+                        MoveTo(lwidth as u16, row),
+                        Print(format!("│{:<rwidth$}", ""))
+                    )?;
                 } else {
                     let (padding, trimmed) = remove_common_prefix(prevfile, file);
-                    write!(
+                    execute!(
                         self.screen_buf,
-                        "│{:<rwidth$.rwidth$}",
-                        format!(
-                            " [{i:>iw$}] {pp:.<padding$}{trimmed}",
-                            iw = self.file_index_width as usize,
-                            pp = ""
-                        )
+                        MoveTo(lwidth as u16, row),
+                        Print(format!(
+                            "│{:<rwidth$.rwidth$}",
+                            format!(
+                                " [{i:>iw$}] {pp:.<padding$}{trimmed}",
+                                iw = self.file_index_width as usize,
+                                pp = ""
+                            )
+                        ))
                     )?;
                 }
-                Result::<&str, std::fmt::Error>::Ok(file)
+                Result::<&str, std::io::Error>::Ok(file)
             })?;
-        // Render the echo area.
-        write!(
+        // Render border.
+        execute!(
             self.screen_buf,
-            " {tag:<w$.w$}",
-            tag = tags.next().unwrap_or(""),
-            w = lwidth - 1
+            MoveTo(lwidth as u16, (self.files_per_page + 2) as u16),
+            Print(format!("├{:─<rwidth$.rwidth$}", ""))
         )?;
-        write!(self.screen_buf, "├{:─<rwidth$.rwidth$}", "")?;
-        for line in self
+        // Render two lines in the echo area one line at a time.
+        for (line, row) in self
             .session
             .echo()
             .lines()
-            .chain(std::iter::repeat("")) // Always render exactly two lines.
+            .chain(std::iter::repeat(""))
+            .zip(((self.files_per_page + 3) as u16)..)
             .take(2)
         {
-            write!(
+            execute!(
                 self.screen_buf,
-                " {tag:<w$.w$}",
-                tag = tags.next().unwrap_or(""),
-                w = lwidth - 1
+                MoveTo(lwidth as u16, row),
+                Print(format!("│{:<rwidth$.rwidth$}", line))
             )?;
-            write!(self.screen_buf, "│{:<rwidth$.rwidth$}", line)?;
         }
-        write!(
+        // Render border.
+        execute!(
             self.screen_buf,
-            " {tag:<w$.w$}",
-            tag = tags.next().unwrap_or(""),
-            w = lwidth - 1
+            MoveTo(lwidth as u16, nrows.saturating_sub(2)),
+            Print(format!("├{:─<rwidth$.rwidth$}", ""))
         )?;
-        write!(self.screen_buf, "├{:─<rwidth$.rwidth$}", "")?;
-        write!(
+        // Render the REPL line. We render the echo string last, because that
+        // way we don't have to hide the cursor and render a cursor unicode
+        // character artificially. The cursor will naturally land at the end of
+        // the echo string.
+        execute!(
             self.screen_buf,
-            " {tag:<w$.w$}",
-            tag = tags.next().unwrap_or(""),
-            w = lwidth - 1
-        )?;
-        // We render the echo string last, because that way we don't have to
-        // hide the cursor and render a cursor unicode character
-        // artificially. The cursor will naturally land at the end of the echo
-        // string.
-        write!(
-            self.screen_buf,
-            "│{:<.rwidth$}",
-            format!(">>> {}", self.session.command())
+            MoveTo(lwidth as u16, nrows.saturating_sub(1)),
+            Print(format!(
+                "│{:<.rwidth$}",
+                format!(">>> {}", self.session.command())
+            ))
         )?;
         // Write the screen buffer out to the terminal in a single sys call.
-        execute!(
-            stdout,
-            Clear(ClearType::All),
-            MoveTo(0, 0),
-            Print(&self.screen_buf)
-        )?;
+        stdout.write_all(&self.screen_buf)?;
+        stdout.flush()?;
         Ok(())
     }
 }
