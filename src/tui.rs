@@ -248,7 +248,7 @@ impl TuiApp {
                         )
                     )?;
                 }
-                None => self.screen_buf.extend(std::iter::repeat(' ').take(rwidth)),
+                None => write!(self.screen_buf, "{:<rwidth$}", "")?,
             }
         }
         // Render the echo area.
