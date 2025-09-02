@@ -9,8 +9,8 @@ use crossterm::{
     execute,
     style::{Attribute, Print, SetAttribute},
     terminal::{
-        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
-        enable_raw_mode,
+        Clear, ClearType, DisableLineWrap, EnterAlternateScreen, LeaveAlternateScreen,
+        disable_raw_mode, enable_raw_mode,
     },
 };
 use std::io::Write as IOWrite;
@@ -50,8 +50,8 @@ fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
 }
 
 #[inline(always)]
-fn truncate_string(input: &str, len: usize) -> &str {
-    &input[..(len.min(input.len()))]
+fn truncate_string(input: &str, len: u16) -> &str {
+    &input[..((len as usize).min(input.len()))]
 }
 
 #[derive(Debug)]
@@ -74,14 +74,18 @@ impl From<std::fmt::Error> for TuiError {
 
 struct TuiApp {
     session: InteractiveSession,
-    scroll: usize,
-    max_scroll: usize,
-    frameheight: usize,
+    tag_scroll: usize,
+    tag_max_scroll: usize,
+    frame_height: u16,
+    frame_width: u16,
     page_index: usize,
     last_page: usize,
     files_per_page: usize,
     file_index_width: u8,
     screen_buf: Vec<u8>,
+    hline: String,
+    left_width: u16,
+    right_width: u16,
 }
 
 impl TuiApp {
@@ -90,40 +94,59 @@ impl TuiApp {
         let nfiles = table.files().len();
         TuiApp {
             session: InteractiveSession::init(table),
-            scroll: 0,
-            max_scroll: ntags,
-            frameheight: 0,
+            tag_scroll: 0,
+            tag_max_scroll: ntags,
+            frame_height: 0,
+            frame_width: 0,
             page_index: 0,
             last_page: 0,
             files_per_page: 0,
             file_index_width: count_digits(nfiles - 1),
             screen_buf: Default::default(),
+            hline: String::default(),
+            left_width: 0,
+            right_width: 0,
         }
     }
 
     fn can_scroll(&self) -> bool {
-        self.session.taglist().len() + 1 > self.frameheight
+        self.session.taglist().len() + 1 > (self.frame_height as usize)
     }
 
-    fn set_frame_height(&mut self, h: usize) {
-        self.frameheight = h;
-        let end = self.scroll + h;
-        let ntags = self.session.taglist().len();
-        if end > ntags {
-            self.scroll = self.scroll.saturating_sub(end - ntags);
+    fn set_frame_size(&mut self, ncols: u16, nrows: u16) {
+        if ncols != self.frame_width {
+            // Deal with columns and panel widths.
+            self.frame_width = ncols;
+            self.left_width = ncols.saturating_sub(1) / 5;
+            self.right_width = ncols.saturating_sub(1).saturating_sub(self.left_width);
+            self.hline = format!(
+                "{line:─<w$.w$}",
+                line = "├",
+                w = (self.right_width as usize) + 1
+            );
         }
-        self.max_scroll = ntags.saturating_sub(h);
-        // 1 for header, 1 for border at the top. 2 borders at the bottom, one
-        // for the REPL line, two for the echo area. In total 7 lines.
-        let old_fpp = std::mem::replace(&mut self.files_per_page, h.saturating_sub(7));
-        (self.last_page, self.page_index) = if self.files_per_page == 0 {
-            (0, 0)
-        } else {
-            (
-                self.session.filelist().len() / self.files_per_page,
-                (self.page_index * old_fpp) / self.files_per_page,
-            )
-        };
+        if nrows != self.frame_height {
+            // Deal with rows and scrolling etc.
+            self.frame_height = nrows;
+            let end = self.tag_scroll + (nrows as usize);
+            let ntags = self.session.taglist().len();
+            if end > ntags {
+                self.tag_scroll = self.tag_scroll.saturating_sub(end - ntags);
+            }
+            self.tag_max_scroll = ntags.saturating_sub(nrows as usize);
+            // 1 for header, 1 for border at the top. 2 borders at the bottom, one
+            // for the REPL line, two for the echo area. In total 7 lines.
+            let old_fpp =
+                std::mem::replace(&mut self.files_per_page, nrows.saturating_sub(7) as usize);
+            (self.last_page, self.page_index) = if self.files_per_page == 0 {
+                (0, 0)
+            } else {
+                (
+                    self.session.filelist().len() / self.files_per_page,
+                    (self.page_index * old_fpp) / self.files_per_page,
+                )
+            };
+        }
     }
 
     fn keyevent(&mut self, evt: KeyEvent) {
@@ -163,7 +186,7 @@ impl TuiApp {
                 KeyCode::Enter => {
                     self.session.process_input();
                     if let State::ListsUpdated = self.session.state() {
-                        self.scroll = 0;
+                        self.tag_scroll = 0;
                         self.session.set_state(State::Default);
                     }
                 }
@@ -172,10 +195,10 @@ impl TuiApp {
                     self.session.stop_autocomplete();
                 }
                 KeyCode::Up if self.can_scroll() => {
-                    self.scroll = self.scroll.saturating_sub(1);
+                    self.tag_scroll = self.tag_scroll.saturating_sub(1);
                 }
                 KeyCode::Down if self.can_scroll() => {
-                    self.scroll = self.scroll.saturating_add(1).min(self.max_scroll);
+                    self.tag_scroll = self.tag_scroll.saturating_add(1).min(self.tag_max_scroll);
                 }
                 KeyCode::Tab => self.session.autocomplete(),
                 _ => {}
@@ -186,15 +209,18 @@ impl TuiApp {
 
     fn render(&mut self, stdout: &mut std::io::Stdout) -> Result<(), TuiError> {
         let (ncols, nrows) = crossterm::terminal::size()?;
-        self.set_frame_height(nrows as usize);
+        self.set_frame_size(ncols, nrows);
+        let (lwidth, rwidth) = (self.left_width, self.right_width);
         self.screen_buf.clear();
         self.screen_buf
             .reserve((ncols as usize) * (nrows as usize) * 2);
-        let lwidth = ((ncols - 1) / 5) as usize;
-        let rwidth = (ncols as usize) - 1 - lwidth;
         // Clearn the screen and start rendering.
-        self.screen_buf.execute(Clear(ClearType::All))?;
-        self.screen_buf.execute(MoveTo(0, 0))?;
+        execute!(
+            self.screen_buf,
+            Clear(ClearType::All),
+            MoveTo(0, 0),
+            DisableLineWrap
+        )?;
         // Render all tags.
         for tag in self
             .session
@@ -202,7 +228,7 @@ impl TuiApp {
             .iter()
             .map(|t| t.as_str())
             .chain(std::iter::repeat(""))
-            .skip(self.scroll)
+            .skip(self.tag_scroll)
             .take(nrows as usize)
         {
             execute!(
@@ -218,9 +244,10 @@ impl TuiApp {
             MoveTo(lwidth as u16, 0),
             SetAttribute(Attribute::Bold),
             Print(format_args!(
-                "│{:^rwidth$.rwidth$}",
+                "│{header:^w$.w$}",
+                w = rwidth as usize,
                 // Must use format instead of format_args, for the center alignment to work.
-                format!(
+                header = format!(
                     "{}: {} results, page {} of {}",
                     if self.session.filter_str().is_empty() {
                         "ALL_TAGS"
@@ -239,7 +266,7 @@ impl TuiApp {
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
-            Print(format_args!("├{:─<rwidth$.rwidth$}", ""))
+            Print(&self.hline)
         )?;
         // Render filepaths.
         self.session
@@ -272,7 +299,7 @@ impl TuiApp {
                                 trimmed,
                                 rwidth
                                     .saturating_sub(4)
-                                    .saturating_sub(self.file_index_width as usize)
+                                    .saturating_sub(self.file_index_width as u16)
                             )
                         ))
                     )?;
@@ -284,7 +311,7 @@ impl TuiApp {
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
-            Print(format_args!("├{:─<rwidth$.rwidth$}", ""))
+            Print(&self.hline)
         )?;
         // Render two lines in the echo area one line at a time.
         for line in self
@@ -306,7 +333,7 @@ impl TuiApp {
             self.screen_buf,
             MoveToColumn(lwidth as u16),
             MoveDown(1),
-            Print(format_args!("├{:─<rwidth$.rwidth$}", ""))
+            Print(&self.hline)
         )?;
         // Render the REPL line. We render the echo string last, because that
         // way we don't have to hide the cursor and render a cursor unicode
