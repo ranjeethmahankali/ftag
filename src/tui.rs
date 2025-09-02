@@ -211,8 +211,6 @@ impl TuiApp {
     }
 
     fn render(&mut self, stdout: &mut std::io::Stdout) -> Result<(), TuiError> {
-        let time_before = std::time::Instant::now();
-
         let (ncols, nrows) = crossterm::terminal::size()?;
         self.set_frame_size(ncols, nrows);
         let (lwidth, rwidth) = (self.left_width, self.right_width);
@@ -356,12 +354,6 @@ impl TuiApp {
         // Write the screen buffer out to the terminal in a single sys call.
         stdout.write_all(&self.screen_buf)?;
         stdout.flush()?;
-
-        self.session.set_echo(&format!(
-            "Last frame took: {:?}",
-            std::time::Instant::now() - time_before
-        ));
-
         Ok(())
     }
 }
