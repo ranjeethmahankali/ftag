@@ -267,6 +267,10 @@ impl TuiApp {
             Some(tag) => write!(self.screen_buf, "{tag:<lwidth$.lwidth$}│")?,
             None => write!(self.screen_buf, "{:<lwidth$.lwidth$}│", "")?,
         }
+        // We render the echo string last, because that way we don't have to
+        // hide the cursor and render a cursor unicode character
+        // artificially. The cursor will naturally land at the end of the echo
+        // string.
         write!(
             self.screen_buf,
             "{:<.rwidth$}",
