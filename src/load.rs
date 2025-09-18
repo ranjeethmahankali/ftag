@@ -1,5 +1,5 @@
 use crate::{
-    core::{Error, FTAG_BACKUP_FILE, FTAG_FILE},
+    core::{AUDIO_EXTS, DOCUMENT_EXTS, Error, FTAG_BACKUP_FILE, FTAG_FILE, IMAGE_EXTS, VIDEO_EXTS},
     walk::DirEntry,
 };
 use fast_glob::glob_match;
@@ -146,8 +146,10 @@ fn infer_year_range(mut input: &str) -> Option<Range<u16>> {
 /// expected to be the path / name of the file.
 fn infer_format_tag(input: &'_ str) -> impl Iterator<Item = Tag<'_>> + use<'_> {
     const EXT_TAG_MAP: &[(&[&str], &str)] = &[
-        (&[".mov", ".flv", ".mp4", ".3gp", ".mpg"], "video"),
-        (&[".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif"], "image"),
+        (VIDEO_EXTS, "video"),
+        (IMAGE_EXTS, "image"),
+        (AUDIO_EXTS, "audio"),
+        (DOCUMENT_EXTS, "document"),
     ];
     EXT_TAG_MAP.iter().filter_map(|(exts, tag)| {
         if exts
@@ -625,12 +627,18 @@ mod test {
             let actual: Vec<_> = infer_implicit_tags(input).map(|t| t.to_string()).collect();
             assert_eq!(actual, expected);
         }
-        let inputs = vec!["1998_MyDirectory", "1998_MyFile.pdf"];
-        let expected = vec!["1998"];
-        for input in inputs {
-            let actual: Vec<_> = infer_implicit_tags(input).map(|t| t.to_string()).collect();
-            assert_eq!(actual, expected);
-        }
+        assert_eq!(
+            infer_implicit_tags("1998_MyDirectory")
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>(),
+            vec!["1998"]
+        );
+        assert_eq!(
+            infer_implicit_tags("1998_MyFile.pdf")
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>(),
+            vec!["1998", "document"]
+        );
     }
 
     #[test]
