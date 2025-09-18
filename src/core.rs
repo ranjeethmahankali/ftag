@@ -17,6 +17,11 @@ use std::{
 pub(crate) const FTAG_FILE: &str = ".ftag";
 pub(crate) const FTAG_BACKUP_FILE: &str = ".ftagbak";
 
+pub(crate) const VIDEO_EXTS: &[&str] = &[".mov", ".flv", ".mp4", ".3gp", ".mpg"];
+pub(crate) const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif"];
+pub(crate) const AUDIO_EXTS: &[&str] = &[".wav", ".mp3", ".flac"];
+pub(crate) const DOCUMENT_EXTS: &[&str] = &["pdf", "doc", "docx"];
+
 /// The data related to a glob in an ftag file. This is meant to be used in
 /// error reporting.
 pub struct GlobInfo {

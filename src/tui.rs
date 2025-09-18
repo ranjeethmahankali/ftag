@@ -1,4 +1,5 @@
 use crate::{
+    core::{AUDIO_EXTS, DOCUMENT_EXTS, IMAGE_EXTS, VIDEO_EXTS},
     interactive::{InteractiveSession, State},
     query::TagTable,
 };
@@ -50,15 +51,19 @@ fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
 }
 
 fn get_file_icon(file: &str) -> char {
-    let ext = match file.rsplit_once('.') {
-        Some((_, ext)) => ext,
-        None => return '📄',
-    };
-    match ext {
-        "pdf" | "ext" | "doc" | "docx" => '📃',
-        "mp4" | "mov" => '🎬',
-        "jpg" | "png" | "gif" => '📷',
-        _ => '📄',
+    const EXT_ICON_MAP: &[(&[&str], char)] = &[
+        (VIDEO_EXTS, '🎬'),
+        (IMAGE_EXTS, '🖼'),
+        (AUDIO_EXTS, '𝄞'),
+        (DOCUMENT_EXTS, '🗎'),
+    ];
+    match EXT_ICON_MAP.iter().find_map(|&(exts, icon)| {
+        exts.iter()
+            .find(|&&ext| file[file.len().saturating_sub(ext.len())..].eq_ignore_ascii_case(ext))
+            .map(|_| icon)
+    }) {
+        Some(found) => found,
+        None => ' ',
     }
 }
 
