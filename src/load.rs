@@ -627,12 +627,18 @@ mod test {
             let actual: Vec<_> = infer_implicit_tags(input).map(|t| t.to_string()).collect();
             assert_eq!(actual, expected);
         }
-        let inputs = vec!["1998_MyDirectory", "1998_MyFile.pdf"];
-        let expected = vec!["1998"];
-        for input in inputs {
-            let actual: Vec<_> = infer_implicit_tags(input).map(|t| t.to_string()).collect();
-            assert_eq!(actual, expected);
-        }
+        assert_eq!(
+            infer_implicit_tags("1998_MyDirectory")
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>(),
+            vec!["1998"]
+        );
+        assert_eq!(
+            infer_implicit_tags("1998_MyFile.pdf")
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>(),
+            vec!["1998", "document"]
+        );
     }
 
     #[test]
