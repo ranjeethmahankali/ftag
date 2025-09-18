@@ -57,14 +57,16 @@ fn get_file_icon(file: &str) -> char {
         (AUDIO_EXTS, '𝄞'),
         (DOCUMENT_EXTS, '🗎'),
     ];
-    match EXT_ICON_MAP.iter().find_map(|&(exts, icon)| {
-        exts.iter()
-            .find(|&&ext| file[file.len().saturating_sub(ext.len())..].eq_ignore_ascii_case(ext))
-            .map(|_| icon)
-    }) {
-        Some(found) => found,
-        None => ' ',
-    }
+    EXT_ICON_MAP
+        .iter()
+        .find_map(|&(exts, icon)| {
+            exts.iter()
+                .find(|&&ext| {
+                    file[file.len().saturating_sub(ext.len())..].eq_ignore_ascii_case(ext)
+                })
+                .map(|_| icon)
+        })
+        .unwrap_or(' ')
 }
 
 #[inline(always)]
@@ -262,7 +264,7 @@ impl TuiApp {
         // Render the header.
         queue!(
             self.screen_buf,
-            MoveTo(lwidth as u16, 0),
+            MoveTo(lwidth, 0),
             SetAttribute(Attribute::Bold),
             Print(format_args!(
                 "│{header:^w$.w$}",
@@ -285,7 +287,7 @@ impl TuiApp {
         // Render border below header.
         queue!(
             self.screen_buf,
-            MoveToColumn(lwidth as u16),
+            MoveToColumn(lwidth),
             MoveDown(1),
             Print(&self.hline)
         )?;
@@ -302,7 +304,7 @@ impl TuiApp {
                 if file.is_empty() {
                     queue!(
                         self.screen_buf,
-                        MoveToColumn(lwidth as u16),
+                        MoveToColumn(lwidth),
                         MoveDown(1),
                         Print("│")
                     )?;
@@ -310,7 +312,7 @@ impl TuiApp {
                     let (padding, trimmed) = remove_common_prefix(prevfile, file);
                     queue!(
                         self.screen_buf,
-                        MoveToColumn(lwidth as u16),
+                        MoveToColumn(lwidth),
                         MoveDown(1),
                         Print(format_args!(
                             "│{icon} [{i:>iw$}] {pp:.<padding$}{trimmed}",
@@ -331,7 +333,7 @@ impl TuiApp {
         // Render border.
         queue!(
             self.screen_buf,
-            MoveToColumn(lwidth as u16),
+            MoveToColumn(lwidth),
             MoveDown(1),
             Print(&self.hline)
         )?;
@@ -345,7 +347,7 @@ impl TuiApp {
         {
             queue!(
                 self.screen_buf,
-                MoveToColumn(lwidth as u16),
+                MoveToColumn(lwidth),
                 MoveDown(1),
                 Print(format_args!("│{}", truncate_string(line, rwidth)))
             )?;
@@ -353,7 +355,7 @@ impl TuiApp {
         // Render border.
         queue!(
             self.screen_buf,
-            MoveToColumn(lwidth as u16),
+            MoveToColumn(lwidth),
             MoveDown(1),
             Print(&self.hline)
         )?;
@@ -363,7 +365,7 @@ impl TuiApp {
         // the echo string.
         queue!(
             self.screen_buf,
-            MoveToColumn(lwidth as u16),
+            MoveToColumn(lwidth),
             MoveDown(1),
             Print(format_args!(
                 "│>>> {}",
