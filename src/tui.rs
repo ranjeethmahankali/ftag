@@ -1,5 +1,4 @@
 use crate::{
-    core::{AUDIO_EXTS, DOCUMENT_EXTS, IMAGE_EXTS, VIDEO_EXTS},
     interactive::{InteractiveSession, State},
     query::TagTable,
 };
@@ -48,25 +47,6 @@ fn remove_common_prefix<'a>(prev: &str, curr: &'a str) -> (usize, &'a str) {
             Err(start) => start,
         };
     (start, &curr[start..])
-}
-
-fn get_file_icon(file: &str) -> char {
-    const EXT_ICON_MAP: &[(&[&str], char)] = &[
-        (VIDEO_EXTS, '🎬'),
-        (IMAGE_EXTS, '🖼'),
-        (AUDIO_EXTS, '𝄞'),
-        (DOCUMENT_EXTS, '🗎'),
-    ];
-    EXT_ICON_MAP
-        .iter()
-        .find_map(|&(exts, icon)| {
-            exts.iter()
-                .find(|&&ext| {
-                    file[file.len().saturating_sub(ext.len())..].eq_ignore_ascii_case(ext)
-                })
-                .map(|_| icon)
-        })
-        .unwrap_or(' ')
 }
 
 #[inline(always)]
@@ -315,8 +295,7 @@ impl TuiApp {
                         MoveToColumn(lwidth),
                         MoveDown(1),
                         Print(format_args!(
-                            "│{icon} [{i:>iw$}] {pp:.<padding$}{trimmed}",
-                            icon = get_file_icon(file),
+                            "│[{i:>iw$}] {pp:.<padding$}{trimmed}",
                             iw = self.file_index_width as usize,
                             pp = "",
                             trimmed = truncate_string(
